@@ -3,6 +3,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SESSION_AGENTS } from "./lib/memory-agents.mjs";
+import { planOfBranch } from "./lib/memory-branch.mjs";
 import { PreconditionError, UsageError } from "./lib/memory-errors.mjs";
 import { formatDate, parseSessionInput, renderSession, sessionFileName } from "./lib/memory-entry.mjs";
 import { check, tags } from "./lib/memory-check.mjs";
@@ -12,10 +14,8 @@ import { promote } from "./lib/memory-long.mjs";
 import { findSessionByAgentId, nextN } from "./lib/memory-store.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const BRANCH_RE = /^(?:feat|fix|chore)\/(\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*)$/;
 const AGENT_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const TASK_RE = /^T\d+$/;
-const AGENTS = ["developer", "reviewer"];
 const VERDICTS = ["APPROVED", "CHANGES_REQUESTED"];
 const CHECK_FAILED = 4;
 const MEMORY_PREFIX = "docs/memory/";
@@ -63,7 +63,7 @@ function requireAgentId(options) {
 function parseSessionOptions(args) {
   const options = parseOptions(args, ["agent", "agent-id", "task", "veredicto"]);
   const agent = requireOption(options, "agent");
-  if (!AGENTS.includes(agent)) throw new UsageError(`'--agent' debe ser ${AGENTS.join(" o ")}`);
+  if (!SESSION_AGENTS.includes(agent)) throw new UsageError(`'--agent' debe ser ${SESSION_AGENTS.join(" o ")}`);
   const agentId = requireAgentId(options);
   const task = requireTaskId(options);
   return { agent, agentId, task, verdict: parseVerdict(agent, options.veredicto) };
@@ -84,7 +84,7 @@ function parseVerdict(agent, verdict) {
 
 function resolvePlan({ root, git }) {
   const branch = (git(["branch", "--show-current"]) ?? "").trim();
-  const slug = BRANCH_RE.exec(branch)?.[1];
+  const slug = planOfBranch(branch);
   if (!slug) throw new PreconditionError(`la rama '${branch}' no corresponde a un plan (R10)`);
   const planRel = `docs/plans/${slug}.md`;
   if (!existsSync(join(root, "docs", "plans", `${slug}.md`))) {

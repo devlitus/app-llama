@@ -9,10 +9,18 @@ function shortDir(root) {
   return join(root, "docs", "memory", "short");
 }
 
+function readShortDir(dir) {
+  try {
+    return readdirSync(dir);
+  } catch (error) {
+    throw new PreconditionError(`no se puede leer ${SHORT_REL}: ${error.message}`);
+  }
+}
+
 function shortFileNames(root) {
   const dir = shortDir(root);
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
+  return readShortDir(dir)
     .filter((name) => name.endsWith(".md"))
     .sort();
 }

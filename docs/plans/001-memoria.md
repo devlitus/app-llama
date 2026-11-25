@@ -688,8 +688,8 @@ tipo: decisiones
 - **Depende de:** T3 (`findSessionByAgentId`, `sessionsOfTask`), T4 (`parsePlan`), T6 (`tags`)
 - **Cubre:** CA8, CA9, CA10 (lógica)
 - **Subtareas:**
-  - [ ] T7.1 `memoryCommandLine(command) → string | null`. Devuelve la primera línea si el comando es una invocación válida según T7.2 y `null` en otro caso.
-  - [ ] T7.2 `checkMemoryToolUse(input, {root}) → {allow:true} | {allow:false, reason}`. **Enfoque de lista blanca** (enmienda tras la revisión de T7, issues #10 y #11): un comando de shell que toca la memoria solo pasa si es la invocación exacta de la CLI o una lectura de una lista cerrada. Las reglas se aplican en este orden:
+  - [x] T7.1 `memoryCommandLine(command) → string | null`. Devuelve la primera línea si el comando es una invocación válida según T7.2 y `null` en otro caso.
+  - [x] T7.2 `checkMemoryToolUse(input, {root}) → {allow:true} | {allow:false, reason}`. **Enfoque de lista blanca** (enmienda tras la revisión de T7, issues #10 y #11): un comando de shell que toca la memoria solo pasa si es la invocación exacta de la CLI o una lectura de una lista cerrada. Las reglas se aplican en este orden:
     1. **`Edit`, `Write` o `NotebookEdit` sobre una ruta bajo `docs/memory/`:** se deniega con `R11: la memoria solo se escribe con node scripts/memory.mjs`. La ruta (`file_path` o `notebook_path`) se normaliza antes de compararla:
        - `\` → `/`;
        - se quita el prefijo de ruta extendida de Windows (`//?/` o `//./` tras el cambio de barras);
@@ -758,8 +758,8 @@ tipo: decisiones
     6. **Cualquier otro comando que toca la memoria:** se deniega.
        - Si cumple M6 (menciona la CLI o sus módulos), el motivo es `R11: forma de comando no admitida; usa exactamente node scripts/memory.mjs <subcomando>`.
        - En otro caso, el motivo es `R11: la memoria solo se escribe con node scripts/memory.mjs`.
-  - [ ] T7.3 `subagentStartContext(input, {root}) → string | null`, con los textos de abajo.
-  - [ ] T7.4 `subagentStopDecision(input, {root, branch}) → {block:false} | {block:true, reason}`, según D8.
+  - [x] T7.3 `subagentStartContext(input, {root}) → string | null`, con los textos de abajo.
+  - [x] T7.4 `subagentStopDecision(input, {root, branch}) → {block:false} | {block:true, reason}`, según D8.
 - **Textos exactos:**
   - **`developer`:**
     ```
