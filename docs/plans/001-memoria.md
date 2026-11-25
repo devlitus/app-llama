@@ -544,16 +544,16 @@ tipo: decisiones
 - **Depende de:** T2
 - **Cubre:** CA1, CA2, CA3
 - **Subtareas:**
-  - [ ] T3.1 `memory-store.mjs`:
+  - [x] T3.1 `memory-store.mjs`:
     - `listSessions(root) → {rel, meta, input}[]`, solo sobre `short/*.md`. Lanza error si una sesión es ilegible.
     - `nextN(root, prefix)`.
     - `findSessionByAgentId(root, id) → {rel, meta} | null`. Usa la línea exacta `agent_id: <id>` y no lanza error ante ficheros corruptos.
     - `sessionsOfTask(root, plan, task)`.
-  - [ ] T3.2 `memory.mjs` exporta `run(argv, deps) → Promise<exitCode>`, con `deps = {root, now, git(args)→string|null, runGate()→{ok, failed[]}, readStdin()→string, out, err}`.
+  - [x] T3.2 `memory.mjs` exporta `run(argv, deps) → Promise<exitCode>`, con `deps = {root, now, git(args)→string|null, runGate()→{ok, failed[]}, readStdin()→string, out, err}`.
     - El punto de entrada solo se ejecuta si el módulo es el script principal.
     - El `runGate` real lanza `process.execPath scripts/quality-gate.mjs`, con `cwd = root` y `maxBuffer` de 64 MB.
-  - [ ] T3.3 `session`, en este orden: argumentos (1) → rama y plan (3) → tarea (3) → stdin (2) → `agent_id` duplicado (3) → ficheros → gate → escritura → stdout.
-  - [ ] T3.4 `help`/`--help` y subcomando desconocido. Los subcomandos de T4–T6 responden `[R11] subcomando aún no disponible` y salen con 1 hasta que se implementen.
+  - [x] T3.3 `session`, en este orden: argumentos (1) → rama y plan (3) → tarea (3) → stdin (2) → `agent_id` duplicado (3) → ficheros → gate → escritura → stdout.
+  - [x] T3.4 `help`/`--help` y subcomando desconocido. Los subcomandos de T4–T6 responden `[R11] subcomando aún no disponible` y salen con 1 hasta que se implementen.
 - **Tests unitarios** (raíz con `docs/plans/001-memoria.md`, que contiene `### T2 — x`; git falso):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

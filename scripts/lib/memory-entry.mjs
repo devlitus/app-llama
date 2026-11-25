@@ -1,4 +1,7 @@
+import { MemoryInputError } from "./memory-errors.mjs";
 import { findSecrets } from "./secrets.mjs";
+
+export { MemoryInputError };
 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SLUG_MAX = 40;
@@ -6,14 +9,6 @@ const TEXT_MAX = 200;
 const SUMMARY_MAX = 300;
 const ENTRIES_MAX = 10;
 const SCHEMA = "memoria-sesion/1";
-
-export class MemoryInputError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "MemoryInputError";
-    this.code = 2;
-  }
-}
 
 function fail(lineNo, message) {
   throw new MemoryInputError(`línea ${lineNo}: ${message}`);
