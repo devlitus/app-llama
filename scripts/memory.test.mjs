@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { failedGateSteps, run } from "./memory.mjs";
 import { renderSession } from "./lib/memory-entry.mjs";
 
@@ -224,7 +224,7 @@ test("cli_subcomando_desconocido", () =>
 
 test("cli_subcomando_pendiente", () =>
   withEnv({}, async ({ deps, output }) => {
-    assert.equal(await run(["flush"], deps), 1);
+    assert.equal(await run(["close"], deps), 1);
     assert.match(output.err, /\[R11\] subcomando aún no disponible/);
   }));
 
@@ -353,3 +353,287 @@ test("gate_rojo_extrae_pasos_fallidos", () => {
 test("gate_verde_sin_pasos_fallidos", () => {
   assert.deepEqual(failedGateSteps("──── Quality gate ────\n✔ A\n"), []);
 });
+
+test("cli_importado_con_argv_inexistente_no_falla", () => {
+  const moduleUrl = pathToFileURL(join(SCRIPTS_DIR, "memory.mjs")).href;
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", `await import(${JSON.stringify(moduleUrl)})`, "ruta-inexistente"],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "");
+});
+
+const MEDIUM = ["docs", "memory", "medium", "001-memoria.md"];
+const FLUSH_ARGS = (task, agentId) => ["flush", "--task", task, "--agent-id", agentId];
+
+function seedSession(root, { agente, agentId, n = 1, fecha = "2026-11-25", tarea = "T3", veredicto, input = {} }) {
+  const meta = { ...baseMeta, fecha, tarea, agente, agentId, n };
+  if (veredicto) meta.veredicto = veredicto;
+  const fullInput = { summary: `${agente} ${n}`, decisions: [], errors: [], ...input };
+  const name = `${fecha}-001-memoria-${tarea}-${agente}-${n}.md`;
+  seedShort(root, name, renderSession(meta, fullInput));
+  return name;
+}
+
+const seedDeveloper = (root, options = {}) =>
+  seedSession(root, { agente: "developer", agentId: `d${options.n ?? 1}`, ...options });
+const seedReviewer = (root, options = {}) =>
+  seedSession(root, { agente: "reviewer", agentId: "r1", veredicto: "APPROVED", ...options });
+
+function readMedium(root) {
+  return readFileSync(join(root, ...MEDIUM), "utf8");
+}
+
+const CYCLE_1_INPUT = {
+  developer: {
+    summary: "Implementa la CLI de session.",
+    decisions: [{ slug: "cli-sin-dependencias", text: "Parseo de argumentos a mano para no añadir dependencias." }],
+  },
+  reviewer: {
+    summary: "Falta validar el formato de --task.",
+    errors: [{ slug: "validacion-args", text: "No se valida el formato de --task. #12", issues: [12] }],
+  },
+};
+
+const MEDIUM_HEAD = `---
+schema: memoria-plan/2
+plan: 001-memoria
+estado: abierto
+---
+
+# Memoria del plan 001-memoria
+
+## T3
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-25 | 1 | r1 | verde | CHANGES_REQUESTED |
+`;
+
+const MEDIUM_CYCLE_2_ROW = "| 2 | 2026-11-26 | 1 | r2 | verde | APPROVED |\n";
+
+const MEDIUM_CYCLE_1_BODY = `
+### Resúmenes
+
+- C1 · developer · Implementa la CLI de session.
+- C1 · reviewer · Falta validar el formato de --task.
+`;
+
+const MEDIUM_CYCLE_2_SUMMARIES = `- C2 · developer · Valida --task con ^T\\d+$.
+- C2 · reviewer · Revisa la corrección de --task.
+`;
+
+const MEDIUM_TAIL = `
+### Decisiones
+
+- **cli-sin-dependencias** — Parseo de argumentos a mano para no añadir dependencias. (C1)
+
+### Errores
+
+- **validacion-args** — No se valida el formato de --task. #12 (C1 · #12)
+`;
+
+function seedCycleOne(root) {
+  seedDeveloper(root, { input: CYCLE_1_INPUT.developer });
+  seedReviewer(root, { veredicto: "CHANGES_REQUESTED", input: CYCLE_1_INPUT.reviewer });
+}
+
+test("flush_crea_medio", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedCycleOne(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0, output.err);
+    assert.equal(readMedium(root), MEDIUM_HEAD + MEDIUM_CYCLE_1_BODY + MEDIUM_TAIL);
+    assert.deepEqual(shortFiles(root), []);
+  }));
+
+test("flush_informa_por_stdout", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedCycleOne(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    assert.equal(output.out, "docs/memory/medium/001-memoria.md\nciclo: T3 C1\nborradas: 2\n");
+  }));
+
+test("flush_segundo_ciclo", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedCycleOne(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    seedDeveloper(root, { fecha: "2026-11-26", input: { summary: "Valida --task con ^T\\d+$." } });
+    seedReviewer(root, {
+      agentId: "r2",
+      fecha: "2026-11-26",
+      input: { summary: "Revisa la corrección de --task." },
+    });
+    assert.equal(await run(FLUSH_ARGS("T3", "r2"), deps), 0, output.err);
+    const expected = MEDIUM_HEAD + MEDIUM_CYCLE_2_ROW + MEDIUM_CYCLE_1_BODY + MEDIUM_CYCLE_2_SUMMARIES + MEDIUM_TAIL;
+    assert.equal(readMedium(root), expected);
+    assert.deepEqual(shortFiles(root), []);
+  }));
+
+test("flush_acumula_slug", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedReviewer(root, {
+      veredicto: "CHANGES_REQUESTED",
+      input: { errors: [{ slug: "validacion-args", text: "falla #12", issues: [12] }] },
+    });
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    seedReviewer(root, {
+      agentId: "r2",
+      input: { errors: [{ slug: "validacion-args", text: "texto nuevo #15", issues: [15] }] },
+    });
+    assert.equal(await run(FLUSH_ARGS("T3", "r2"), deps), 0);
+    assert.match(readMedium(root), /^- \*\*validacion-args\*\* — texto nuevo #15 \(C1, C2 · #12, #15\)$/m);
+  }));
+
+test("flush_varios_developer", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedDeveloper(root, { n: 2 });
+    seedDeveloper(root, { n: 10 });
+    seedReviewer(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    const medium = readMedium(root);
+    assert.match(medium, /^\| 1 \| 2026-11-25 \| 2 \| r1 \| verde \| APPROVED \|$/m);
+    assert.match(medium, /- C1 · developer · developer 2\n- C1 · developer · developer 10\n- C1 · reviewer · reviewer 1\n/);
+  }));
+
+test("flush_ordena_developer_por_fecha_y_despues_por_n", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedDeveloper(root, { n: 1, fecha: "2026-11-26" });
+    seedDeveloper(root, { n: 2, fecha: "2026-11-25" });
+    seedReviewer(root, { fecha: "2026-11-26" });
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    assert.match(readMedium(root), /- C1 · developer · developer 2\n- C1 · developer · developer 1\n/);
+  }));
+
+test("flush_sin_developer", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedReviewer(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    assert.match(readMedium(root), /^\| 1 \| 2026-11-25 \| 0 \| r1 \| verde \| APPROVED \|$/m);
+  }));
+
+test("flush_orden_tareas", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedReviewer(root, { tarea: "T10" });
+    assert.equal(await run(FLUSH_ARGS("T10", "r1"), deps), 0);
+    seedReviewer(root, { tarea: "T2", agentId: "r2" });
+    assert.equal(await run(FLUSH_ARGS("T2", "r2"), deps), 0);
+    assert.deepEqual(readMedium(root).match(/^## T\d+$/gm), ["## T2", "## T10"]);
+  }));
+
+test("flush_no_toca_otras_tareas", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedDeveloper(root, { tarea: "T3" });
+    seedReviewer(root, { tarea: "T3" });
+    const other = seedDeveloper(root, { tarea: "T4" });
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    assert.deepEqual(shortFiles(root), [other]);
+    assert.doesNotMatch(readMedium(root), /## T4/);
+  }));
+
+test("flush_sin_reviewer", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    const dev = seedDeveloper(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
+    assert.match(output.err, /^\[R11\] /);
+    assert.deepEqual(shortFiles(root), [dev]);
+    assert.equal(existsSync(join(root, ...MEDIUM)), false);
+  }));
+
+test("flush_dos_reviewer", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedReviewer(root, { agentId: "r1" });
+    seedReviewer(root, { agentId: "r2", n: 2 });
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
+    assert.equal(shortFiles(root).length, 2);
+  }));
+
+test("flush_agent_id_distinto", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedReviewer(root, { agentId: "r1" });
+    assert.equal(await run(FLUSH_ARGS("T3", "r9"), deps), 3);
+    assert.equal(shortFiles(root).length, 1);
+  }));
+
+test("flush_plan_cerrado", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedReviewer(root);
+    mkdirSync(dirname(join(root, ...MEDIUM)), { recursive: true });
+    const closed = "---\nschema: memoria-plan/2\nplan: 001-memoria\nestado: cerrado\n---\n\n# Memoria del plan 001-memoria\n";
+    writeFileSync(join(root, ...MEDIUM), closed);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
+    assert.match(output.err, /cerrado/);
+    assert.equal(readMedium(root), closed);
+    assert.equal(shortFiles(root).length, 1);
+  }));
+
+test("flush_medio_ilegible", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedReviewer(root);
+    mkdirSync(dirname(join(root, ...MEDIUM)), { recursive: true });
+    writeFileSync(join(root, ...MEDIUM), "# sin front matter\n");
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
+    assert.match(output.err, /docs\/memory\/medium\/001-memoria\.md/);
+    assert.equal(shortFiles(root).length, 1);
+  }));
+
+test("flush_reintento_idempotente", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedCycleOne(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    const before = readMedium(root);
+    seedDeveloper(root, { n: 2, input: { summary: "sobrante" } });
+    seedReviewer(root, { veredicto: "CHANGES_REQUESTED", input: CYCLE_1_INPUT.reviewer });
+    output.out = "";
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    assert.equal(readMedium(root), before);
+    assert.deepEqual(shortFiles(root), []);
+    assert.match(output.out, /ciclo: T3 C1\nborradas: 2\n$/);
+  }));
+
+test("flush_rama_sin_plan", () =>
+  withEnv({ branch: "main" }, async ({ root, deps }) => {
+    seedReviewer(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
+    assert.equal(shortFiles(root).length, 1);
+  }));
+
+test("flush_argumentos", () =>
+  withEnv({}, async ({ deps }) => {
+    assert.equal(await run(["flush", "--agent-id", "r1"], deps), 1);
+    assert.equal(await run(["flush", "--task", "T3"], deps), 1);
+    assert.equal(await run(["flush", "--task", "T3.1", "--agent-id", "r1"], deps), 1);
+    assert.equal(await run(["flush", "--task", "T3", "--agent-id", "a b"], deps), 1);
+  }));
+
+test("flush_estado_desconocido", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    const session = seedReviewer(root);
+    mkdirSync(dirname(join(root, ...MEDIUM)), { recursive: true });
+    const odd = MEDIUM_HEAD.replace("estado: abierto", "estado: Abierto") + MEDIUM_CYCLE_1_BODY + MEDIUM_TAIL;
+    writeFileSync(join(root, ...MEDIUM), odd);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
+    assert.match(output.err, /ilegible.*docs\/memory\/medium\/001-memoria\.md/);
+    assert.equal(readMedium(root), odd);
+    assert.deepEqual(shortFiles(root), [session]);
+  }));
+
+test("flush_escritura_imposible", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    const session = seedReviewer(root);
+    mkdirSync(join(root, "docs", "memory", "medium", ".001-memoria.tmp"), { recursive: true });
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
+    assert.match(output.err, /^\[R11\] no se puede escribir docs\/memory\/medium\/001-memoria\.md/);
+    assert.deepEqual(shortFiles(root), [session]);
+    assert.equal(existsSync(join(root, ...MEDIUM)), false);
+  }));
+
+test("flush_no_deja_temporales", () =>
+  withEnv({}, async ({ root, deps }) => {
+    seedReviewer(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    assert.deepEqual(readdirSync(join(root, "docs", "memory", "medium")), ["001-memoria.md"]);
+  }));

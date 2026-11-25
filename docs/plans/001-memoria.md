@@ -587,9 +587,9 @@ tipo: decisiones
 - **Depende de:** T3
 - **Cubre:** CA4
 - **Subtareas:**
-  - [ ] T4.1 `renderPlan(plan)` y `parsePlan(md)` para el formato **abierto**. La estructura es `{plan, estado, patterns?, tasks:[{task, cycles:[…], summaries:[…], decisions:[{slug,text,cycles}], errors:[{slug,text,cycles,issues}]}]}`.
-  - [ ] T4.2 `mergeCycle(planDoc, task, devSessions, reviewerSession) → planDoc`. Añade el ciclo `k`; las entradas con un slug ya existente reciben el texto nuevo, se añade el ciclo y se unen los issues.
-  - [ ] T4.3 `flush(root, plan, task, agentId)`, en este orden:
+  - [x] T4.1 `renderPlan(plan)` y `parsePlan(md)` para el formato **abierto**. La estructura es `{plan, estado, patterns?, tasks:[{task, cycles:[…], summaries:[…], decisions:[{slug,text,cycles}], errors:[{slug,text,cycles,issues}]}]}`.
+  - [x] T4.2 `mergeCycle(planDoc, task, devSessions, reviewerSession) → planDoc`. Añade el ciclo `k`; las entradas con un slug ya existente reciben el texto nuevo, se añade el ciclo y se unen los issues.
+  - [x] T4.3 `flush(root, plan, task, agentId)`, en este orden:
     1. lee el medio plazo si existe;
     2. sale con 3 si está `cerrado` o es ilegible;
     3. toma las sesiones de `(plan, task)`;
@@ -597,7 +597,7 @@ tipo: decisiones
     5. **si ese `agent_id` ya está en la columna Reviewer de la tarea**, no añade ciclo y solo borra las sesiones restantes (recuperación idempotente);
     6. si no, añade el ciclo y escribe el medio plazo (temporal + rename);
     7. borra las sesiones: primero las del developer y la del reviewer al final.
-  - [ ] T4.4 Subcomando `flush --task Tn --agent-id <id>`. Escribe en stdout `docs/memory/medium/<plan>.md`, `ciclo: Tn C<k>` y `borradas: <m>`.
+  - [x] T4.4 Subcomando `flush --task Tn --agent-id <id>`. Escribe en stdout `docs/memory/medium/<plan>.md`, `ciclo: Tn C<k>` y `borradas: <m>`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

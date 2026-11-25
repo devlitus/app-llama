@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PreconditionError, UsageError } from "./lib/memory-errors.mjs";
 import { formatDate, parseSessionInput, renderSession, sessionFileName } from "./lib/memory-entry.mjs";
+import { flush } from "./lib/memory-flush.mjs";
 import { findSessionByAgentId, nextN } from "./lib/memory-store.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -13,7 +14,7 @@ const AGENT_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const TASK_RE = /^T\d+$/;
 const AGENTS = ["developer", "reviewer"];
 const VERDICTS = ["APPROVED", "CHANGES_REQUESTED"];
-const PENDING_COMMANDS = ["flush", "close", "promote", "check", "tags"];
+const PENDING_COMMANDS = ["close", "promote", "check", "tags"];
 const MEMORY_PREFIX = "docs/memory/";
 const GATE_HEADER = "──── Quality gate ────";
 
@@ -44,15 +45,30 @@ function requireOption(options, key) {
   return options[key];
 }
 
+function requireTaskId(options) {
+  const task = requireOption(options, "task");
+  if (!TASK_RE.test(task)) throw new UsageError("'--task' debe cumplir ^T\\d+$");
+  return task;
+}
+
+function requireAgentId(options) {
+  const agentId = requireOption(options, "agent-id");
+  if (!AGENT_ID_RE.test(agentId)) throw new UsageError("'--agent-id' debe cumplir ^[A-Za-z0-9._-]{1,64}$");
+  return agentId;
+}
+
 function parseSessionOptions(args) {
   const options = parseOptions(args, ["agent", "agent-id", "task", "veredicto"]);
   const agent = requireOption(options, "agent");
-  const agentId = requireOption(options, "agent-id");
-  const task = requireOption(options, "task");
   if (!AGENTS.includes(agent)) throw new UsageError(`'--agent' debe ser ${AGENTS.join(" o ")}`);
-  if (!AGENT_ID_RE.test(agentId)) throw new UsageError("'--agent-id' debe cumplir ^[A-Za-z0-9._-]{1,64}$");
-  if (!TASK_RE.test(task)) throw new UsageError("'--task' debe cumplir ^T\\d+$");
+  const agentId = requireAgentId(options);
+  const task = requireTaskId(options);
   return { agent, agentId, task, verdict: parseVerdict(agent, options.veredicto) };
+}
+
+function parseFlushOptions(args) {
+  const options = parseOptions(args, ["task", "agent-id"]);
+  return { task: requireTaskId(options), agentId: requireAgentId(options) };
 }
 
 function parseVerdict(agent, verdict) {
@@ -155,11 +171,21 @@ async function runSession(args, deps) {
   deps.out(`docs/memory/short/${name}`);
 }
 
+function runFlush(args, deps) {
+  const options = parseFlushOptions(args);
+  const context = resolvePlan(deps);
+  const { rel, cycle, deleted } = flush(deps.root, context.slug, options.task, options.agentId);
+  deps.out(rel);
+  deps.out(`ciclo: ${options.task} C${cycle}`);
+  deps.out(`borradas: ${deleted}`);
+}
+
 function dispatch(argv, deps) {
   const [command, ...args] = argv;
   if (command === undefined) throw new UsageError(`falta el subcomando\n${USAGE}`);
   if (command === "help" || command === "--help") return deps.out(USAGE);
   if (command === "session") return runSession(args, deps);
+  if (command === "flush") return runFlush(args, deps);
   if (PENDING_COMMANDS.includes(command)) throw new UsageError("subcomando aún no disponible");
   throw new UsageError(`subcomando desconocido '${command}'\n${USAGE}`);
 }
@@ -210,7 +236,15 @@ function realDeps(root) {
 }
 
 // Node resuelve los enlaces simbólicos en import.meta.url, así que argv[1] se resuelve igual.
-const isMainModule = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMainModule) {
+// Con `node -e`, argv[1] puede no ser una ruta real: entonces no somos el script principal.
+function isMainModule() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   process.exitCode = await run(process.argv.slice(2), realDeps(ROOT));
 }
