@@ -485,10 +485,10 @@ tipo: decisiones
 - **Depende de:** T1
 - **Cubre:** CA1 (formato), CA2
 - **Subtareas:**
-  - [ ] T2.1 `parseSessionInput(text) → {summary, decisions:[{slug,text}], errors:[{slug,text,issues:number[]}]}`. Lanza `MemoryInputError` (código 2) e indica el nº de línea cuando aplica. Usa `findSecrets`.
-  - [ ] T2.2 `formatDate(date)` (UTC) y `sessionFileName(meta)`.
-  - [ ] T2.3 `renderSession(meta, input)` con el formato exacto.
-  - [ ] T2.4 `parseSession(md) → {meta, input}`, la inversa de `renderSession`. Acepta CRLF y lanza error si falta el front matter o el `schema` no es `memoria-sesion/1`.
+  - [x] T2.1 `parseSessionInput(text) → {summary, decisions:[{slug,text}], errors:[{slug,text,issues:number[]}]}`. Lanza `MemoryInputError` (código 2) e indica el nº de línea cuando aplica. Usa `findSecrets`.
+  - [x] T2.2 `formatDate(date)` (UTC) y `sessionFileName(meta)`.
+  - [x] T2.3 `renderSession(meta, input)` con el formato exacto.
+  - [x] T2.4 `parseSession(md) → {meta, input}`, la inversa de `renderSession`. Acepta CRLF y lanza error si falta el front matter o el `schema` no es `memoria-sesion/1`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
