@@ -29,6 +29,8 @@ export const PROTECTED_PATHS = [
   /^\.claude\/hooks\//,
   /^\.githooks\//,
   /^scripts\/quality-gate\.mjs$/,
+  /^scripts\/memory(\.test)?\.mjs$/,
+  /^scripts\/lib\//,
   /^\.github\/workflows\//,
   /^docs\/GOVERNANCE\.md$/,
 ];

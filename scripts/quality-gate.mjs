@@ -6,12 +6,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findSecrets } from "./lib/secrets.mjs";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 
 const SOURCE_DIRS = ["crates", "src-tauri/src", "ui/src"];
 const SOURCE_EXTS = new Set([".rs", ".ts", ".tsx", ".js", ".mjs", ".svelte"]);
 const SKIP_DIRS = new Set(["node_modules", "target", "dist", "build", ".svelte-kit"]);
+const SECRET_DIRS = [...SOURCE_DIRS, "scripts", "docs/memory"];
+const SECRET_EXTS = new Set([...SOURCE_EXTS, ".md", ".json", ".toml", ".yml", ".yaml"]);
 
 const FORBIDDEN = [
   { re: /#!?\[\s*allow\s*\(/, why: "#[allow(...)] silencia el linter" },
@@ -28,13 +31,13 @@ function run(label, cmd) {
   return res.status === 0;
 }
 
-function walk(dir, out) {
+function walk(dir, out, exts = SOURCE_EXTS) {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
     if (SKIP_DIRS.has(name)) continue;
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (SOURCE_EXTS.has(extname(name))) out.push(full);
+    if (statSync(full).isDirectory()) walk(full, out, exts);
+    else if (exts.has(extname(name))) out.push(full);
   }
   return out;
 }
@@ -49,6 +52,20 @@ function scanForbiddenPatterns() {
           if (re.test(line)) violations.push(`  ${relative(ROOT, file)}:${i + 1} — ${why}`);
         }
       });
+    }
+  }
+  violations.forEach((v) => process.stdout.write(v + "\n"));
+  return violations.length === 0;
+}
+
+function scanSecrets() {
+  process.stdout.write("\n▶ Secretos (governance R6)\n");
+  const violations = [];
+  for (const dir of SECRET_DIRS) {
+    for (const file of walk(join(ROOT, dir), [], SECRET_EXTS)) {
+      for (const { line, kind } of findSecrets(readFileSync(file, "utf8"))) {
+        violations.push(`  ${relative(ROOT, file)}:${line} — posible secreto (${kind})`);
+      }
     }
   }
   violations.forEach((v) => process.stdout.write(v + "\n"));
@@ -82,7 +99,12 @@ function buildSteps() {
     if (scripts.check) steps.push(["Tipos UI", () => run("Tipos UI", "npm --prefix ui run check")]);
     if (scripts.test) steps.push(["Tests UI", () => run("Tests UI", "npm --prefix ui test")]);
   }
+  if (existsSync(join(ROOT, "scripts", "memory.mjs"))) {
+    steps.push(["Tests scripts", () => run("Tests scripts", 'node --test "scripts/**/*.test.mjs"')]);
+    steps.push(["Memoria (R11)", () => run("Memoria (R11)", "node scripts/memory.mjs check")]);
+  }
   steps.push(["Patrones prohibidos", scanForbiddenPatterns]);
+  steps.push(["Secretos", scanSecrets]);
   return steps;
 }
 

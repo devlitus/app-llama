@@ -946,12 +946,12 @@ tipo: decisiones
 - **Depende de:** T7 `APPROVED` y T1–T7 integradas. Después de T9 el developer ya no puede modificarlas.
 - **Cubre:** CA8, CA9, CA10, CA15
 - **Subtareas:**
-  - [ ] T9.1 `lib.mjs`: en `PROTECTED_PATHS`, tras `/^scripts\/quality-gate\.mjs$/,`, añadir:
+  - [x] T9.1 `lib.mjs`: en `PROTECTED_PATHS`, tras `/^scripts\/quality-gate\.mjs$/,`, añadir:
     ```js
       /^scripts\/memory(\.test)?\.mjs$/,
       /^scripts\/lib\//,
     ```
-  - [ ] T9.2 Sustituir `protect-files.mjs` entero por:
+  - [x] T9.2 Sustituir `protect-files.mjs` entero por:
     ```js
     // PreToolUse (Edit | Write | NotebookEdit | Bash | PowerShell):
     // impide modificar los ficheros de governance (R8) y escribir la memoria fuera de scripts/memory.mjs (R11).
@@ -989,7 +989,7 @@ tipo: decisiones
 
     process.exit(0);
     ```
-  - [ ] T9.3 Crear `memory-gate.mjs`:
+  - [x] T9.3 Crear `memory-gate.mjs`:
     ```js
     // SubagentStart / SubagentStop: memoria del equipo. R11.
     // Start: inyecta el agent_id y las órdenes de memoria (developer, reviewer) o el largo plazo (planner).
@@ -1017,7 +1017,7 @@ tipo: decisiones
 
     process.exit(0);
     ```
-  - [ ] T9.4 Guardar los tres ficheros con LF.
+  - [x] T9.4 Guardar los tres ficheros con LF.
 - **Tests unitarios:** ver T13.1.
 
 ### T10 — Registrar hooks y permisos en settings (U)
@@ -1025,12 +1025,12 @@ tipo: decisiones
 - **Depende de:** T9
 - **Cubre:** CA9, CA10
 - **Subtareas:**
-  - [ ] T10.1 En `permissions.allow`, tras `"Bash(node scripts/quality-gate.mjs)",`, añadir:
+  - [x] T10.1 En `permissions.allow`, tras `"Bash(node scripts/quality-gate.mjs)",`, añadir:
     ```json
           "Bash(node scripts/memory.mjs:*)",
           "Bash(node --test:*)",
     ```
-  - [ ] T10.2 En `hooks`, tras el bloque `"Stop"` (con su coma), añadir:
+  - [x] T10.2 En `hooks`, tras el bloque `"Stop"` (con su coma), añadir:
     ```json
         "SubagentStart": [
           {
@@ -1049,7 +1049,7 @@ tipo: decisiones
           }
         ]
     ```
-  - [ ] T10.3 Validar con `node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8'))"`.
+  - [x] T10.3 Validar con `node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8'))"`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -1061,14 +1061,14 @@ tipo: decisiones
 - **Depende de:** T1, T6 y T8.1, que deben estar integradas: con el `.gitignore` sin cambiar, `check` falla.
 - **Cubre:** CA11, CA12
 - **Subtareas:**
-  - [ ] T11.0 Comprobar `node --version` ≥ 22 en local.
-  - [ ] T11.1 Tras los imports, añadir `import { findSecrets } from "./lib/secrets.mjs";`.
-  - [ ] T11.2 Tras `SKIP_DIRS`, añadir:
+  - [x] T11.0 Comprobar `node --version` ≥ 22 en local.
+  - [x] T11.1 Tras los imports, añadir `import { findSecrets } from "./lib/secrets.mjs";`.
+  - [x] T11.2 Tras `SKIP_DIRS`, añadir:
     ```js
     const SECRET_DIRS = [...SOURCE_DIRS, "scripts", "docs/memory"];
     const SECRET_EXTS = new Set([...SOURCE_EXTS, ".md", ".json", ".toml", ".yml", ".yaml"]);
     ```
-  - [ ] T11.3 Sustituir `walk` por:
+  - [x] T11.3 Sustituir `walk` por:
     ```js
     function walk(dir, out, exts = SOURCE_EXTS) {
       if (!existsSync(dir)) return out;
@@ -1081,7 +1081,7 @@ tipo: decisiones
       return out;
     }
     ```
-  - [ ] T11.4 Tras `scanForbiddenPatterns`, añadir:
+  - [x] T11.4 Tras `scanForbiddenPatterns`, añadir:
     ```js
     function scanSecrets() {
       process.stdout.write("\n▶ Secretos (governance R6)\n");
@@ -1097,7 +1097,7 @@ tipo: decisiones
       return violations.length === 0;
     }
     ```
-  - [ ] T11.5 En `buildSteps`, sustituir `steps.push(["Patrones prohibidos", scanForbiddenPatterns]);` por:
+  - [x] T11.5 En `buildSteps`, sustituir `steps.push(["Patrones prohibidos", scanForbiddenPatterns]);` por:
     ```js
       if (existsSync(join(ROOT, "scripts", "memory.mjs"))) {
         steps.push(["Tests scripts", () => run("Tests scripts", 'node --test "scripts/**/*.test.mjs"')]);
@@ -1121,15 +1121,15 @@ tipo: decisiones
 - **Depende de:** — (se aplica junto a T9–T11)
 - **Cubre:** CA13
 - **Subtareas:**
-  - [ ] T12.1 §1, fila "Hooks de Claude Code": añadir a "Qué bloquea" `, escribir la memoria fuera de scripts/memory.mjs, que developer/reviewer terminen sin registrar o volcar su sesión`.
-  - [ ] T12.2 §2: antes de "Patrones prohibidos", insertar:
+  - [x] T12.1 §1, fila "Hooks de Claude Code": añadir a "Qué bloquea" `, escribir la memoria fuera de scripts/memory.mjs, que developer/reviewer terminen sin registrar o volcar su sesión`.
+  - [x] T12.2 §2: antes de "Patrones prohibidos", insertar:
     ```
     | Tests de scripts | `node --test "scripts/**/*.test.mjs"` | `scripts/memory.mjs` |
     | Memoria (R11) | `node scripts/memory.mjs check` | `scripts/memory.mjs` |
     ```
     y después: `| Secretos (R6) | escaneo propio de código, scripts/ y docs/memory/ | siempre |`.
-  - [ ] T12.3 Lista de R8: `.claude/settings.json`, `.claude/hooks/**`, `.githooks/**`, `scripts/quality-gate.mjs`, `scripts/memory.mjs`, `scripts/memory.test.mjs`, `scripts/lib/**`, `.github/workflows/**`, `docs/GOVERNANCE.md`.
-  - [ ] T12.4 Tras R10, añadir:
+  - [x] T12.3 Lista de R8: `.claude/settings.json`, `.claude/hooks/**`, `.githooks/**`, `scripts/quality-gate.mjs`, `scripts/memory.mjs`, `scripts/memory.test.mjs`, `scripts/lib/**`, `.github/workflows/**`, `docs/GOVERNANCE.md`.
+  - [x] T12.4 Tras R10, añadir:
     ```
     ### R11 — Memoria del equipo
     - Tres niveles en `docs/memory/`: `short/` (una entrada efímera por sesión de `developer` o `reviewer`, no versionada), `medium/NNN-slug.md` (memoria del plan: una sección por tarea con sus ciclos de revisión; al cerrar el plan se compacta en "Patrones del plan") y `long/decisiones.md` + `long/errores.md` (patrones presentes en 3 planes cerrados o más; 98 líneas como máximo en total).
@@ -1139,7 +1139,7 @@ tipo: decisiones
     - Un error de memoria enlaza al issue (`#N`) y no lo copia: una sola línea de 200 caracteres como máximo.
     - Sin secretos en la memoria (R6): `memory.mjs` rechaza la entrada y el gate escanea `docs/memory/`.
     ```
-  - [ ] T12.5 En §4, **antes** de la última línea (la de R9), insertar: `- [ ] Sesiones registradas y volcadas en la memoria del plan; si es la última tarea, memoria cerrada (R11).`
+  - [x] T12.5 En §4, **antes** de la última línea (la de R9), insertar: `- [ ] Sesiones registradas y volcadas en la memoria del plan; si es la última tarea, memoria cerrada (R11).`
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
