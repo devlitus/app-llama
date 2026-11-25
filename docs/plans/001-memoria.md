@@ -660,9 +660,9 @@ tipo: decisiones
 - **Depende de:** T5
 - **Cubre:** CA7, D13
 - **Subtareas:**
-  - [ ] T6.1 `check(root) → string[]` con las reglas de D13. No lee `short/` y normaliza `\r\n` antes de comparar. El estado del plan se detecta con `^- \*\*Estado:\*\* hecho\s*$`. El `.gitignore` se valida con la línea exacta `docs/memory/short/`.
-  - [ ] T6.2 `tags(root) → string[]`.
-  - [ ] T6.3 Subcomandos `check` (salida 4 si hay incidencias) y `tags`.
+  - [x] T6.1 `check(root) → string[]` con las reglas de D13. No lee `short/` y normaliza `\r\n` antes de comparar. El estado del plan se detecta con `^- \*\*Estado:\*\* hecho\s*$`. El `.gitignore` se valida con la línea exacta `docs/memory/short/`.
+  - [x] T6.2 `tags(root) → string[]`.
+  - [x] T6.3 Subcomandos `check` (salida 4 si hay incidencias) y `tags`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

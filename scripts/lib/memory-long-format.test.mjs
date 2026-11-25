@@ -20,6 +20,13 @@ test("long_umbral_tres_planes", () => {
   assert.deepEqual(slugsOf(selectLongEntries(docs).decisions), ["a"]);
 });
 
+test("long_cuenta_planes_distintos_aunque_se_repita_el_slug", () => {
+  const docs = [closed("001-a", { decisions: [["a"], ["a"]] }), closed("002-b", { decisions: [["a"], ["a"]] })];
+  assert.deepEqual(selectLongEntries(docs).decisions, []);
+  const three = [...docs, closed("003-c", { decisions: [["a"], ["a"]] })];
+  assert.deepEqual(selectLongEntries(three).decisions[0].plans, ["001-a", "002-b", "003-c"]);
+});
+
 test("long_ignora_planes_abiertos", () => {
   const docs = [closed("001-a", { decisions: [["a"]] }), closed("002-b", { decisions: [["a"]] }), open("003-c", [["a"]])];
   assert.deepEqual(selectLongEntries(docs).decisions, []);
@@ -93,6 +100,8 @@ test("long_render_errores_vacio", () => {
   assert.match(md, /^---\nschema: memoria-larga\/1\ntipo: errores\n---\n\n# Errores recurrentes\n/);
   assert.match(md, /\n\n- \(ninguno\)\n$/);
   assert.match(renderLong("decisiones", []), /\n\n- \(ninguna\)\n$/);
+  assert.equal(md.split("\n").length - 1, 10);
+  assert.equal(renderLong("decisiones", []).split("\n").length - 1, 10);
 });
 
 test("long_render_con_40_entradas_cabe_en_49_lineas", () => {

@@ -12,3 +12,9 @@ test("errores_codigos_de_salida", () => {
 test("errores_entrada_se_reexporta_desde_entry", () => {
   assert.equal(ReexportedInputError, MemoryInputError);
 });
+
+test("errores_precondicion_conserva_la_causa", () => {
+  const cause = new Error("raíz");
+  assert.equal(new PreconditionError("x", { cause }).cause, cause);
+  assert.equal(new PreconditionError("x").cause, undefined);
+});

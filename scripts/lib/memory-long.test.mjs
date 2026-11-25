@@ -36,6 +36,7 @@ test("promote_escribe_ambos_ficheros_aunque_no_haya_medio_plazo", () =>
     assert.deepEqual(result, { written: ["docs/memory/long/decisiones.md", "docs/memory/long/errores.md"], dropped: [] });
     assert.match(readLong(root, "decisiones.md"), /- \(ninguna\)\n$/);
     assert.match(readLong(root, "errores.md"), /- \(ninguno\)\n$/);
+    ["decisiones.md", "errores.md"].forEach((name) => assert.equal(readLong(root, name).split("\n").length - 1, 10));
   }));
 
 test("promote_umbral_tres", () =>
@@ -82,6 +83,16 @@ test("promote_informa_de_lo_descartado", () =>
     seedThree(root, { decisions: Array.from({ length: 41 }, (_, i) => [`s${String(i).padStart(2, "0")}`]) });
     assert.deepEqual(promote(root).dropped, [{ kind: "decision", slug: "s40" }]);
     assert.equal(readLong(root, "decisiones.md").split("\n").length - 1, 49);
+  }));
+
+test("promote_tamano_total", () =>
+  withRoot((root) => {
+    const slugs = Array.from({ length: 40 }, (_, i) => [`s${String(i).padStart(2, "0")}`]);
+    seedThree(root, { decisions: slugs, errors: slugs });
+    promote(root);
+    const lines = ["decisiones.md", "errores.md"].map((name) => readLong(root, name).split("\n").length - 1);
+    assert.deepEqual(lines, [49, 49]);
+    assert.ok(lines[0] + lines[1] <= 100);
   }));
 
 test("promote_idempotente_byte_a_byte", () =>

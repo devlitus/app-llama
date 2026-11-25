@@ -149,3 +149,24 @@ test("compact_no_muta_la_entrada", () => {
   compactPlan(OPEN);
   assert.deepEqual(OPEN, copy);
 });
+
+const ORDER_ERROR = /repetido o desordenado/;
+
+function closedWithSlugs(field, slugs) {
+  const doc = structuredClone(CLOSED);
+  doc.patterns[field] = slugs.map((slug) => ({ slug, text: "x", tasks: ["T3"], issues: [] }));
+  return doc;
+}
+
+test("plan_parse_cerrado_rechaza_slugs_repetidos", () => {
+  assert.throws(() => parsePlan(renderPlan(closedWithSlugs("decisions", ["a", "a", "a"]))), ORDER_ERROR);
+});
+
+test("plan_parse_cerrado_rechaza_slugs_desordenados", () => {
+  assert.throws(() => parsePlan(renderPlan(closedWithSlugs("errors", ["b", "a"]))), ORDER_ERROR);
+});
+
+test("plan_parse_cerrado_rechaza_tareas_desordenadas", () => {
+  const doc = { ...CLOSED, tasks: [{ task: "T10", cycles: CYCLES }, { task: "T2", cycles: CYCLES }] };
+  assert.throws(() => parsePlan(renderPlan(doc)), ORDER_ERROR);
+});

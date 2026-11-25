@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { failedGateSteps, run } from "./memory.mjs";
 import { renderSession } from "./lib/memory-entry.mjs";
+import { renderPlan } from "./lib/memory-plan.mjs";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const NOW = new Date("2026-11-25T10:00:00Z");
@@ -30,6 +31,7 @@ function makeEnv({ branch = "chore/001-memoria", status = "", stdin = "resumen: 
     readStdin: () => stdin,
     out: (text) => {
       output.out += `${text}\n`;
+      return true;
     },
     err: (text) => {
       output.err += `${text}\n`;
@@ -222,12 +224,6 @@ test("cli_subcomando_desconocido", () =>
     assert.equal(await run(["borrar"], deps), 1);
   }));
 
-test("cli_subcomando_pendiente", () =>
-  withEnv({}, async ({ deps, output }) => {
-    assert.equal(await run(["check"], deps), 1);
-    assert.match(output.err, /\[R11\] subcomando aún no disponible/);
-  }));
-
 test("cli_ayuda", () =>
   withEnv({}, async ({ deps, output }) => {
     for (const argv of [["--help"], ["help"]]) {
@@ -300,6 +296,45 @@ test("cli_proceso_real_por_enlace", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+function withRealRepo(body) {
+  const root = makeRealRepo();
+  try {
+    body(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const runCli = (root, ...args) =>
+  spawnSync(process.execPath, ["scripts/memory.mjs", ...args], { cwd: root, encoding: "utf8" });
+
+test("cli_proceso_real_help_sale_con_0", () =>
+  withRealRepo((root) => {
+    const result = runCli(root, "help");
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /session/);
+  }));
+
+test("cli_proceso_real_check_coherente_sale_con_0", () =>
+  withRealRepo((root) => {
+    writeFileSync(join(root, ".gitignore"), "docs/memory/short/\n");
+    const result = runCli(root, "check");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "Memoria OK (0 planes, 0 cerrados)\n");
+  }));
+
+test("cli_proceso_real_check_con_incidencias_sale_con_4", () =>
+  withRealRepo((root) => {
+    const result = runCli(root, "check");
+    assert.equal(result.status, 4, result.stderr);
+    assert.match(result.stderr, /^\[R11\] \.gitignore: /);
+  }));
+
+test("cli_proceso_real_tags_sale_con_0", () =>
+  withRealRepo((root) => {
+    assert.equal(runCli(root, "tags").status, 0);
+  }));
 
 test("session_plan_ilegible", () =>
   withEnv({}, async ({ root, deps, output }) => {
@@ -664,7 +699,7 @@ const CLOSED_GOLDEN = `${CLOSED_HEAD}
 async function flushTwoCycles(root, deps) {
   seedCycleOne(root);
   assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
-  seedDeveloper(root, { fecha: "2026-11-26", input: { summary: "Valida --task con ^T\d+$." } });
+  seedDeveloper(root, { fecha: "2026-11-26", input: { summary: "Valida --task con ^T\\d+$." } });
   seedReviewer(root, { agentId: "r2", fecha: "2026-11-26", input: { summary: "Revisa la corrección de --task." } });
   assert.equal(await run(FLUSH_ARGS("T3", "r2"), deps), 0);
 }
@@ -775,4 +810,73 @@ test("promote_medio_ilegible", () =>
 test("promote_argumentos_sobrantes", () =>
   withEnv({}, async ({ deps }) => {
     assert.equal(await run(["promote", "x"], deps), 1);
+  }));
+
+const CHECK_CYCLE = { cycle: 1, fecha: "2026-11-25", developer: 1, reviewer: "r1", gate: "verde", veredicto: "APPROVED" };
+
+function seedCheckable(root, { gitignore = "docs/memory/short/\n" } = {}) {
+  writeFileSync(join(root, ".gitignore"), gitignore);
+  const entry = (slug) => ({ slug, text: "t", cycles: [1], issues: [] });
+  const task = { task: "T1", cycles: [CHECK_CYCLE], summaries: [], decisions: [entry("a")], errors: [] };
+  mkdirSync(join(root, "docs", "memory", "medium"), { recursive: true });
+  writeFileSync(
+    join(root, "docs", "memory", "medium", "001-a.md"),
+    renderPlan({ plan: "001-a", estado: "abierto", tasks: [task] }),
+  );
+}
+
+test("check_cli_sin_memoria_sale_con_0", () =>
+  withEnv({ branch: "main" }, async ({ root, deps, output }) => {
+    writeFileSync(join(root, ".gitignore"), "docs/memory/short/\n");
+    assert.equal(await run(["check"], deps), 0, output.err);
+    assert.equal(output.out, "Memoria OK (0 planes, 0 cerrados)\n");
+  }));
+
+test("check_cli_coherente", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedCheckable(root);
+    assert.equal(await run(["check"], deps), 0, output.err);
+    assert.equal(output.out, "Memoria OK (1 planes, 0 cerrados)\n");
+    assert.equal(output.err, "");
+  }));
+
+test("check_cli_incidencias_salen_con_4", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedCheckable(root, { gitignore: "target/\n" });
+    assert.equal(await run(["check"], deps), 4);
+    assert.equal(output.err, "[R11] .gitignore: falta la línea docs/memory/short/\n");
+    assert.equal(output.out, "");
+  }));
+
+test("check_cli_no_necesita_rama_de_plan", () =>
+  withEnv({ branch: "main" }, async ({ root, deps }) => {
+    seedCheckable(root);
+    assert.equal(await run(["check"], deps), 0);
+  }));
+
+test("check_cli_argumentos_sobrantes", () =>
+  withEnv({}, async ({ deps }) => {
+    assert.equal(await run(["check", "x"], deps), 1);
+    assert.equal(await run(["tags", "x"], deps), 1);
+  }));
+
+test("tags_cli_lista_slugs", () =>
+  withEnv({ branch: "main" }, async ({ root, deps, output }) => {
+    seedCheckable(root);
+    assert.equal(await run(["tags"], deps), 0);
+    assert.equal(output.out, "decision a 1\n");
+  }));
+
+test("tags_cli_sin_memoria", () =>
+  withEnv({}, async ({ deps, output }) => {
+    assert.equal(await run(["tags"], deps), 0);
+    assert.equal(output.out, "");
+  }));
+
+test("tags_cli_medio_ilegible", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    mkdirSync(join(root, "docs", "memory", "medium"), { recursive: true });
+    writeFileSync(join(root, "docs", "memory", "medium", "001-a.md"), "# nada\n");
+    assert.equal(await run(["tags"], deps), 3);
+    assert.match(output.err, /ilegible.*001-a.md/);
   }));

@@ -1,3 +1,5 @@
+import { compareBySlug, comparePlans } from "./memory-order.mjs";
+
 const SCHEMA = "memoria-larga/1";
 const MIN_PLANS = 3;
 const MAX_ENTRIES = 40;
@@ -29,14 +31,13 @@ export function renderLong(kind, entries) {
   return `${[...header, ...lines].join("\n")}\n`;
 }
 
-const planNumber = (plan) => Number(plan.slice(0, 3));
-const comparePlans = (a, b) => planNumber(a) - planNumber(b) || (a < b ? -1 : a > b ? 1 : 0);
-
+// Un plan cuenta una sola vez por slug aunque su lista lo repita.
 function groupBySlug(closedDocs, field) {
   const groups = new Map();
   for (const doc of [...closedDocs].sort((a, b) => comparePlans(a.plan, b.plan))) {
     for (const { slug, text } of doc.patterns[field]) {
-      const plans = [...(groups.get(slug)?.plans ?? []), doc.plan];
+      const known = groups.get(slug)?.plans ?? [];
+      const plans = known.includes(doc.plan) ? known : [...known, doc.plan];
       groups.set(slug, { slug, text, plans });
     }
   }
@@ -46,11 +47,7 @@ function groupBySlug(closedDocs, field) {
 const latestPlan = ({ plans }) => plans.at(-1);
 
 function compareEntries(a, b) {
-  return (
-    b.plans.length - a.plans.length ||
-    comparePlans(latestPlan(b), latestPlan(a)) ||
-    (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0)
-  );
+  return b.plans.length - a.plans.length || comparePlans(latestPlan(b), latestPlan(a)) || compareBySlug(a, b);
 }
 
 function selectKind(closedDocs, field, kind) {

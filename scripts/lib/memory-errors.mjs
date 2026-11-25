@@ -7,8 +7,8 @@ export class UsageError extends Error {
 }
 
 export class PreconditionError extends Error {
-  constructor(message) {
-    super(message);
+  constructor(message, options) {
+    super(message, options);
     this.name = "PreconditionError";
     this.code = 3;
   }

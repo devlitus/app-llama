@@ -227,3 +227,34 @@ test("plan_parse_tarea_con_nombre_invalido", () => {
 test("plan_parse_no_canonico", () => {
   assert.throws(() => parsePlan(SAMPLE_MD.replace("### Ciclos\n", "### Ciclos\n\nnota suelta\n")), /canónico/);
 });
+
+const ORDER_ERROR = /repetido o desordenado/;
+
+function withEntries(field, slugs) {
+  const doc = structuredClone(SAMPLE);
+  doc.tasks[0][field] = slugs.map((slug) => ({ slug, text: "x", cycles: [1], issues: [] }));
+  return doc;
+}
+
+test("plan_parse_rechaza_slugs_repetidos", () => {
+  assert.throws(() => parsePlan(renderPlan(withEntries("decisions", ["a", "a"]))), ORDER_ERROR);
+});
+
+test("plan_parse_rechaza_slugs_desordenados", () => {
+  assert.throws(() => parsePlan(renderPlan(withEntries("errors", ["b", "a"]))), ORDER_ERROR);
+});
+
+test("plan_parse_acepta_slugs_ordenados", () => {
+  const doc = withEntries("decisions", ["a", "a-b", "b"]);
+  assert.deepEqual(parsePlan(renderPlan(doc)).tasks[0].decisions.map(({ slug }) => slug), ["a", "a-b", "b"]);
+});
+
+test("plan_parse_rechaza_tareas_desordenadas", () => {
+  const doc = { ...SAMPLE, tasks: [{ ...SAMPLE.tasks[0], task: "T10" }, { ...SAMPLE.tasks[0], task: "T2" }] };
+  assert.throws(() => parsePlan(renderPlan(doc)), ORDER_ERROR);
+});
+
+test("plan_parse_acepta_tareas_en_orden_numerico", () => {
+  const doc = { ...SAMPLE, tasks: [{ ...SAMPLE.tasks[0], task: "T2" }, { ...SAMPLE.tasks[0], task: "T10" }] };
+  assert.deepEqual(parsePlan(renderPlan(doc)).tasks.map(({ task }) => task), ["T2", "T10"]);
+});

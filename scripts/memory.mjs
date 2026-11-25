@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PreconditionError, UsageError } from "./lib/memory-errors.mjs";
 import { formatDate, parseSessionInput, renderSession, sessionFileName } from "./lib/memory-entry.mjs";
+import { check, tags } from "./lib/memory-check.mjs";
 import { close } from "./lib/memory-close.mjs";
 import { flush } from "./lib/memory-flush.mjs";
 import { promote } from "./lib/memory-long.mjs";
@@ -16,7 +17,7 @@ const AGENT_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const TASK_RE = /^T\d+$/;
 const AGENTS = ["developer", "reviewer"];
 const VERDICTS = ["APPROVED", "CHANGES_REQUESTED"];
-const PENDING_COMMANDS = ["check", "tags"];
+const CHECK_FAILED = 4;
 const MEMORY_PREFIX = "docs/memory/";
 const GATE_HEADER = "──── Quality gate ────";
 
@@ -200,22 +201,43 @@ function runPromote(args, deps) {
   reportPromotion(promote(deps.root), deps);
 }
 
+function runHelp(deps) {
+  deps.out(USAGE);
+}
+
+// Los subcomandos devuelven un código de salida o nada: nunca el resultado de `out`.
+function runCheck(args, deps) {
+  parseOptions(args, []);
+  const { issues, plans, closed } = check(deps.root);
+  if (issues.length === 0) {
+    deps.out(`Memoria OK (${plans} planes, ${closed} cerrados)`);
+    return undefined;
+  }
+  issues.forEach((issue) => deps.err(`[R11] ${issue}`));
+  return CHECK_FAILED;
+}
+
+function runTags(args, deps) {
+  parseOptions(args, []);
+  tags(deps.root).forEach((line) => deps.out(line));
+}
+
 function dispatch(argv, deps) {
   const [command, ...args] = argv;
   if (command === undefined) throw new UsageError(`falta el subcomando\n${USAGE}`);
-  if (command === "help" || command === "--help") return deps.out(USAGE);
+  if (command === "help" || command === "--help") return runHelp(deps);
   if (command === "session") return runSession(args, deps);
   if (command === "flush") return runFlush(args, deps);
   if (command === "close") return runClose(args, deps);
   if (command === "promote") return runPromote(args, deps);
-  if (PENDING_COMMANDS.includes(command)) throw new UsageError("subcomando aún no disponible");
+  if (command === "check") return runCheck(args, deps);
+  if (command === "tags") return runTags(args, deps);
   throw new UsageError(`subcomando desconocido '${command}'\n${USAGE}`);
 }
 
 export async function run(argv, deps) {
   try {
-    await dispatch(argv, deps);
-    return 0;
+    return (await dispatch(argv, deps)) ?? 0;
   } catch (error) {
     if (![1, 2, 3].includes(error.code)) throw error;
     deps.err(`[R11] ${error.message}`);

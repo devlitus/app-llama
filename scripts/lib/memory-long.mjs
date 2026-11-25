@@ -3,7 +3,7 @@ import { writeFileAtomic } from "./memory-fs.mjs";
 import { renderLong, selectLongEntries } from "./memory-long-format.mjs";
 import { listMediumPlans, readMedium } from "./memory-medium.mjs";
 
-const LONG_REL = "docs/memory/long";
+export const LONG_REL = "docs/memory/long";
 
 function writeLong(root, kind, entries) {
   const rel = `${LONG_REL}/${kind}.md`;

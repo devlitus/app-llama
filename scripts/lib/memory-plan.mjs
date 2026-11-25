@@ -1,3 +1,5 @@
+import { compareBySlug, compareTasks, compareText } from "./memory-order.mjs";
+
 const SCHEMA = "memoria-plan/2";
 const ESTADOS = ["abierto", "cerrado"];
 const PATTERNS_HEADING = "Patrones del plan";
@@ -5,6 +7,10 @@ const CYCLE_HEADER = [
   "| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |",
   "|---|---|---|---|---|---|",
 ];
+
+export function lastCycle({ cycles }) {
+  return cycles.reduce((latest, current) => (latest === undefined || current.cycle > latest.cycle ? current : latest), undefined);
+}
 
 function renderFrontMatter(doc) {
   return ["---", `schema: ${SCHEMA}`, `plan: ${doc.plan}`, `estado: ${doc.estado}`, "---"].join("\n");
@@ -167,6 +173,23 @@ function requireTaskName(task) {
   if (!/^T\d+$/.test(task)) throw new Error(`tarea inválida '${task}'`);
 }
 
+// Orden estricto: un slug o una tarea repetidos o fuera de orden harían que el recuento de planes mintiera.
+function requireStrictOrder(values, compare, what) {
+  for (let i = 1; i < values.length; i += 1) {
+    if (compare(values[i - 1], values[i]) >= 0) throw new Error(`${what} repetido o desordenado: '${values[i]}'`);
+  }
+}
+
+function requireSlugOrder(entries) {
+  requireStrictOrder(entries.map(({ slug }) => slug), compareText, "slug");
+  return entries;
+}
+
+function requireTaskOrder(tasks) {
+  requireStrictOrder(tasks.map(({ task }) => task), compareTasks, "tarea");
+  return tasks;
+}
+
 function parseOpenTask(task, body) {
   requireTaskName(task);
   const sections = splitByHeading(body, "###");
@@ -174,8 +197,8 @@ function parseOpenTask(task, body) {
     task,
     cycles: parseCycles(sections.get("Ciclos")),
     summaries: bullets(sections.get("Resúmenes")).map(parseSummary),
-    decisions: bullets(sections.get("Decisiones")).map(decisionParser(parseCycleEntry)),
-    errors: bullets(sections.get("Errores")).map(errorParser(parseCycleEntry)),
+    decisions: requireSlugOrder(bullets(sections.get("Decisiones")).map(decisionParser(parseCycleEntry))),
+    errors: requireSlugOrder(bullets(sections.get("Errores")).map(errorParser(parseCycleEntry))),
   };
 }
 
@@ -188,19 +211,19 @@ function parsePatterns(body) {
   if (body === undefined) throw new Error(`falta la sección '${PATTERNS_HEADING}'`);
   const sections = splitByHeading(body, "###");
   return {
-    decisions: bullets(sections.get("Decisiones")).map(decisionParser(parseTaskEntry)),
-    errors: bullets(sections.get("Errores")).map(errorParser(parseTaskEntry)),
+    decisions: requireSlugOrder(bullets(sections.get("Decisiones")).map(decisionParser(parseTaskEntry))),
+    errors: requireSlugOrder(bullets(sections.get("Errores")).map(errorParser(parseTaskEntry))),
   };
 }
 
 function parseClosed(doc, sections) {
   const patterns = parsePatterns(sections.get(PATTERNS_HEADING));
   sections.delete(PATTERNS_HEADING);
-  return { ...doc, patterns, tasks: [...sections].map(([task, body]) => parseClosedTask(task, body)) };
+  return { ...doc, patterns, tasks: requireTaskOrder([...sections].map(([task, body]) => parseClosedTask(task, body))) };
 }
 
 function parseOpen(doc, sections) {
-  return { ...doc, tasks: [...sections].map(([task, body]) => parseOpenTask(task, body)) };
+  return { ...doc, tasks: requireTaskOrder([...sections].map(([task, body]) => parseOpenTask(task, body))) };
 }
 
 // Un medio plazo debe ser canónico (render(parse(x)) == x): así nada se pierde al reescribirlo.
@@ -212,12 +235,10 @@ export function parsePlan(md) {
   const doc = { plan: fields.get("plan"), estado };
   const sections = splitByHeading(body, "##");
   const parsed = estado === "abierto" ? parseOpen(doc, sections) : parseClosed(doc, sections);
-  if (renderPlan(parsed) !== text) throw new Error("no está en formato canónico");
+  if (renderPlan(parsed) !== text) throw new Error("formato no canónico");
   return parsed;
 }
 
-const taskNumber = (task) => Number(task.slice(1));
-const bySlug = (a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0);
 const ascending = (a, b) => a - b;
 
 // Las fechas ISO se ordenan como texto; `n` se reinicia cada día, así que va después de la fecha y como número.
@@ -233,7 +254,7 @@ function upsertEntry(entries, { slug, text, issues }, cycle) {
   const merged = { slug, text, cycles };
   if (issues) merged.issues = [...new Set([...previous.issues, ...issues])].sort(ascending);
   const rest = entries.filter((entry) => entry.slug !== slug);
-  return [...rest, merged].sort(bySlug);
+  return [...rest, merged].sort(compareBySlug);
 }
 
 function mergeEntries(entries, incoming, cycle) {
@@ -274,7 +295,7 @@ export function mergeCycle(doc, task, devSessions, reviewerSession) {
   const current = doc.tasks.find((entry) => entry.task === task) ?? emptyTask(task);
   const merged = mergeTask(current, [...devSessions].sort(compareSessions), reviewerSession);
   const tasks = [...doc.tasks.filter((entry) => entry.task !== task), merged];
-  return { ...doc, tasks: tasks.sort((a, b) => taskNumber(a.task) - taskNumber(b.task)) };
+  return { ...doc, tasks: tasks.sort((a, b) => compareTasks(a.task, b.task)) };
 }
 
 function mergePattern(patterns, entry, task) {
@@ -287,12 +308,12 @@ function mergePattern(patterns, entry, task) {
 function collectPatterns(tasks, field) {
   const patterns = new Map();
   for (const task of tasks) task[field].forEach((entry) => mergePattern(patterns, entry, task.task));
-  return [...patterns.values()].sort(bySlug);
+  return [...patterns.values()].sort(compareBySlug);
 }
 
 // El texto de cada patrón es el de la última tarea (en orden numérico) que lo menciona.
 export function compactPlan(doc) {
-  const tasks = [...doc.tasks].sort((a, b) => taskNumber(a.task) - taskNumber(b.task));
+  const tasks = [...doc.tasks].sort((a, b) => compareTasks(a.task, b.task));
   return {
     plan: doc.plan,
     estado: "cerrado",
