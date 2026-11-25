@@ -1,0 +1,3 @@
+#!/bin/sh
+# Bloquea cualquier commit (humano o agente) cuyo mensaje incumpla R9.
+exec node "$(git rev-parse --show-toplevel)/.githooks/commit-msg.mjs" "$1"
