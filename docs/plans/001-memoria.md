@@ -689,23 +689,75 @@ tipo: decisiones
 - **Cubre:** CA8, CA9, CA10 (lógica)
 - **Subtareas:**
   - [ ] T7.1 `memoryCommandLine(command) → string | null`. Devuelve la primera línea si el comando es una invocación válida según T7.2 y `null` en otro caso.
-  - [ ] T7.2 `checkMemoryToolUse(input, {root}) → {allow:true} | {allow:false, reason}`. Las reglas se aplican en este orden:
-    1. **`Edit`, `Write` o `NotebookEdit` sobre una ruta bajo `docs/memory/`** (relativa a `root`, con `\` → `/` y sin distinguir mayúsculas): se deniega con `R11: la memoria solo se escribe con node scripts/memory.mjs`.
-    2. **`Bash` o `PowerShell` con un comando que cumple `/\bnode\b[^\n]*(memory\.mjs|lib[\\/]memory-)/i`:** se exige la forma exacta.
+  - [ ] T7.2 `checkMemoryToolUse(input, {root}) → {allow:true} | {allow:false, reason}`. **Enfoque de lista blanca** (enmienda tras la revisión de T7, issues #10 y #11): un comando de shell que toca la memoria solo pasa si es la invocación exacta de la CLI o una lectura de una lista cerrada. Las reglas se aplican en este orden:
+    1. **`Edit`, `Write` o `NotebookEdit` sobre una ruta bajo `docs/memory/`:** se deniega con `R11: la memoria solo se escribe con node scripts/memory.mjs`. La ruta (`file_path` o `notebook_path`) se normaliza antes de compararla:
+       - `\` → `/`;
+       - se quita el prefijo de ruta extendida de Windows (`//?/` o `//./` tras el cambio de barras);
+       - se eliminan los puntos y espacios finales de cada segmento distinto de `.` y `..`, porque Windows los ignora (`docs/memory./x` es `docs/memory/x`);
+       - la ruta y `root` se pasan a minúsculas, y después se resuelve la ruta relativa a `root` (`resolve` + `relative`);
+       - es memoria si la ruta relativa es `docs/memory` o empieza por `docs/memory/`.
+    2. **`Bash` o `PowerShell` con la invocación exacta de la CLI:** se evalúa sobre el comando **sin normalizar**, igual que antes.
        - La primera línea cumple `^node scripts/memory\.mjs (session|flush|close|promote|check|tags|help)((?: --[a-z][a-z-]* [A-Za-z0-9._-]+)*)( <<'EOF')?$`.
        - El heredoc solo se admite con `session`, y la **única** línea igual a `EOF` es la última.
        - Sin heredoc, el comando tiene una sola línea.
        
-       Con la forma exacta cumplida, se aplica:
+       Si se cumple la forma exacta, se aplica lo siguiente y la evaluación termina:
        - **`session`, `flush`, `close` o `promote` desde PowerShell:** se deniegan con `usa la herramienta Bash`.
        - **`check`, `tags` o `help`:** se permiten.
        - **`session`:** exige `agent_type` en {`developer`, `reviewer`}, `--agent` == `agent_type` y `--agent-id` == `agent_id`.
        - **`flush`:** exige `agent_type === "reviewer"` y `--agent-id` == `agent_id`.
        - **`close` y `promote`:** exigen `agent_type === "reviewer"`.
-    3. **Cualquier otro comando que escribe y menciona `docs/memory`:** se deniega.
-       - "Escribe" significa que cumple la regex de escritura de `protect-files` o `\bgit\s+(checkout|restore|rm|mv)\b`.
-       - La mención se busca con `\` → `/` y sin distinguir mayúsculas.
-    4. En cualquier otro caso, se permite.
+       
+       Solo se ejecuta con `node`: `nodejs`, `bun`, `deno`, `npx tsx`, `./scripts/memory.mjs` o `${n}de` no cumplen la forma exacta y siguen por las reglas 3–6.
+    3. **El comando no toca la memoria:** se permite. "Toca la memoria" se decide sobre la **forma normalizada** del comando completo (incluido cualquier cuerpo de heredoc):
+       - **Normalización.** Se calculan dos variantes, y basta con que una cumpla una mención:
+         1. se pasa a minúsculas y se quitan `'`, `"` y `` ` `` (así `"docs"/'memory'` y `` d`ocs `` se leen `docs/memory`);
+         2. variante A: `\` → `/` (separador de Windows); variante B: se elimina `\` (escape de bash: `do\cs`);
+         3. se colapsan las barras repetidas (`docs//memory`);
+         4. se eliminan los segmentos `./` que van al principio o tras `/`, espacio o `=` (`docs/./memory`), repitiendo hasta que no cambie;
+         5. se resuelven los pares `<segmento>/../`, con un segmento distinto de `..` (`docs/x/../memory`), repitiendo hasta que no cambie.
+       - **Menciones.** Con `P` = `[a-z0-9_.-]` (carácter de nombre), el comando toca la memoria si su forma normalizada cumple alguna:
+
+         | ID | Mención | Regex sobre la forma normalizada | Ejemplo |
+         |---|---|---|---|
+         | M1 | Ruta de la memoria | `docs/memory(?!P)` | `rm docs/memory/long/x.md`, `rm -rf docs/memory*` |
+         | M2 | `docs` y `memory` como palabras de ruta en el mismo comando | `(?<!P)docs(?=$\|[/\s;&\|])` **y** `(?<!P)memory(?!P)` | `cd docs && rm -rf memory/short` |
+         | M3 | Glob que puede expandirse a la memoria | `docs/[^\s/;&\|]*[*?[{]` **o** `[^\s/;&\|]*[*?[{][^\s/;&\|]*/memory(?!P)` | `rm -rf docs/mem*`, `docs/{memory,x}`, `rm -rf d*/memory` |
+         | M4 | Prefijo parcial de `memory` tras `docs/` | `docs/m(e(m(o(r)?)?)?)?(?!P)` | `D=docs/mem; rm -rf ${D}ory`, `rm docs/me$X` |
+         | M5 | Variable junto a `docs` o `memory` | `\$[a-z_{(]\|%[a-z_]+%` **y** (el `docs` de M2 **o** el `memory` de M2) | `rm -rf ${D}cs/memory` |
+         | M6 | La CLI o sus módulos | `(?<!P)memory[.-]` | `scripts/memory.mjs`, `lib/memory-close.mjs`, `memory-*.mjs` |
+
+         En la tabla, `\|` es el `|` de la regex escapado para Markdown, y `(?!P)`/`(?<!P)` significan "no seguido/no precedido de un carácter de `P`". `docs(memory): x` (un mensaje de commit) no es mención: `docs` va seguido de `(` y no hay `docs/`. `docs/memoryx` y `docs/plans/x.md` tampoco lo son.
+    4. **El comando toca la memoria y ejecuta código en línea:** se deniega con `R11: no se admite código en línea en comandos que tocan la memoria`. Se evalúa sobre el comando en minúsculas, por segmento (texto entre `;`, `&`, `|` y saltos de línea). Un segmento ejecuta código en línea si:
+       - contiene un intérprete `(?<!P)(node|nodejs|bun|deno|tsx|ts-node|python[0-9.]*|py|perl|ruby|php|sh|bash|zsh|dash|pwsh|powershell|cmd)(\.exe)?(?!P)`;
+       - y, después del intérprete, una palabra completa (separada por espacios) que es un grupo de opciones cortas con `e`, `c`, `p` o `i` (`-[a-z]*[ecpi][a-z]*`: `-e`, `-c`, `-p`, `-i`, `-pi`, `-pe`), `--eval`, `--print`, `-command`, `-encodedcommand`, `/c` o `eval` (`deno eval`).
+       
+       Además, `iex` e `invoke-expression` en cualquier parte del comando cuentan como código en línea.
+    5. **El comando toca la memoria y es una lectura de la lista cerrada:** se permite si cumple **todas** las condiciones de sintaxis y **cada** segmento de la tubería es una lectura permitida.
+       - **Sintaxis** (sobre el comando sin normalizar, recorriéndolo con estado de comillas):
+         - una sola línea (sin `\n` ni `\r`);
+         - el texto entre comillas simples es literal en bash y en PowerShell, y se ignora;
+         - dentro de comillas dobles no aparecen `$` ni `` ` ``;
+         - fuera de comillas no aparece ninguno de `;`, `&`, `>`, `<`, `$`, `` ` ``, `(`, `)`, `{`, `}`; esto excluye `&&`, `||`, `>`, `>>`, `2>&1`, `$(…)`, `${…}`, `$VAR` y las subexpresiones de PowerShell;
+         - no hay comillas sin cerrar, ni `\` seguida de `'` o `"`;
+         - el comando se parte por `|` fuera de comillas; `||` o un segmento vacío deniegan.
+       - **Lecturas permitidas.** La primera palabra de cada segmento, sin distinguir mayúsculas, está en la tabla y el segmento no contiene ninguna palabra prohibida. Las opciones prohibidas cuentan tanto solas como en la forma `--opción=valor`:
+
+         | Orden | Condición |
+         |---|---|
+         | `cat`, `head`, `tail`, `wc`, `diff`, `grep`, `egrep`, `fgrep` | Ninguna |
+         | `rg` | Sin `--pre` (ejecuta un programa por fichero) |
+         | `ls`, `dir`, `Get-ChildItem`, `gci`, `Test-Path` | Ninguna |
+         | `find` | Sin `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprint0`, `-fprintf` ni `-fls` |
+         | `Get-Content`, `gc`, `type`, `Select-String`, `sls`, `Measure-Object`, `Select-Object` | Ninguna |
+         | `git diff`, `git log`, `git show`, `git status`, `git blame`, `git ls-files`, `git grep` | El subcomando va justo después de `git`, sin opciones globales (`-c`, `-C`…). Sin `--output`, `--ext-diff`, `--open-files-in-pager` ni un grupo de opciones cortas con `O` |
+         | `git add` | Sin `--patch`, `--interactive`, `--edit` ni un grupo de opciones cortas con `p`, `i` o `e`. No es una lectura, pero solo escribe el índice, nunca el árbol de trabajo: el orchestrator la necesita para versionar `medium/` y `long/`. Incluida con la confirmación del usuario |
+         | `node --test` | Tras `--test`, solo `--test-only`, `--test-reporter=spec`, `--test-reporter=tap`, `--test-reporter=dot` y rutas que empiezan por `scripts/` y terminan en `.test.mjs` (se admiten globs). Nada de `--import`, `--require` ni `--test-reporter-destination` |
+
+         `less` y `more` quedan fuera: son paginadores interactivos que un agente no necesita, y `less -o` escribe un fichero. Las herramientas `Read`, `Grep` y `Glob` no pasan por esta regla.
+    6. **Cualquier otro comando que toca la memoria:** se deniega.
+       - Si cumple M6 (menciona la CLI o sus módulos), el motivo es `R11: forma de comando no admitida; usa exactamente node scripts/memory.mjs <subcomando>`.
+       - En otro caso, el motivo es `R11: la memoria solo se escribe con node scripts/memory.mjs`.
   - [ ] T7.3 `subagentStartContext(input, {root}) → string | null`, con los textos de abajo.
   - [ ] T7.4 `subagentStopDecision(input, {root, branch}) → {block:false} | {block:true, reason}`, según D8.
 - **Textos exactos:**
@@ -772,8 +824,55 @@ tipo: decisiones
   | `politica_bash_git_restore` | `git checkout -- docs/memory` y `git restore docs/memory/long` | Denegados |
   | `politica_bash_lee_memoria` | `cat docs/memory/long/errores.md` y `cat scripts/memory.mjs` | Permitidos |
   | `politica_bash_ajeno` | `cargo test` | Permitido |
+  | `politica_bloquea_edit_ruta_extendida` | `Edit` sobre `\\?\` + `join(root, "docs", "memory", "long", "x.md")` | Denegado |
+  | `politica_bloquea_edit_raiz_mayusculas` | `Write` sobre `root.toUpperCase()` + `/docs/memory/x.md` | Denegado |
+  | `politica_bloquea_edit_punto_final` | `Write` sobre `<root>/docs/memory./long/x.md` | Denegado |
+  | `politica_10_touch_truncate_unlink` | `touch docs/memory/short/x.md`, `truncate -s 0 docs/memory/long/errores.md` y `unlink docs/memory/long/errores.md` | Denegados |
+  | `politica_10_dd` | `dd if=/dev/null of=docs/memory/long/errores.md` | Denegado |
+  | `politica_10_perl_pi` | `perl -pi -e 's/a/b/' docs/memory/long/errores.md` | Denegado; el motivo contiene `código en línea` |
+  | `politica_10_node_e` | `node -e "require('fs').writeFileSync('docs/memory/long/x.md','x')"` | Denegado; el motivo contiene `código en línea` |
+  | `politica_10_python_c` | `python -c "open('docs/memory/long/x.md','w').write('x')"` | Denegado |
+  | `politica_10_git_clean_stash_reset` | `git clean -fdX docs/memory`, `git stash push -- docs/memory` y `git reset --hard HEAD -- docs/memory` | Denegados |
+  | `politica_10_alias_powershell` | `PowerShell`: `del docs\\memory\\long\\x.md`, `ri docs/memory -Recurse` y `ni docs/memory/short/x.md` | Denegados |
+  | `politica_10_dotnet` | `PowerShell`: `[IO.File]::WriteAllText('docs/memory/long/x.md','x')` | Denegado |
+  | `politica_10_barras_dobles_y_punto` | `rm docs//memory/long/x.md`, `rm docs/./memory/long/x.md` y `rm docs/x/../memory/long/x.md` | Denegados |
+  | `politica_10_comillas_y_escapes` | `rm -rf "docs"/'memory'` y `rm -rf do\\cs/memory` | Denegados |
+  | `politica_10_cd_docs` | `cd docs && rm -rf memory/short` | Denegado |
+  | `politica_10_glob` | `rm -rf docs/mem*`, `rm -rf docs/*`, `rm -rf d*/memory` y `rm docs/{memory,x}/long/x.md` | Denegados |
+  | `politica_10_variable` | `D=docs/mem; rm -rf ${D}ory` y `D=do; rm -rf ${D}cs/memory` | Denegados |
+  | `politica_11_import_desde_lib` | `cd scripts/lib && node -e "import('./memory-close.mjs').then((m) => m.close())"`, como `reviewer` | Denegado |
+  | `politica_11_variable_en_node` | `${n}de scripts/memory.mjs close`, como `reviewer` | Denegado; el motivo contiene `forma de comando no admitida` |
+  | `politica_11_otros_runtimes` | `nodejs`, `bun`, `deno run` y `npx tsx` seguidos de `scripts/memory.mjs close`, como `reviewer` | Denegados |
+  | `politica_heredoc_con_ordenes_tras_eof` | `developer`/`a1`: `node scripts/memory.mjs session --agent developer --agent-id a1 --task T2 <<'EOF'\nresumen: x\nEOF\nrm -rf docs/memory` | Denegado |
+  | `politica_remove_item_independiente` | `PowerShell`: `Remove-Item docs/memory/long/x.md` (sin `Move-Item` en el comando) | Denegado; el motivo es el de la regla 6 sin CLI (`la memoria solo se escribe`) |
+  | `politica_cp_mayusculas` | `cp x DOCS/MEMORY/long/errores.md` | Denegado |
+  | `politica_node_test_permitido` | `node --test scripts/lib/memory-policy.test.mjs`, como `developer` y sin `agent_type` | Permitidos |
+  | `politica_node_test_opciones_peligrosas` | `node --test --import ./x.mjs scripts/lib/memory-policy.test.mjs`, `node --test --test-reporter-destination=docs/memory/x scripts/lib/memory-policy.test.mjs` y `node --test scripts/lib/memory-close.mjs` | Denegados |
+  | `politica_grep_cli_permitido` | `grep node scripts/memory.mjs` | Permitido |
+  | `politica_lectura_tuberia` | `cat docs/memory/long/errores.md \| grep x \| wc -l` | Permitido |
+  | `politica_lectura_tuberia_a_escritura` | `cat docs/memory/long/x.md \| tee docs/memory/long/y.md` y `ls docs/memory \| xargs rm` | Denegados |
+  | `politica_lectura_encadenada` | `cat docs/memory/long/x.md; rm x`, `ls docs/memory \|\| true` y `ls docs/memory & rm x` | Denegados |
+  | `politica_lectura_sustitucion` | `cat $(echo docs/memory/long/x.md)`, `` cat `echo docs/memory/long/x.md` `` y `cat "docs/memory/$F"` | Denegados |
+  | `politica_lectura_comillas_simples` | `PowerShell`: `Select-String docs/memory/medium/001-memoria.md -Pattern '^estado: (abierto\|cerrado)$'` | Permitido |
+  | `politica_lectura_comilla_escapada` | `cat \'$(rm x)\' docs/memory/long/x.md` | Denegado |
+  | `politica_lectura_multilinea` | `cat docs/memory/long/x.md\nrm x` | Denegado |
+  | `politica_find` | `find docs/memory -name "*.md"` | Permitido |
+  | `politica_find_peligroso` | `find docs/memory -delete`, `find docs/memory -exec rm {} +` y `find docs/memory -fprint docs/memory/x` | Denegados |
+  | `politica_rg_pre` | `rg --pre rm x docs/memory` | Denegado |
+  | `politica_git_lecturas` | `git diff -- docs/memory`, `git log docs/memory`, `git show HEAD:docs/memory/long/errores.md`, `git status docs/memory`, `git blame docs/memory/long/errores.md` y `git ls-files docs/memory/short` | Permitidos |
+  | `politica_git_opciones_peligrosas` | `git diff --output=docs/memory/long/x.md`, `git -c core.pager=rm log docs/memory` y `git grep -O x docs/memory` | Denegados |
+  | `politica_git_add` | `git add docs/memory/medium/001-memoria.md`, sin `agent_type` | Permitido |
+  | `politica_git_add_interactivo` | `git add -p docs/memory` y `git add --edit docs/memory` | Denegados |
+  | `politica_powershell_lecturas` | `PowerShell`: `Get-Content docs\\memory\\long\\errores.md`, `gc docs/memory/long/errores.md`, `Get-ChildItem docs/memory/short/*-001-memoria-*.md` y `Get-Content docs/memory/long/errores.md \| Measure-Object -Line` | Permitidos |
+  | `politica_powershell_subexpresion` | `PowerShell`: `Get-Content (Remove-Item docs/memory/long/x.md)` y `(Get-Content docs/memory/long/x.md).Count` | Denegados |
+  | `politica_interprete_aunque_lea` | `python -c "print(open('docs/memory/long/x.md').read())"`, `sh -c "cat docs/memory/long/x.md"` y `pwsh -Command "Get-Content docs/memory/long/x.md"` | Denegados |
+  | `politica_iex` | `PowerShell`: `iex "Remove-Item docs/memory -Recurse"` | Denegado |
+  | `politica_less_fuera_de_lista` | `less docs/memory/long/x.md` | Denegado |
+  | `politica_mensaje_commit_no_es_mencion` | `git commit -m "docs(memory): x"` | Permitido |
+  | `politica_otras_rutas_de_docs` | `rm docs/plans/002-x.md` y `rm -rf docs/memoryx` | Permitidos |
   | `linea_comando_memoria` | El comando de `politica_session_developer` | Su primera línea |
   | `linea_comando_ajeno` | `git status` | `null` |
+  | `linea_comando_ordenes_tras_eof` | El comando de `politica_heredoc_con_ordenes_tras_eof` | `null` |
   | `inicio_developer` | `{agent_type:"developer", agent_id:"a1"}` | Contiene `agent_id de esta sesión: a1` y `--agent developer --agent-id a1 --task <Tn> <<'EOF'`; no contiene `flush` |
   | `inicio_reviewer` | `reviewer`/`r1` | Contiene `--veredicto <APPROVED|CHANGES_REQUESTED>`, `flush --task <Tn> --agent-id r1` y `node scripts/memory.mjs close` |
   | `inicio_incluye_tags` | Medio plazo con `decision a` | Contiene `decision a 1` |
@@ -1107,7 +1206,7 @@ tipo: decisiones
   | `cierre_short_no_versionado` | `git ls-files docs/memory/short` | Vacío |
   | `cierre_sin_pendientes` | `Get-ChildItem docs/memory/short/*-001-memoria-*.md` | Vacío |
   | `cierre_check_verde` | `node scripts/memory.mjs check` | 0 |
-  | `cierre_largo_tamano` | `(Get-Content docs/memory/long/*.md).Count` | ≤ 100 |
+  | `cierre_largo_tamano` | `Get-Content docs/memory/long/*.md \| Measure-Object -Line` | `Lines` ≤ 100 |
 
 ## Fuera de alcance
 
@@ -1134,8 +1233,8 @@ tipo: decisiones
 | Con `core.autocrlf=true` en Windows, los ficheros generados se extraen con CRLF. | `check` y los parsers normalizan `\r\n` (`check_tolera_crlf`). |
 | El cuerpo del heredoc con `git commit` o `Co-Authored-By:` activa guard-shell. | Bloquea de más, nunca de menos. Está documentado en el cierre de los agentes. |
 | La regla `allow` con heredoc multilínea puede pedir permiso. | El usuario lo aprueba; se ajusta en otro plan si molesta. |
-| Un comando ofuscado (`sh -c "no""de …"`) burla la detección. | Es la misma limitación que R8. `check` en el gate y en la CI valida todo lo versionado. |
-| `node --test` con globs requiere Node ≥ 22. | T11.0. La CI usa Node 24. |
+| **Riesgo aceptado.** La lista blanca de T7.2 depende de detectar que un comando toca la memoria. La ofuscación que no cumple ninguna mención M1–M6 la burla: rutas construidas en tiempo de ejecución (`node x.mjs` con un script que compone la ruta, `base64 -d \| sh`, globs como `d*/m*`) o comandos destructivos sin mención (`rm -rf *`, `git clean -fdx`). | 1) `check` (T6), ejecutado en el gate (T11) y en la CI, detecta los ficheros de memoria con formato no canónico. 2) El reviewer revisa el diff de `docs/memory/` en cada revisión. 3) `medium/` y `long/` están versionados, así que un borrado se recupera con git. |
+| Falsos positivos de la lista blanca: una lectura legítima de la memoria con `$`, `(`, `{`, `;` o `&` fuera de comillas simples, con varias líneas o con una orden fuera de la lista se deniega. También se deniega un mensaje de commit que menciona `docs/memory` o `memory.mjs`. | Bloquea de más, nunca de menos. Las herramientas `Read`, `Grep` y `Glob` no pasan por la regla. Los patrones se escriben entre comillas simples. Los mensajes de commit no nombran rutas de la memoria. || `node --test` con globs requiere Node ≥ 22. | T11.0. La CI usa Node 24. |
 | Los tokens de ejemplo de los tests se detectan en el paso de Secretos. | Se construyen concatenando (`secrets_no_se_detecta_a_si_mismo`). |
 | Antes de T9 y T10 las sesiones no son obligatorias. | Se acepta. El dogfooding empieza en T13. |
 
