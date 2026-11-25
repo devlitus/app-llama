@@ -750,8 +750,8 @@ tipo: decisiones
          | `ls`, `dir`, `Get-ChildItem`, `gci`, `Test-Path` | Ninguna |
          | `find` | Sin `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprint0`, `-fprintf` ni `-fls` |
          | `Get-Content`, `gc`, `type`, `Select-String`, `sls`, `Measure-Object`, `Select-Object` | Ninguna |
-         | `git diff`, `git log`, `git show`, `git status`, `git blame`, `git ls-files`, `git grep` | El subcomando va justo después de `git`, sin opciones globales (`-c`, `-C`…). Sin `--output`, `--ext-diff`, `--open-files-in-pager` ni un grupo de opciones cortas con `O` |
-         | `git add` | Sin `--patch`, `--interactive`, `--edit` ni un grupo de opciones cortas con `p`, `i` o `e`. No es una lectura, pero solo escribe el índice, nunca el árbol de trabajo: el orchestrator la necesita para versionar `medium/` y `long/`. Incluida con la confirmación del usuario |
+         | `git diff`, `git log`, `git show`, `git status`, `git blame`, `git ls-files`, `git grep` | El subcomando va justo después de `git`, sin opciones globales (`-c`, `-C`…). Sin `--output`, `--ext-diff`, `--open-files-in-pager` ni un grupo de opciones cortas con `O`. Un argumento que empieza por un solo `-` y contiene `O` en cualquier posición se deniega, tenga o no un valor pegado (`"-Orm -v"`, `-O/bin/rm`, `-iO/bin/rm`). Git acepta abreviaturas de las opciones largas: una opción larga se deniega si su nombre (lo que va antes de `=`) es un prefijo de 3 o más caracteres de cualquier opción larga prohibida (`--open=rm` abrevia `--open-files-in-pager`, `--ext` abrevia `--ext-diff`) |
+         | `git add` | Sin `--patch`, `--interactive`, `--edit`, `--force` ni un grupo de opciones cortas con `p`, `i`, `e` o `f`. Las abreviaturas de las opciones largas prohibidas se deniegan con la misma regla de prefijo de 3 o más caracteres que en la fila anterior (`--forc`). `-f`/`--force` se prohíbe porque D1 manda no versionar `short/`. No es una lectura, pero solo escribe el índice, nunca el árbol de trabajo: el orchestrator la necesita para versionar `medium/` y `long/`. Incluida con la confirmación del usuario |
          | `node --test` | Tras `--test`, solo `--test-only`, `--test-reporter=spec`, `--test-reporter=tap`, `--test-reporter=dot` y rutas que empiezan por `scripts/` y terminan en `.test.mjs` (se admiten globs). Nada de `--import`, `--require` ni `--test-reporter-destination` |
 
          `less` y `more` quedan fuera: son paginadores interactivos que un agente no necesita, y `less -o` escribe un fichero. Las herramientas `Read`, `Grep` y `Glob` no pasan por esta regla.
@@ -861,6 +861,12 @@ tipo: decisiones
   | `politica_rg_pre` | `rg --pre rm x docs/memory` | Denegado |
   | `politica_git_lecturas` | `git diff -- docs/memory`, `git log docs/memory`, `git show HEAD:docs/memory/long/errores.md`, `git status docs/memory`, `git blame docs/memory/long/errores.md` y `git ls-files docs/memory/short` | Permitidos |
   | `politica_git_opciones_peligrosas` | `git diff --output=docs/memory/long/x.md`, `git -c core.pager=rm log docs/memory` y `git grep -O x docs/memory` | Denegados |
+  | `politica_git_grep_pager` | `git grep "-Orm -v" x docs/memory`, `git grep -O/bin/rm x docs/memory`, `git grep -iO/bin/rm x docs/memory`, `git grep --open=rm x docs/memory` y `git grep --open-files-in=rm x docs/memory` (issue #13) | Denegados |
+  | `politica_git_grep_opciones_seguras` | `git grep -i x docs/memory` y `git grep -n x docs/memory` | Permitidos |
+  | `politica_git_abreviaturas` | `git add --forc docs/memory/short/x.md` y `git diff --ext docs/memory` | Denegados |
+  | `politica_git_add_force` | `git add -f docs/memory/short/x.md` | Denegado |
+  | `politica_lectura_redireccion` | `cat docs/memory/long/x.md > docs/memory/long/y.md` | Denegado |
+  | `politica_lectura_llaves` | `PowerShell`: `Select-Object -InputObject docs/memory/x -Property {Remove-Item x}` | Denegado |
   | `politica_git_add` | `git add docs/memory/medium/001-memoria.md`, sin `agent_type` | Permitido |
   | `politica_git_add_interactivo` | `git add -p docs/memory` y `git add --edit docs/memory` | Denegados |
   | `politica_powershell_lecturas` | `PowerShell`: `Get-Content docs\\memory\\long\\errores.md`, `gc docs/memory/long/errores.md`, `Get-ChildItem docs/memory/short/*-001-memoria-*.md` y `Get-Content docs/memory/long/errores.md \| Measure-Object -Line` | Permitidos |
@@ -1234,7 +1240,8 @@ tipo: decisiones
 | El cuerpo del heredoc con `git commit` o `Co-Authored-By:` activa guard-shell. | Bloquea de más, nunca de menos. Está documentado en el cierre de los agentes. |
 | La regla `allow` con heredoc multilínea puede pedir permiso. | El usuario lo aprueba; se ajusta en otro plan si molesta. |
 | **Riesgo aceptado.** La lista blanca de T7.2 depende de detectar que un comando toca la memoria. La ofuscación que no cumple ninguna mención M1–M6 la burla: rutas construidas en tiempo de ejecución (`node x.mjs` con un script que compone la ruta, `base64 -d \| sh`, globs como `d*/m*`) o comandos destructivos sin mención (`rm -rf *`, `git clean -fdx`). | 1) `check` (T6), ejecutado en el gate (T11) y en la CI, detecta los ficheros de memoria con formato no canónico. 2) El reviewer revisa el diff de `docs/memory/` en cada revisión. 3) `medium/` y `long/` están versionados, así que un borrado se recupera con git. |
-| Falsos positivos de la lista blanca: una lectura legítima de la memoria con `$`, `(`, `{`, `;` o `&` fuera de comillas simples, con varias líneas o con una orden fuera de la lista se deniega. También se deniega un mensaje de commit que menciona `docs/memory` o `memory.mjs`. | Bloquea de más, nunca de menos. Las herramientas `Read`, `Grep` y `Glob` no pasan por la regla. Los patrones se escriben entre comillas simples. Los mensajes de commit no nombran rutas de la memoria. || `node --test` con globs requiere Node ≥ 22. | T11.0. La CI usa Node 24. |
+| Falsos positivos de la lista blanca: una lectura legítima de la memoria con `$`, `(`, `{`, `;` o `&` fuera de comillas simples, con varias líneas o con una orden fuera de la lista se deniega. También se deniega un mensaje de commit que menciona `docs/memory` o `memory.mjs`. | Bloquea de más, nunca de menos. Las herramientas `Read`, `Grep` y `Glob` no pasan por la regla. Los patrones se escriben entre comillas simples. Los mensajes de commit no nombran rutas de la memoria. |
+| `node --test` con globs requiere Node ≥ 22. | T11.0. La CI usa Node 24. |
 | Los tokens de ejemplo de los tests se detectan en el paso de Secretos. | Se construyen concatenando (`secrets_no_se_detecta_a_si_mismo`). |
 | Antes de T9 y T10 las sesiones no son obligatorias. | Se acepta. El dogfooding empieza en T13. |
 
