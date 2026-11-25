@@ -1,0 +1,3 @@
+#!/bin/sh
+# Bloquea cualquier commit (humano o agente) con el quality gate en rojo.
+exec node "$(git rev-parse --show-toplevel)/scripts/quality-gate.mjs"

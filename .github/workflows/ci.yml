@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: Quality gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Mensajes de commit (R9)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: node .githooks/commit-msg.mjs --range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+      - name: Rama dedicada (R10)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          [[ "$BRANCH" =~ ^(feat|fix|chore)/[0-9]{3}-[a-z0-9]+(-[a-z0-9]+)*$ ]] || { echo "R10: rama '$BRANCH' no válida"; exit 1; }
+          test -f "docs/plans/${BRANCH#*/}.md" || { echo "R10: falta docs/plans/${BRANCH#*/}.md"; exit 1; }
+
+      - name: Toolchain Rust (rust-toolchain.toml)
+        if: hashFiles('rust-toolchain.toml') != ''
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        if: hashFiles('Cargo.toml') != ''
+
+      - name: Dependencias UI
+        if: hashFiles('ui/package-lock.json') != ''
+        run: npm ci --prefix ui
+
+      - name: Quality gate
+        run: node scripts/quality-gate.mjs
