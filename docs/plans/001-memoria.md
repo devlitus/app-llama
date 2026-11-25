@@ -454,7 +454,7 @@ tipo: decisiones
 - **Depende de:** —
 - **Cubre:** CA11, CA2 (parte)
 - **Subtareas:**
-  - [ ] T1.1 `SECRET_PATTERNS: {kind, re}[]`, en este orden:
+  - [x] T1.1 `SECRET_PATTERNS: {kind, re}[]`, en este orden:
 
     | `kind` | Patrón |
     |---|---|
@@ -464,7 +464,7 @@ tipo: decisiones
     | `anthropic` | `sk-ant-[A-Za-z0-9_-]{20,}` |
     | `aws` | `AKIA[0-9A-Z]{16}` |
     | `private-key` | `-{5}BEGIN [A-Z ]*PRIVATE KEY-{5}` |
-  - [ ] T1.2 `findSecrets(text) → {line, kind}[]`, con las líneas numeradas desde 1 y admitiendo `\r\n`. El orden es por línea y, dentro de la línea, por el orden de los patrones.
+  - [x] T1.2 `findSecrets(text) → {line, kind}[]`, con las líneas numeradas desde 1 y admitiendo `\r\n`. El orden es por línea y, dentro de la línea, por el orden de los patrones.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
