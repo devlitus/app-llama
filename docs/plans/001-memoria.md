@@ -283,6 +283,25 @@ error: [<slug>] <texto>               0–10; puede contener #N
 - El texto tiene entre 1 y 200 caracteres, sin espacios en los extremos.
 - No se repite un slug del mismo tipo dentro de una sesión.
 - Los `#\d+` de los errores se extraen sin duplicados y en orden ascendente.
+- **Reglas de entrada** (enmienda tras T2). Todas lanzan `MemoryInputError` (código 2) con el prefijo `línea <n>: `:
+  - **Formato estricto `clave: valor`:** la línea casa con `^([^\s:]+):(?: (.*))?$`. No se admiten espacios antes de la clave ni antes de `:`, y tras `:` va un espacio obligatorio (`resumen:a` es inválido). Los espacios sobrantes del valor se recortan.
+  - **Slug:** tras `[slug]` va al menos un espacio o el fin del valor (`decision: [a]pegado` es inválido).
+  - **El resumen no puede empezar por `#`:** ocupa una línea propia en la sesión y rompería el parseo de las secciones `## `. Las decisiones y los errores sí pueden empezar por `#` (`error: [x] #12 falla` da `issues:[12]`), porque se escriben tras `- **slug** — `.
+  - La única excepción sin número de línea es `falta 'resumen'`, que se detecta al final.
+  - El prefijo `[R11] ` no lo añade `MemoryInputError`: lo añade la CLI (T3) al escribir en stderr.
+
+#### Contrato de `meta` (enmienda tras T2)
+
+`renderSession(meta, input)` lo recibe y `parseSession(md)` lo devuelve. T3–T7 dependen de él:
+
+```
+{fecha, plan, tarea, agente, agentId, n, rama, gate: "verde"|"rojo", gateFailed?: string[], veredicto?: string, files: string[]}
+```
+
+- `agentId` se serializa como `agent_id` en el front matter.
+- `gateFailed` solo existe cuando `gate` es `"rojo"`. Si el front matter pone `gate: rojo` a secas, `parseSession` devuelve `gateFailed: []`; con `gateFailed: []`, `renderSession` escribe `gate: rojo` a secas.
+- `veredicto` solo existe para el reviewer.
+- `files` se escribe en la sección "Ficheros cambiados", no en el front matter.
 
 ### Sesión (efímera): `short/<fecha>-<plan>-<tarea>-<agente>-<n>.md`
 
