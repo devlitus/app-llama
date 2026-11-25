@@ -5,7 +5,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PreconditionError, UsageError } from "./lib/memory-errors.mjs";
 import { formatDate, parseSessionInput, renderSession, sessionFileName } from "./lib/memory-entry.mjs";
+import { close } from "./lib/memory-close.mjs";
 import { flush } from "./lib/memory-flush.mjs";
+import { promote } from "./lib/memory-long.mjs";
 import { findSessionByAgentId, nextN } from "./lib/memory-store.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,7 +16,7 @@ const AGENT_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const TASK_RE = /^T\d+$/;
 const AGENTS = ["developer", "reviewer"];
 const VERDICTS = ["APPROVED", "CHANGES_REQUESTED"];
-const PENDING_COMMANDS = ["close", "promote", "check", "tags"];
+const PENDING_COMMANDS = ["check", "tags"];
 const MEMORY_PREFIX = "docs/memory/";
 const GATE_HEADER = "──── Quality gate ────";
 
@@ -180,12 +182,32 @@ function runFlush(args, deps) {
   deps.out(`borradas: ${deleted}`);
 }
 
+function reportPromotion({ written, dropped }, deps) {
+  written.forEach((rel) => deps.out(rel));
+  dropped.forEach(({ kind, slug }) => deps.out(`descartado por límite: ${kind} ${slug}`));
+}
+
+function runClose(args, deps) {
+  parseOptions(args, []);
+  const context = resolvePlan(deps);
+  const { rel, long } = close(deps.root, context.slug);
+  deps.out(rel);
+  reportPromotion(long, deps);
+}
+
+function runPromote(args, deps) {
+  parseOptions(args, []);
+  reportPromotion(promote(deps.root), deps);
+}
+
 function dispatch(argv, deps) {
   const [command, ...args] = argv;
   if (command === undefined) throw new UsageError(`falta el subcomando\n${USAGE}`);
   if (command === "help" || command === "--help") return deps.out(USAGE);
   if (command === "session") return runSession(args, deps);
   if (command === "flush") return runFlush(args, deps);
+  if (command === "close") return runClose(args, deps);
+  if (command === "promote") return runPromote(args, deps);
   if (PENDING_COMMANDS.includes(command)) throw new UsageError("subcomando aún no disponible");
   throw new UsageError(`subcomando desconocido '${command}'\n${USAGE}`);
 }

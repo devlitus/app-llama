@@ -1,48 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { PreconditionError } from "./memory-errors.mjs";
-import { mergeCycle, parsePlan, renderPlan } from "./memory-plan.mjs";
+import { readMedium, writeMedium } from "./memory-medium.mjs";
+import { mergeCycle } from "./memory-plan.mjs";
 import { sessionsOfTask } from "./memory-store.mjs";
-
-const MEDIUM_REL = "docs/memory/medium";
-
-function mediumPath(root, plan) {
-  return join(root, "docs", "memory", "medium", `${plan}.md`);
-}
-
-function readMedium(root, plan) {
-  const rel = `${MEDIUM_REL}/${plan}.md`;
-  const path = mediumPath(root, plan);
-  if (!existsSync(path)) return { rel, doc: { plan, estado: "abierto", tasks: [] } };
-  try {
-    return { rel, doc: parsePlan(readFileSync(path, "utf8")) };
-  } catch (error) {
-    throw new PreconditionError(`medio plazo ilegible ${rel}: ${error.message}`);
-  }
-}
-
-// La limpieza no debe tapar el error original de escritura.
-function discardTemporary(path) {
-  try {
-    rmSync(path, { force: true });
-  } catch {
-    // Si no se puede borrar, sobrevive un temporal oculto que el siguiente flush sobrescribe.
-  }
-}
-
-// Temporal oculto en el mismo directorio y rename: nunca queda un medio plazo a medio escribir.
-function writeMedium(root, plan, doc) {
-  const path = mediumPath(root, plan);
-  const temporary = join(dirname(path), `.${plan}.tmp`);
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(temporary, renderPlan(doc), "utf8");
-    renameSync(temporary, path);
-  } catch (error) {
-    discardTemporary(temporary);
-    throw new PreconditionError(`no se puede escribir ${MEDIUM_REL}/${plan}.md: ${error.message}`);
-  }
-}
 
 function pickReviewer(sessions, task, agentId) {
   const reviewers = sessions.filter(({ meta }) => meta.agente === "reviewer");

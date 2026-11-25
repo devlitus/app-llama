@@ -224,7 +224,7 @@ test("cli_subcomando_desconocido", () =>
 
 test("cli_subcomando_pendiente", () =>
   withEnv({}, async ({ deps, output }) => {
-    assert.equal(await run(["close"], deps), 1);
+    assert.equal(await run(["check"], deps), 1);
     assert.match(output.err, /\[R11\] subcomando aún no disponible/);
   }));
 
@@ -414,6 +414,8 @@ estado: abierto
 | 1 | 2026-11-25 | 1 | r1 | verde | CHANGES_REQUESTED |
 `;
 
+const CLOSED_HEAD = MEDIUM_HEAD.slice(0, MEDIUM_HEAD.indexOf("\n## T3")).replace("estado: abierto", "estado: cerrado");
+
 const MEDIUM_CYCLE_2_ROW = "| 2 | 2026-11-26 | 1 | r2 | verde | APPROVED |\n";
 
 const MEDIUM_CYCLE_1_BODY = `
@@ -562,7 +564,7 @@ test("flush_plan_cerrado", () =>
   withEnv({}, async ({ root, deps, output }) => {
     seedReviewer(root);
     mkdirSync(dirname(join(root, ...MEDIUM)), { recursive: true });
-    const closed = "---\nschema: memoria-plan/2\nplan: 001-memoria\nestado: cerrado\n---\n\n# Memoria del plan 001-memoria\n";
+    const closed = `${CLOSED_HEAD}\n## Patrones del plan\n\n### Decisiones\n\n- (ninguna)\n\n### Errores\n\n- (ninguno)\n`;
     writeFileSync(join(root, ...MEDIUM), closed);
     assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 3);
     assert.match(output.err, /cerrado/);
@@ -636,4 +638,141 @@ test("flush_no_deja_temporales", () =>
     seedReviewer(root);
     assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
     assert.deepEqual(readdirSync(join(root, "docs", "memory", "medium")), ["001-memoria.md"]);
+  }));
+
+const CLOSED_GOLDEN = `${CLOSED_HEAD}
+## Patrones del plan
+
+### Decisiones
+
+- **cli-sin-dependencias** — Parseo de argumentos a mano para no añadir dependencias. (T3)
+
+### Errores
+
+- **validacion-args** — No se valida el formato de --task. #12 (T3 · #12)
+
+## T3
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-25 | 1 | r1 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-26 | 1 | r2 | verde | APPROVED |
+`;
+
+async function flushTwoCycles(root, deps) {
+  seedCycleOne(root);
+  assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+  seedDeveloper(root, { fecha: "2026-11-26", input: { summary: "Valida --task con ^T\d+$." } });
+  seedReviewer(root, { agentId: "r2", fecha: "2026-11-26", input: { summary: "Revisa la corrección de --task." } });
+  assert.equal(await run(FLUSH_ARGS("T3", "r2"), deps), 0);
+}
+
+const LONG_DIR = ["docs", "memory", "long"];
+
+test("close_compacta", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    await flushTwoCycles(root, deps);
+    output.out = "";
+    assert.equal(await run(["close"], deps), 0, output.err);
+    assert.equal(readMedium(root), CLOSED_GOLDEN);
+    assert.equal(
+      output.out,
+      "docs/memory/medium/001-memoria.md\ndocs/memory/long/decisiones.md\ndocs/memory/long/errores.md\n",
+    );
+  }));
+
+test("close_ejecuta_promote", () =>
+  withEnv({}, async ({ root, deps }) => {
+    await flushTwoCycles(root, deps);
+    assert.equal(await run(["close"], deps), 0);
+    assert.deepEqual(readdirSync(join(root, ...LONG_DIR)).sort(), ["decisiones.md", "errores.md"]);
+  }));
+
+test("close_idempotente", () =>
+  withEnv({}, async ({ root, deps }) => {
+    await flushTwoCycles(root, deps);
+    assert.equal(await run(["close"], deps), 0);
+    const snapshot = [readMedium(root), readFileSync(join(root, ...LONG_DIR, "decisiones.md"), "utf8")];
+    assert.equal(await run(["close"], deps), 0);
+    assert.deepEqual([readMedium(root), readFileSync(join(root, ...LONG_DIR, "decisiones.md"), "utf8")], snapshot);
+  }));
+
+test("close_tarea_sin_approved", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedCycleOne(root);
+    assert.equal(await run(FLUSH_ARGS("T3", "r1"), deps), 0);
+    const before = readMedium(root);
+    assert.equal(await run(["close"], deps), 3);
+    assert.match(output.err, /^\[R11\] .*T3/);
+    assert.equal(readMedium(root), before);
+    assert.equal(existsSync(join(root, ...LONG_DIR)), false);
+  }));
+
+test("close_sesiones_pendientes", () =>
+  withEnv({}, async ({ root, deps }) => {
+    await flushTwoCycles(root, deps);
+    const pending = seedDeveloper(root, { tarea: "T4" });
+    const before = readMedium(root);
+    assert.equal(await run(["close"], deps), 3);
+    assert.equal(readMedium(root), before);
+    assert.deepEqual(shortFiles(root), [pending]);
+  }));
+
+test("close_sin_medio", () =>
+  withEnv({}, async ({ deps, output }) => {
+    assert.equal(await run(["close"], deps), 3);
+    assert.match(output.err, /no existe el medio plazo/);
+  }));
+
+test("close_rama_sin_plan", () =>
+  withEnv({ branch: "main" }, async ({ deps }) => {
+    assert.equal(await run(["close"], deps), 3);
+  }));
+
+test("close_argumentos_sobrantes", () =>
+  withEnv({}, async ({ deps }) => {
+    assert.equal(await run(["close", "--task", "T1"], deps), 1);
+  }));
+
+function seedClosedPlans(root, slugs) {
+  for (const plan of ["001-a", "002-b", "003-c"]) {
+    const entries = slugs.map((slug) => `- **${slug}** — texto ${plan} (T1)`).join("\n");
+    const md = `${CLOSED_HEAD.replace("001-memoria", plan).replace("001-memoria", plan)}\n## Patrones del plan\n\n### Decisiones\n\n${entries}\n\n### Errores\n\n- (ninguno)\n`;
+    mkdirSync(join(root, "docs", "memory", "medium"), { recursive: true });
+    writeFileSync(join(root, "docs", "memory", "medium", `${plan}.md`), md);
+  }
+}
+
+test("promote_escribe_el_largo_plazo", () =>
+  withEnv({ branch: "main" }, async ({ root, deps, output }) => {
+    seedClosedPlans(root, ["a"]);
+    assert.equal(await run(["promote"], deps), 0, output.err);
+    assert.equal(output.out, "docs/memory/long/decisiones.md\ndocs/memory/long/errores.md\n");
+    assert.match(
+      readFileSync(join(root, ...LONG_DIR, "decisiones.md"), "utf8"),
+      /^- \*\*a\*\* — texto 003-c \(planes: 001-a, 002-b, 003-c\)$/m,
+    );
+  }));
+
+test("promote_informa_de_lo_descartado", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    seedClosedPlans(root, Array.from({ length: 41 }, (_, i) => `s${String(i).padStart(2, "0")}`));
+    assert.equal(await run(["promote"], deps), 0, output.err);
+    assert.match(output.out, /\ndescartado por límite: decision s40\n$/);
+  }));
+
+test("promote_medio_ilegible", () =>
+  withEnv({}, async ({ root, deps, output }) => {
+    mkdirSync(join(root, "docs", "memory", "medium"), { recursive: true });
+    writeFileSync(join(root, "docs", "memory", "medium", "001-a.md"), "# nada\n");
+    assert.equal(await run(["promote"], deps), 3);
+    assert.match(output.err, /ilegible.*001-a\.md/);
+    assert.equal(existsSync(join(root, ...LONG_DIR)), false);
+  }));
+
+test("promote_argumentos_sobrantes", () =>
+  withEnv({}, async ({ deps }) => {
+    assert.equal(await run(["promote", "x"], deps), 1);
   }));

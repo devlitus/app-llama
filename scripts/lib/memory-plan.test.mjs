@@ -114,9 +114,9 @@ test("plan_parse_schema_desconocido", () => {
   assert.throws(() => parsePlan(SAMPLE_MD.replace("memoria-plan/2", "memoria-plan/1")), /schema/);
 });
 
-test("plan_parse_cerrado_solo_cabecera", () => {
+test("plan_parse_cerrado_sin_patrones_es_ilegible", () => {
   const closed = "---\nschema: memoria-plan/2\nplan: 001-memoria\nestado: cerrado\n---\n\n# Memoria del plan 001-memoria\n";
-  assert.equal(parsePlan(closed).estado, "cerrado");
+  assert.throws(() => parsePlan(closed), /Patrones del plan/);
 });
 
 test("merge_primer_ciclo", () => {

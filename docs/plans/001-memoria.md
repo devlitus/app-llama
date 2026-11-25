@@ -624,14 +624,14 @@ tipo: decisiones
 - **Depende de:** T4
 - **Cubre:** CA5, CA6
 - **Subtareas:**
-  - [ ] T5.1 `renderPlan` y `parsePlan` admiten el formato **cerrado**. `compactPlan(doc) → doc` construye "Patrones del plan" y descarta los resúmenes y las entradas por tarea.
-  - [ ] T5.2 `promote(root) → {written[], dropped[]}`, según D12, contando solo los planes cerrados.
-  - [ ] T5.3 `close(root, plan)`:
+  - [x] T5.1 `renderPlan` y `parsePlan` admiten el formato **cerrado**. `compactPlan(doc) → doc` construye "Patrones del plan" y descarta los resúmenes y las entradas por tarea.
+  - [x] T5.2 `promote(root) → {written[], dropped[]}`, según D12, contando solo los planes cerrados.
+  - [x] T5.3 `close(root, plan)`:
     - sale con 3 si el medio plazo no existe o es ilegible;
     - si está abierto, exige el último ciclo de cada tarea en `APPROVED` y 0 sesiones del plan en `short/` (si no, sale con 3), y compacta;
     - si ya está cerrado, no lo modifica;
     - en ambos casos ejecuta `promote`.
-  - [ ] T5.4 Subcomandos `close` y `promote` en la CLI.
+  - [x] T5.4 Subcomandos `close` y `promote` en la CLI.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

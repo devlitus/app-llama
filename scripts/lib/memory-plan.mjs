@@ -1,5 +1,6 @@
 const SCHEMA = "memoria-plan/2";
 const ESTADOS = ["abierto", "cerrado"];
+const PATTERNS_HEADING = "Patrones del plan";
 const CYCLE_HEADER = [
   "| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |",
   "|---|---|---|---|---|---|",
@@ -18,25 +19,36 @@ function renderCycleRow(cycle) {
   return `| ${cells.join(" | ")} |`;
 }
 
-function renderSuffix({ cycles, issues }) {
-  const labels = cycles.map((cycle) => `C${cycle}`).join(", ");
+const cycleLabels = ({ cycles }) => cycles.map((cycle) => `C${cycle}`);
+const taskLabels = ({ tasks }) => tasks;
+
+function renderSuffix(labels, issues) {
   const tail = issues?.length > 0 ? ` · ${issues.map((issue) => `#${issue}`).join(", ")}` : "";
-  return `(${labels}${tail})`;
+  return `(${labels.join(", ")}${tail})`;
 }
 
-function renderEntry(entry) {
-  return `- **${entry.slug}** — ${entry.text} ${renderSuffix(entry)}`;
+function renderEntry(entry, labelsOf) {
+  return `- **${entry.slug}** — ${entry.text} ${renderSuffix(labelsOf(entry), entry.issues)}`;
 }
 
-function renderTask(task) {
+function renderDecisions(entries, labelsOf) {
+  return renderList(entries.map((entry) => renderEntry(entry, labelsOf)), "- (ninguna)");
+}
+
+function renderErrors(entries, labelsOf) {
+  return renderList(entries.map((entry) => renderEntry(entry, labelsOf)), "- (ninguno)");
+}
+
+function renderCycles(task) {
+  return ["### Ciclos", "", ...CYCLE_HEADER, ...task.cycles.map(renderCycleRow)];
+}
+
+function renderOpenTask(task) {
   const summaries = task.summaries.map(({ cycle, role, text }) => `- C${cycle} · ${role} · ${text}`);
   return [
     `## ${task.task}`,
     "",
-    "### Ciclos",
-    "",
-    ...CYCLE_HEADER,
-    ...task.cycles.map(renderCycleRow),
+    ...renderCycles(task),
     "",
     "### Resúmenes",
     "",
@@ -44,16 +56,37 @@ function renderTask(task) {
     "",
     "### Decisiones",
     "",
-    renderList(task.decisions.map(renderEntry), "- (ninguna)"),
+    renderDecisions(task.decisions, cycleLabels),
     "",
     "### Errores",
     "",
-    renderList(task.errors.map(renderEntry), "- (ninguno)"),
+    renderErrors(task.errors, cycleLabels),
   ].join("\n");
 }
 
+const renderClosedTask = (task) => [`## ${task.task}`, "", ...renderCycles(task)].join("\n");
+
+function renderPatterns({ decisions, errors }) {
+  return [
+    `## ${PATTERNS_HEADING}`,
+    "",
+    "### Decisiones",
+    "",
+    renderDecisions(decisions, taskLabels),
+    "",
+    "### Errores",
+    "",
+    renderErrors(errors, taskLabels),
+  ].join("\n");
+}
+
+function renderSections(doc) {
+  if (doc.estado === "abierto") return doc.tasks.map(renderOpenTask);
+  return [renderPatterns(doc.patterns), ...doc.tasks.map(renderClosedTask)];
+}
+
 export function renderPlan(doc) {
-  const blocks = [renderFrontMatter(doc), `# Memoria del plan ${doc.plan}`, ...doc.tasks.map(renderTask)];
+  const blocks = [renderFrontMatter(doc), `# Memoria del plan ${doc.plan}`, ...renderSections(doc)];
   return `${blocks.join("\n\n")}\n`;
 }
 
@@ -76,7 +109,9 @@ function bullets(section = "") {
 const CYCLE_ROW_RE = /^\| (\d+) \| (\d{4}-\d{2}-\d{2}) \| (\d+) \| ([A-Za-z0-9._-]+) \| (verde|rojo) \| (APPROVED|CHANGES_REQUESTED) \|$/;
 const SUMMARY_RE = /^- C(\d+) · (developer|reviewer) · (.+)$/;
 // El sufijo ancla al final de la línea: un texto con paréntesis se recupera literal.
-const ENTRY_RE = /^- \*\*(.+?)\*\* — (.*) \(C(\d+(?:, C\d+)*)(?: · (#\d+(?:, #\d+)*))?\)$/;
+const ISSUES = "(?: · (#\\d+(?:, #\\d+)*))?";
+const CYCLE_ENTRY_RE = new RegExp(`^- \\*\\*(.+?)\\*\\* — (.*) \\(C(\\d+(?:, C\\d+)*)${ISSUES}\\)$`);
+const TASK_ENTRY_RE = new RegExp(`^- \\*\\*(.+?)\\*\\* — (.*) \\((T\\d+(?:, T\\d+)*)${ISSUES}\\)$`);
 
 function matchOrFail(re, line, what) {
   const match = re.exec(line);
@@ -99,14 +134,22 @@ function parseSummary(line) {
   return { cycle: Number(cycle), role, text };
 }
 
-function parseEntry(line) {
-  const [, slug, text, cycles, issues] = matchOrFail(ENTRY_RE, line, "entrada");
-  const entry = { slug, text, cycles: cycles.split(", C").map(Number) };
-  return { entry, issues: issues ? issues.split(", ").map((issue) => Number(issue.slice(1))) : [] };
+function parseIssues(issues) {
+  return issues ? issues.split(", ").map((issue) => Number(issue.slice(1))) : [];
 }
 
-const parseDecision = (line) => parseEntry(line).entry;
-const parseError = (line) => {
+function parseCycleEntry(line) {
+  const [, slug, text, cycles, issues] = matchOrFail(CYCLE_ENTRY_RE, line, "entrada");
+  return { entry: { slug, text, cycles: cycles.split(", C").map(Number) }, issues: parseIssues(issues) };
+}
+
+function parseTaskEntry(line) {
+  const [, slug, text, tasks, issues] = matchOrFail(TASK_ENTRY_RE, line, "entrada");
+  return { entry: { slug, text, tasks: tasks.split(", ") }, issues: parseIssues(issues) };
+}
+
+const decisionParser = (parseEntry) => (line) => parseEntry(line).entry;
+const errorParser = (parseEntry) => (line) => {
   const { entry, issues } = parseEntry(line);
   return { ...entry, issues };
 };
@@ -120,34 +163,62 @@ function splitByHeading(text, level) {
   return sections;
 }
 
-function parseTask(task, body) {
+function requireTaskName(task) {
   if (!/^T\d+$/.test(task)) throw new Error(`tarea inválida '${task}'`);
+}
+
+function parseOpenTask(task, body) {
+  requireTaskName(task);
   const sections = splitByHeading(body, "###");
   return {
     task,
     cycles: parseCycles(sections.get("Ciclos")),
     summaries: bullets(sections.get("Resúmenes")).map(parseSummary),
-    decisions: bullets(sections.get("Decisiones")).map(parseDecision),
-    errors: bullets(sections.get("Errores")).map(parseError),
+    decisions: bullets(sections.get("Decisiones")).map(decisionParser(parseCycleEntry)),
+    errors: bullets(sections.get("Errores")).map(errorParser(parseCycleEntry)),
   };
 }
 
-// Solo el formato abierto tiene detalle por tarea; un plan cerrado se reconoce por su cabecera.
-// Un medio plazo abierto debe ser canónico (render(parse(x)) == x): así nada se pierde al reescribirlo.
+function parseClosedTask(task, body) {
+  requireTaskName(task);
+  return { task, cycles: parseCycles(splitByHeading(body, "###").get("Ciclos")) };
+}
+
+function parsePatterns(body) {
+  if (body === undefined) throw new Error(`falta la sección '${PATTERNS_HEADING}'`);
+  const sections = splitByHeading(body, "###");
+  return {
+    decisions: bullets(sections.get("Decisiones")).map(decisionParser(parseTaskEntry)),
+    errors: bullets(sections.get("Errores")).map(errorParser(parseTaskEntry)),
+  };
+}
+
+function parseClosed(doc, sections) {
+  const patterns = parsePatterns(sections.get(PATTERNS_HEADING));
+  sections.delete(PATTERNS_HEADING);
+  return { ...doc, patterns, tasks: [...sections].map(([task, body]) => parseClosedTask(task, body)) };
+}
+
+function parseOpen(doc, sections) {
+  return { ...doc, tasks: [...sections].map(([task, body]) => parseOpenTask(task, body)) };
+}
+
+// Un medio plazo debe ser canónico (render(parse(x)) == x): así nada se pierde al reescribirlo.
 export function parsePlan(md) {
   const text = md.replace(/\r\n/g, "\n");
   const { fields, body } = parseFrontMatter(text);
   const estado = fields.get("estado");
   if (!ESTADOS.includes(estado)) throw new Error(`estado desconocido '${estado}'`);
-  const doc = { plan: fields.get("plan"), estado, tasks: [] };
-  if (estado === "cerrado") return doc;
-  doc.tasks = [...splitByHeading(body, "##")].map(([task, taskBody]) => parseTask(task, taskBody));
-  if (renderPlan(doc) !== text) throw new Error("no está en formato canónico");
-  return doc;
+  const doc = { plan: fields.get("plan"), estado };
+  const sections = splitByHeading(body, "##");
+  const parsed = estado === "abierto" ? parseOpen(doc, sections) : parseClosed(doc, sections);
+  if (renderPlan(parsed) !== text) throw new Error("no está en formato canónico");
+  return parsed;
 }
 
 const taskNumber = (task) => Number(task.slice(1));
 const bySlug = (a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0);
+const ascending = (a, b) => a - b;
 
 // Las fechas ISO se ordenan como texto; `n` se reinicia cada día, así que va después de la fecha y como número.
 function compareSessions(a, b) {
@@ -160,7 +231,7 @@ function upsertEntry(entries, { slug, text, issues }, cycle) {
   const previous = index >= 0 ? entries[index] : { slug, cycles: [], issues: [] };
   const cycles = previous.cycles.includes(cycle) ? previous.cycles : [...previous.cycles, cycle];
   const merged = { slug, text, cycles };
-  if (issues) merged.issues = [...new Set([...previous.issues, ...issues])].sort((a, b) => a - b);
+  if (issues) merged.issues = [...new Set([...previous.issues, ...issues])].sort(ascending);
   const rest = entries.filter((entry) => entry.slug !== slug);
   return [...rest, merged].sort(bySlug);
 }
@@ -204,4 +275,28 @@ export function mergeCycle(doc, task, devSessions, reviewerSession) {
   const merged = mergeTask(current, [...devSessions].sort(compareSessions), reviewerSession);
   const tasks = [...doc.tasks.filter((entry) => entry.task !== task), merged];
   return { ...doc, tasks: tasks.sort((a, b) => taskNumber(a.task) - taskNumber(b.task)) };
+}
+
+function mergePattern(patterns, entry, task) {
+  const previous = patterns.get(entry.slug);
+  const merged = { slug: entry.slug, text: entry.text, tasks: [...(previous?.tasks ?? []), task] };
+  if (entry.issues) merged.issues = [...new Set([...(previous?.issues ?? []), ...entry.issues])].sort(ascending);
+  patterns.set(entry.slug, merged);
+}
+
+function collectPatterns(tasks, field) {
+  const patterns = new Map();
+  for (const task of tasks) task[field].forEach((entry) => mergePattern(patterns, entry, task.task));
+  return [...patterns.values()].sort(bySlug);
+}
+
+// El texto de cada patrón es el de la última tarea (en orden numérico) que lo menciona.
+export function compactPlan(doc) {
+  const tasks = [...doc.tasks].sort((a, b) => taskNumber(a.task) - taskNumber(b.task));
+  return {
+    plan: doc.plan,
+    estado: "cerrado",
+    patterns: { decisions: collectPatterns(tasks, "decisions"), errors: collectPatterns(tasks, "errors") },
+    tasks: tasks.map(({ task, cycles }) => ({ task, cycles })),
+  };
 }
