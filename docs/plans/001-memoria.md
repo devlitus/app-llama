@@ -904,22 +904,22 @@ tipo: decisiones
 - **Depende de:** T3–T6
 - **Cubre:** CA14
 - **Subtareas:**
-  - [ ] T8.1 `.gitignore`: añadir la línea `docs/memory/short/`. Va antes de que se cree ninguna sesión real.
-  - [ ] T8.2 `developer.md`:
+  - [x] T8.1 `.gitignore`: añadir la línea `docs/memory/short/`. Va antes de que se cree ninguna sesión real.
+  - [x] T8.2 `developer.md`:
     - En "Reglas", añadir `scripts/memory.mjs`, `scripts/lib/` y `docs/memory/` (este último, salvo vía `memory.mjs`) a la lista de ficheros que no edita.
     - El "Cierre obligatorio" queda así:
       1. Gate.
       2. **Nuevo:** "Registra tu sesión (R11). Es obligatorio: el hook `SubagentStop` no te deja terminar sin ella. Usa el `agent_id` de tu contexto inicial y la herramienta Bash, con la forma exacta…", seguido del bloque `session` de T7 para developer. Después: "Reutiliza los slugs existentes (`node scripts/memory.mjs tags`). Un error enlaza su issue (`#N`), no lo copia. Nunca incluyas secretos ni textos como `git commit` o `Co-Authored-By:`."
       3. Informe, con "Ruta de la entrada de sesión".
-  - [ ] T8.3 `reviewer.md`:
+  - [x] T8.3 `reviewer.md`:
     - "**Nunca modificas ficheros.**" pasa a "**Nunca modificas ficheros, salvo la memoria del equipo y solo a través de `node scripts/memory.mjs` (R11).**"
     - Nueva sección `## Memoria (R11)` con los pasos al terminar, siempre en este orden:
       1. `session` con `--agent reviewer` y `--veredicto`; los errores son los hallazgos, con su `#N`.
       2. `flush --task <Tn> --agent-id <id>`, con cualquier veredicto.
       3. Si el orchestrator indica `última tarea: sí` y el veredicto es `APPROVED`, `close`.
     - El bloque de veredicto añade `Memoria: docs/memory/medium/<plan>.md (Tn C<k>)` y, si se cerró, `Plan cerrado en memoria: sí`.
-  - [ ] T8.4 `planner.md`: en "Antes de escribir", nuevo paso 0: "Lee siempre la memoria a largo plazo (`docs/memory/long/decisiones.md` y `errores.md`). El hook `SubagentStart` te la inyecta; si no aparece, léela. `docs/memory/medium/`, bajo demanda."
-  - [ ] T8.5 `CLAUDE.md`:
+  - [x] T8.4 `planner.md`: en "Antes de escribir", nuevo paso 0: "Lee siempre la memoria a largo plazo (`docs/memory/long/decisiones.md` y `errores.md`). El hook `SubagentStart` te la inyecta; si no aparece, léela. `docs/memory/medium/`, bajo demanda."
+  - [x] T8.5 `CLAUDE.md`:
     - Paso 6: "Revisión → `reviewer` con la ruta del plan, el rango del diff y `última tarea: sí|no`. El reviewer vuelca la memoria de la tarea en cada ciclo."
     - Paso 9: "Al acabar el plan, comprobar que `docs/memory/medium/NNN-slug.md` está en `estado: cerrado` y que `node scripts/memory.mjs check` está en verde antes de marcar `Estado: hecho`."
     - "Traspaso": añadir "si es la última tarea del plan".

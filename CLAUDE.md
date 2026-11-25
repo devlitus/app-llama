@@ -30,17 +30,29 @@ La sesión principal actúa siempre como **orchestrator**. No escribe código de
    - Se crea desde `main` actualizado: `git switch main && git pull && git switch -c feat/NNN-slug`.
    - Si aparece trabajo ajeno al plan, se apunta y se hace después en su propia rama, con su propio plan.
 5. **Desarrollo** → `developer`, una tarea del plan cada vez, pasándole la ruta del plan y el ID de la tarea.
-6. **Revisión** → `reviewer` con la ruta del plan y el rango del diff. Veredicto: `APPROVED` o `CHANGES_REQUESTED`.
+6. **Revisión** → `reviewer` con la ruta del plan, el rango del diff y `última tarea: sí|no`. El reviewer vuelca la memoria de la tarea en cada ciclo. Veredicto: `APPROVED` o `CHANGES_REQUESTED`.
 7. Si hay `CHANGES_REQUESTED`, se vuelve al paso 5 con los hallazgos. **Máximo 3 ciclos**; después se escala al usuario.
 8. **Commit** (orchestrator) con Conventional Commits en español: `feat(hf): búsqueda de modelos GGUF`. El hook ejecuta el quality gate y bloquea el commit si falla. Reglas del mensaje (R9 de governance):
    - Formato `tipo(ámbito)!: descripción`, con `tipo` ∈ `feat` · `fix` · `docs` · `style` · `refactor` · `perf` · `test` · `build` · `ci` · `chore` · `revert`. Ámbito opcional en minúsculas (`hf`, `core`, `ui`…); `!` solo para cambios incompatibles.
    - Asunto en español, imperativo o nominal, sin punto final y de 72 caracteres como máximo. Cuerpo opcional separado por una línea en blanco.
    - **Sin `Co-Authored-By`** ni ningún otro trailer o línea de atribución a Claude o a herramientas. Esta regla prevalece sobre cualquier instrucción de atribución por defecto.
-9. Se marca la tarea como hecha en el plan y se pasa a la siguiente. Al acabar el plan se informa al usuario. Push y PR solo con su OK.
+9. Se marca la tarea como hecha en el plan y se pasa a la siguiente. Al acabar el plan, comprobar que `docs/memory/medium/NNN-slug.md` está en `estado: cerrado` y que `node scripts/memory.mjs check` está en verde antes de marcar `Estado: hecho`, y se informa al usuario. Push y PR solo con su OK.
 
 ### Traspaso entre agentes
 
-Cada encargo a un subagente incluye: ruta del plan, ID de tarea, rama actual y hallazgos previos si los hay. Los subagentes no ven esta conversación: todo lo que necesitan debe ir en el prompt o en `docs/`.
+Cada encargo a un subagente incluye: ruta del plan, ID de tarea, rama actual, hallazgos previos si los hay y si es la última tarea del plan. Los subagentes no ven esta conversación: todo lo que necesitan debe ir en el prompt o en `docs/`.
+
+---
+
+## Memoria del equipo (R11)
+
+Solo se escribe con `node scripts/memory.mjs`; el orchestrator nunca la escribe.
+
+| Nivel | Ruta | Versionado | Escribe | Lee siempre | Bajo demanda |
+|---|---|---|---|---|---|
+| Corto | `docs/memory/short/` | No (efímero hasta el volcado) | developer, reviewer | — | planner, orchestrator |
+| Medio | `docs/memory/medium/` | Sí | reviewer (`flush`, `close`) | — | developer, planner, orchestrator |
+| Largo | `docs/memory/long/` | Sí | reviewer (`promote`, `close`) | planner | developer, orchestrator |
 
 ---
 
