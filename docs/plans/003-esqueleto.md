@@ -1,7 +1,7 @@
 # 003 — Esqueleto: workspace Rust, app Tauri 2 + Svelte 5 y CI
 
 - **Tipo:** chore
-- **Estado:** borrador
+- **Estado:** aprobado
 - **Rama:** chore/003-esqueleto
 - **Fase del roadmap:** 0 (Esqueleto) de [docs/MVP.md](../MVP.md)
 
@@ -223,7 +223,7 @@ docs/DESARROLLO.md
     - `[dev-dependencies] tauri = { …, features = ["test"] }` y `serde_json`.
   - [ ] T5.3 `tauri.conf.json` (schema v2):
     - `productName: "app-llama"`, sin `version` (se toma de Cargo);
-    - `identifier` según la pregunta abierta P1 (por defecto `com.devlitus.appllama`);
+    - `identifier: "io.github.devlitus.appllama"` (P1, decidido por el usuario);
     - `build.frontendDist: "../ui/dist"`, `build.devUrl: "http://localhost:5173"`, `beforeDevCommand: "npm --prefix ui run dev"` y `beforeBuildCommand: "npm --prefix ui run build"` (si la CLI no los ejecuta desde la raíz, se usa la forma `{ script, cwd }`; ver Riesgos);
     - una ventana `main` con `title: "app-llama"` y 1200×800;
     - `bundle.active: false` (el empaquetado es la fase 7).
@@ -307,5 +307,6 @@ docs/DESARROLLO.md
 
 ## Preguntas abiertas
 
-- **P1 — Identificador del bundle (`tauri.conf.json` → `identifier`).** Determina el directorio de datos de la app en las fases siguientes (crate `directories`), y cambiarlo después mueve los datos del usuario. La propuesta por defecto es `com.devlitus.appllama` (formato DNS inverso, sin terminar en `.app`, que macOS desaconseja). Hay que confirmarlo o dar otro antes de T5.
-- **P2 — Nombre visible de la app.** La propuesta es `app-llama` para `productName` y el título de la ventana. Se puede cambiar sin coste hasta la fase 7; no bloquea.
+- ~~P1 — Identificador del bundle.~~ **Resuelta (2026-11-26):** `io.github.devlitus.appllama`. No se cambia después de la primera release.
+- ~~P2 — Nombre visible de la app.~~ **Resuelta (2026-11-26):** `app-llama`.
+- **Nota (2026-11-26):** de momento no hay pruebas manuales en Mac; macOS se valida solo con la CI (T8.2).
