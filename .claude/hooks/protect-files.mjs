@@ -1,35 +1,32 @@
 // PreToolUse (Edit | Write | NotebookEdit | Bash | PowerShell):
-// impide modificar los ficheros de governance (R8) y escribir la memoria fuera de scripts/memory.mjs (R11).
+// impide escribir la memoria fuera de scripts/memory.mjs (R11).
 
-import { readHookInput, block, isProtected, PROTECTED_PATHS, PROJECT_DIR } from "./lib.mjs";
+import { readHookInput, block, PROJECT_DIR } from "./lib.mjs";
 
-const input = readHookInput();
-const toolInput = input.tool_input ?? {};
-// Import dinámico: si el módulo faltara, R8 sigue aplicándose.
-const policy = await import("../../scripts/lib/memory-policy.mjs").catch(() => null);
+const MEMORY_MENTION = /docs[\\/]+memory/i;
 
-const filePath = toolInput.file_path ?? toolInput.notebook_path;
-if (filePath && isProtected(filePath)) {
-  block(`'${filePath}' es un fichero de governance y solo lo modifica el usuario. R8.`);
-}
-
-const rawCommand = toolInput.command;
-if (rawCommand) {
-  // El cuerpo de un heredoc de memory.mjs son datos, no órdenes: R8 solo evalúa la línea de la orden.
-  const command = policy?.memoryCommandLine(rawCommand) ?? rawCommand;
-  const writes = /(>|\bsed\s+-i\b|\brm\b|\bmv\b|\bcp\b|\btee\b|Set-Content|Add-Content|Out-File|Remove-Item|Move-Item|Copy-Item|New-Item)/i;
-  const normalized = command.replace(/\\/g, "/");
-  const touchesProtected = PROTECTED_PATHS.some((re) =>
-    new RegExp(re.source.replace(/^\^/, "(^|[\\s\"'/])"), "i").test(normalized),
-  );
-  if (writes.test(command) && touchesProtected) {
-    block("el comando modifica ficheros de governance, que solo modifica el usuario. R8.");
+// Un hook que lanza una excepción sale con 1, que no bloquea: ante un fallo, se deniega.
+function safely(check) {
+  try {
+    return check();
+  } catch (error) {
+    return { allow: false, reason: `no se pudo analizar la orden (${error.message}); ante la duda, se bloquea.` };
   }
 }
 
-if (policy) {
-  const memory = policy.checkMemoryToolUse(input, { root: PROJECT_DIR });
-  if (!memory.allow) block(memory.reason);
+// Reserva fail-closed si falta el módulo de política: todo lo que mencione la memoria se bloquea.
+function mentionsMemory(toolInput) {
+  const target = toolInput.file_path ?? toolInput.notebook_path ?? toolInput.command ?? "";
+  return MEMORY_MENTION.test(target);
 }
+
+const input = readHookInput();
+const policy = await import("../../scripts/lib/memory-policy.mjs").catch(() => null);
+
+const verdict = policy
+  ? safely(() => policy.checkMemoryToolUse(input, { root: PROJECT_DIR }))
+  : { allow: !mentionsMemory(input.tool_input ?? {}), reason: "R11: la memoria solo se escribe con node scripts/memory.mjs" };
+
+if (!verdict.allow) block(verdict.reason);
 
 process.exit(0);

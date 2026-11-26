@@ -23,19 +23,3 @@ export function git(args) {
   const res = spawnSync("git", args, { cwd: PROJECT_DIR, encoding: "utf8" });
   return res.status === 0 ? res.stdout.trim() : null;
 }
-
-export const PROTECTED_PATHS = [
-
-];
-
-export function toProjectRelative(filePath) {
-  const norm = (p) => p.replace(/\\/g, "/").toLowerCase();
-  const root = norm(PROJECT_DIR).replace(/\/$/, "") + "/";
-  const file = norm(filePath);
-  return file.startsWith(root) ? file.slice(root.length) : file;
-}
-
-export function isProtected(filePath) {
-  const rel = toProjectRelative(filePath);
-  return PROTECTED_PATHS.some((re) => re.test(rel));
-}

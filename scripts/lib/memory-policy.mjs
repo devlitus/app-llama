@@ -18,11 +18,6 @@ const NO_INLINE_CODE = "R11: no se admite código en línea en comandos que toca
 
 const deny = (reason) => ({ allow: false, reason });
 
-// R8 solo debe evaluar la línea de la orden: el cuerpo del heredoc son datos, no órdenes.
-export function memoryCommandLine(command) {
-  return parseInvocation(command)?.line ?? null;
-}
-
 function checkFileTool({ tool_input: toolInput = {} }, root) {
   const filePath = toolInput.file_path ?? toolInput.notebook_path;
   return filePath && isMemoryPath(root, filePath) ? deny(ONLY_VIA_CLI) : ALLOW;

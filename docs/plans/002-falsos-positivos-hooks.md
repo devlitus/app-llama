@@ -100,19 +100,19 @@ Al investigar también apareció que **un hook que lanza una excepción sale con
 - **Depende de:** —
 - **Cubre:** CA4, CA10, CA11
 - **Subtareas:**
-  - [ ] T1.1 Crear `scripts/hooks-regression.test.mjs` con el arnés e2e:
+  - [x] T1.1 Crear `scripts/hooks-regression.test.mjs` con el arnés e2e:
     - `runHook(hook, payload)` → `spawnSync(process.execPath, [<ruta del hook>], { input: JSON.stringify(payload), encoding: "utf8", env: { ...process.env, CLAUDE_PROJECT_DIR: root, GIT_CEILING_DIRECTORIES: dirname(root) } })`.
     - `root` se crea con `mkdtempSync` y se borra en `finally`.
     - Ruta de los hooks con `fileURLToPath(import.meta.url)` + `join` (R3).
     - Los payloads llevan `tool_name`, `cwd: root` y `tool_input`.
-  - [ ] T1.2 `lib.mjs`: eliminar `PROTECTED_PATHS`, `toProjectRelative` e `isProtected`.
-  - [ ] T1.3 `protect-files.mjs`: dejar solo R11. Comentario de cabecera: "impide escribir la memoria fuera de scripts/memory.mjs (R11)". Import dinámico de `memory-policy.mjs`; si falta, se bloquea toda orden o fichero que mencione `docs/memory` (reserva fail-closed). `checkMemoryToolUse` va envuelto en `safely(check)`: una excepción → `{ allow: false, reason: "no se pudo analizar la orden (<mensaje>); ante la duda, se bloquea." }`. El matcher `Edit|Write|NotebookEdit` de `settings.json` se mantiene, porque R11 lo necesita.
-  - [ ] T1.4 `memory-policy.mjs`: eliminar `memoryCommandLine` y su comentario. En los tests, eliminar `linea_comando_memoria`, `linea_comando_ajeno` y `linea_comando_ordenes_tras_eof`, y su import. `COMMAND_AFTER_EOF` se queda, porque lo usa `politica_heredoc_con_ordenes_tras_eof`.
-  - [ ] T1.5 `docs/GOVERNANCE.md`:
+  - [x] T1.2 `lib.mjs`: eliminar `PROTECTED_PATHS`, `toProjectRelative` e `isProtected`.
+  - [x] T1.3 `protect-files.mjs`: dejar solo R11. Comentario de cabecera: "impide escribir la memoria fuera de scripts/memory.mjs (R11)". Import dinámico de `memory-policy.mjs`; si falta, se bloquea toda orden o fichero que mencione `docs/memory` (reserva fail-closed). `checkMemoryToolUse` va envuelto en `safely(check)`: una excepción → `{ allow: false, reason: "no se pudo analizar la orden (<mensaje>); ante la duda, se bloquea." }`. El matcher `Edit|Write|NotebookEdit` de `settings.json` se mantiene, porque R11 lo necesita.
+  - [x] T1.4 `memory-policy.mjs`: eliminar `memoryCommandLine` y su comentario. En los tests, eliminar `linea_comando_memoria`, `linea_comando_ajeno` y `linea_comando_ordenes_tras_eof`, y su import. `COMMAND_AFTER_EOF` se queda, porque lo usa `politica_heredoc_con_ordenes_tras_eof`.
+  - [x] T1.5 `docs/GOVERNANCE.md`:
     - §1, fila "Hooks de Claude Code": quitar "editar ficheros de governance, ".
     - §3: sustituir la sección R8 por `### R8 — Retirada` + "Retirada en el plan 002 por decisión del usuario: los agentes pueden modificar los ficheros de governance. El número se conserva para no renumerar R9–R11, a los que remiten los planes cerrados." No se renumera.
-  - [ ] T1.6 `developer.md` L22: "No editas los planes. Tampoco `docs/memory/`, salvo vía `node scripts/memory.mjs` (R11)."
-  - [ ] T1.7 Ejecutar el `rg` de CA11 y comprobar que solo devuelve el encabezado de R8.
+  - [x] T1.6 `developer.md` L22: "No editas los planes. Tampoco `docs/memory/`, salvo vía `node scripts/memory.mjs` (R11)."
+  - [x] T1.7 Ejecutar el `rg` de CA11 y comprobar que solo devuelve el encabezado de R8.
 - **Tests unitarios** (en `scripts/hooks-regression.test.mjs`):
   | Test | Hook · payload | Resultado esperado |
   |---|---|---|

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { bash, developer, reviewer, withRoot } from "./memory-policy-fixtures.mjs";
 import { renderSession } from "./memory-entry.mjs";
 import { renderPlan } from "./memory-plan.mjs";
-import { checkMemoryToolUse, memoryCommandLine, subagentStartContext, subagentStopDecision } from "./memory-policy.mjs";
+import { checkMemoryToolUse, subagentStartContext, subagentStopDecision } from "./memory-policy.mjs";
 
 
 test("politica_bloquea_write_memoria", () =>
@@ -211,14 +211,6 @@ test("politica_bash_ajeno", () =>
   withRoot((root) => {
     assert.equal(checkMemoryToolUse(bash("cargo test"), { root }).allow, true);
   }));
-
-test("linea_comando_memoria", () => {
-  assert.equal(memoryCommandLine(sessionCommand("developer", "a1")), sessionCommand("developer", "a1").split("\n")[0]);
-});
-
-test("linea_comando_ajeno", () => {
-  assert.equal(memoryCommandLine("git status"), null);
-});
 
 test("inicio_developer", () =>
   withRoot((root) => {

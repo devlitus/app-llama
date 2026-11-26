@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { bash, developer, reviewer, withRoot } from "./memory-policy-fixtures.mjs";
-import { checkMemoryToolUse, memoryCommandLine } from "./memory-policy.mjs";
+import { checkMemoryToolUse } from "./memory-policy.mjs";
 
 const POWERSHELL = "PowerShell";
 
@@ -107,8 +107,6 @@ const COMMAND_AFTER_EOF =
   "node scripts/memory.mjs session --agent developer --agent-id a1 --task T2 <<'EOF'\nresumen: x\nEOF\nrm -rf docs/memory";
 
 test("politica_heredoc_con_ordenes_tras_eof", () => assert.equal(verdictOf(COMMAND_AFTER_EOF).allow, false));
-
-test("linea_comando_ordenes_tras_eof", () => assert.equal(memoryCommandLine(COMMAND_AFTER_EOF), null));
 
 test("politica_remove_item_independiente", () => {
   const result = verdictOf("Remove-Item docs/memory/long/x.md", developer, POWERSHELL);

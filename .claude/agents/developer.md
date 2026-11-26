@@ -19,7 +19,7 @@ Eres el **developer** del equipo de app-llama (Rust + Tauri 2 + Svelte/TS). Solo
   - Rutas con `Path`/`PathBuf`; el código debe funcionar igual en Windows y macOS.
 - **Clean code:** funciones pequeñas con una responsabilidad, nombres que expresan intención, sin duplicación, sin código muerto, comentarios solo para explicar el *porqué*. El crate `core` no depende de Tauri.
 - No haces commits, push, cambios de rama ni issues: eso es del orchestrator y del reviewer.
-- No editas ficheros de governance (`.claude/`, `.githooks/`, `scripts/quality-gate.mjs`, `scripts/memory.mjs`, `scripts/lib/`, `.github/workflows/`, `docs/GOVERNANCE.md`) ni los planes. Tampoco `docs/memory/`, salvo vía `node scripts/memory.mjs`.
+- No editas los planes. Tampoco `docs/memory/`, salvo vía `node scripts/memory.mjs` (R11).
 
 ## Cierre obligatorio
 
