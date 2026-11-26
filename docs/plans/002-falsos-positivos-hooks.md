@@ -527,12 +527,21 @@ test("politica_orden_constructor", () => assertAllDenied(["constructor docs/memo
 - **Depende de:** T1-T5 integradas (no hace falta reiniciar: `settings.json` no cambia)
 - **Cubre:** CA1-CA11 en la sesión real
 - **Subtareas:**
-  - [ ] T6.1 Ejecutar en vivo con Bash las órdenes de **solo lectura** de los casos 2b, 3 y 4. Esperado: sin bloqueo.
-  - [ ] T6.2 Caso 2a en vivo: el heredoc `cat > <scratchpad>/pr.md <<'EOF' … EOF` seguido de `ls <scratchpad>/pr.md` (sin `gh`). Esperado: sin bloqueo.
-  - [ ] T6.3 Caso 1 por payload, sin hacer push real: escribir `<scratchpad>/p1.json` con `Write` y ejecutar `node .claude/hooks/guard-shell.mjs < <scratchpad>/p1.json` → 0. Con `git push origin main` → 2, y con `git push --force origin x` → 2.
-  - [ ] T6.4 Sonda que debe bloquearse: `touch docs/memory/short/zz-sonda.md` → bloqueada con R11. Si pasara, se borra a mano.
-  - [ ] T6.5 Anotar los resultados en este plan.
+  - [x] T6.1 Ejecutar en vivo con Bash las órdenes de **solo lectura** de los casos 2b, 3 y 4. Esperado: sin bloqueo.
+  - [x] T6.2 Caso 2a en vivo: el heredoc `cat > <scratchpad>/pr.md <<'EOF' … EOF` seguido de `ls <scratchpad>/pr.md` (sin `gh`). Esperado: sin bloqueo.
+  - [x] T6.3 Caso 1 por payload, sin hacer push real: escribir `<scratchpad>/p1.json` con `Write` y ejecutar `node .claude/hooks/guard-shell.mjs < <scratchpad>/p1.json` → 0. Con `git push origin main` → 2, y con `git push --force origin x` → 2.
+  - [x] T6.4 Sonda que debe bloquearse: `touch docs/memory/short/zz-sonda.md` → bloqueada con R11. Si pasara, se borra a mano.
+  - [x] T6.5 Anotar los resultados en este plan.
 - **Tests unitarios:** no aplica (los automatizados son T1-T5).
+- **Resultados (2026-11-26, sesión real tras `03b4d28`):**
+  | Subtarea | Orden | Resultado |
+  |---|---|---|
+  | T6.1 | Caso 2b (`cd … && grep …; ls docs/memory/medium/; …; node scripts/memory.mjs check; git status -s`) | Sin bloqueo. `Memoria OK (2 planes, 1 cerrados)` |
+  | T6.1 | Caso 3 (`grep -rn …; ls docs/memory/medium/; grep … \| head; git log …; git status -s`) | Sin bloqueo |
+  | T6.1 | Caso 4 (`ls docs/plans/ .claude/hooks/ 2>/dev/null; git ls-tree …; git fetch -q && git log …`) | Sin bloqueo |
+  | T6.2 | `cat > <scratchpad>/pr.md <<'EOF'` (cuerpo con `node scripts/memory.mjs close` y `docs/memory/medium/…`) + `ls` | Sin bloqueo con la ruta literal. Un primer intento con `S=<ruta>` y `"$S/pr.md"` se bloqueó (R11, "forma no admitida"): el `$` impide analizar la orden y se aplica la regla conservadora, como prevé el diseño |
+  | T6.3 | `guard-shell.mjs` con el caso 1 / `git push origin main` / `git push --force origin x` | 0 / 2 (`main/master`) / 2 (`forzado`) |
+  | T6.4 | `touch docs/memory/short/zz-sonda.md` | Bloqueada: "R11: la memoria solo se escribe con node scripts/memory.mjs". No se creó el fichero |
 
 ### T7 — Revisión final, cierre de memoria y del plan (O + reviewer)
 - **Depende de:** T1-T6
