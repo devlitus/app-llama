@@ -145,12 +145,12 @@ docs/DESARROLLO.md
   | `pasos_ui_falta_lint_y_test` | `uiScripts: {}` | dos pasos con `error` que contienen `'lint'` y `'test'`, y ningún `cmd` de UI |
   | `pasos_build_ui_comando` | `uiScripts: { build, lint, test }` | el primer paso es `{ label: "Build UI", cmd: "npm --prefix ui run build" }` |
 
-### T3 — Proyecto UI: Vite + Svelte 5 + TS, tooling y navegación (developer)
+### T3 — Proyecto UI: Vite + Svelte 5 + TS, tooling y navegación (developer) ✅ hecha
 - **Ficheros/módulos:** `ui/package.json`, `ui/package-lock.json`, `ui/index.html`, `ui/vite.config.ts`, `ui/svelte.config.js`, `ui/tsconfig.json`, `ui/eslint.config.js`, `ui/src/main.ts`, `ui/src/lib/navigation.ts`, `ui/src/lib/navigation.test.ts`, `ui/src/vite-env.d.ts`
 - **Depende de:** —
 - **Cubre:** CA4 (parte de datos), CA9 (parte UI), CA10
 - **Subtareas:**
-  - [ ] T3.1 `package.json` (`"private": true`, `"type": "module"`, `engines.node: ">=22.12"`). Scripts:
+  - [x] T3.1 `package.json` (`"private": true`, `"type": "module"`, `engines.node: ">=22.12"`). Scripts:
     - `dev: vite`
     - `build: vite build`
     - `lint: eslint .`
@@ -164,18 +164,18 @@ docs/DESARROLLO.md
     - `vitest` 5, `jsdom`, `@testing-library/svelte` y `@testing-library/jest-dom`;
     - `eslint` (flat config), `@eslint/js`, `typescript-eslint`, `eslint-plugin-svelte` y `globals`;
     - `@tauri-apps/cli` 2.
-  - [ ] T3.2 `vite.config.ts`:
+  - [x] T3.2 `vite.config.ts`:
     - `server.port = 5173`, `strictPort: true` y `clearScreen: false` (requisitos de Tauri);
     - `build.outDir = "dist"`;
     - bloque `test` con `environment: "jsdom"`, `setupFiles` para `jest-dom` y `resolve.conditions: ["browser"]` en test, necesario para montar componentes Svelte 5 en Vitest.
-  - [ ] T3.3 `eslint.config.js` con las reglas recomendadas de JS, TS y Svelte. Ignora `dist/` y `node_modules/`. Sin desactivar reglas (R2).
-  - [ ] T3.4 `navigation.ts`:
+  - [x] T3.3 `eslint.config.js` con las reglas recomendadas de JS, TS y Svelte. Ignora `dist/` y `node_modules/`. Sin desactivar reglas (R2).
+  - [x] T3.4 `navigation.ts`:
     - `export const SECTIONS = [{ id: "explore", label: "Explorar" }, { id: "library", label: "Biblioteca" }, { id: "run", label: "Ejecutar" }, { id: "chat", label: "Chat" }, { id: "settings", label: "Ajustes" }] as const`;
     - `export type SectionId`;
     - `export const INITIAL_SECTION: SectionId = "explore"`;
     - `export function isSectionId(value: string): value is SectionId`;
     - `export function sectionLabel(id: SectionId): string`.
-  - [ ] T3.5 `main.ts` con `mount(App, { target: document.getElementById("app")! })`. Como `App.svelte` llega en T4, aquí se crea un `App.svelte` mínimo (un `<main>` vacío) para que `build` y `check` pasen.
+  - [x] T3.5 `main.ts` con `mount(App, { target: document.getElementById("app")! })`. Como `App.svelte` llega en T4, aquí se crea un `App.svelte` mínimo (un `<main>` vacío) para que `build` y `check` pasen.
 - **Tests unitarios** (`navigation.test.ts`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

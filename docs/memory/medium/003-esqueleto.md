@@ -48,3 +48,25 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T3
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | afcc2cac9cfd8dd09 | rojo | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · Proyecto ui/ con Vite 8, Svelte 5, tooling (eslint, svelte-check, vitest) y navigation.ts con 6 tests; gate verde.
+- C1 · reviewer · T3 aprobada; proyecto UI Vite+Svelte5+TS con 6 tests de navegacion, gate verde y npm ci sin tocar el lockfile
+
+### Decisiones
+
+- **limitacion-documentada** — resolve.conditions browser solo con mode test en vite.config (sin process, evita @types/node). (C1)
+- **refactor-equivalente** — Se aceptan test-setup.ts, svelte.config.js, resolve.conditions solo en modo test y throw en main.ts como desviaciones equivalentes o mejores que el plan (C1)
+
+### Errores
+
+- **codigo-muerto** — sectionLabel tiene una rama de reserva inalcanzable (devuelve id) y globals.node se aplica tambien a src/ (minor, sin issue) (C1)
