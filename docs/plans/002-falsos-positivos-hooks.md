@@ -402,14 +402,14 @@ test("push_powershell_regla_anterior", () => {
 - **Depende de:** T1, T3
 - **Cubre:** CA2, CA3, CA8, CA10
 - **Subtareas:**
-  - [ ] T5.1 Tests unitarios y e2e (rojo).
-  - [ ] T5.2 `splitCommandList(command)` → `string[] | null`. Parte por `&&`, `||`, `;` y `\n` fuera de comillas; un `&` suelto o un `|` se quedan en el elemento. Con comillas escapadas fuera de comillas o sin cerrar, `null`. Recorta cada elemento.
-  - [ ] T5.3 `memory-readonly.mjs`:
+  - [x] T5.1 Tests unitarios y e2e (rojo).
+  - [x] T5.2 `splitCommandList(command)` → `string[] | null`. Parte por `&&`, `||`, `;` y `\n` fuera de comillas; un `&` suelto o un `|` se quedan en el elemento. Con comillas escapadas fuera de comillas o sin cerrar, `null`. Recorta cada elemento.
+  - [x] T5.3 `memory-readonly.mjs`:
     - `isAllowedRead` = todos los elementos no vacíos de `splitCommandList` (al menos uno) pasan `isAllowedItem`.
     - `isAllowedItem` quita `/(^|\s)[12]?>(&[12]|\/dev\/null)(?=\s|$)/g` y exige que todos los segmentos de `splitPipeline` sean lecturas.
     - `isAllowedSegment` añade `cd` (2 palabras como máximo), `pwd` (1) y `node` → `isAllowedNodeTest || READ_ONLY.includes(parseInvocation(segment)?.subcommand)`, y usa `Object.hasOwn(FORBIDDEN_OPTIONS, command)`.
-  - [ ] T5.4 `memory-policy.mjs` `checkShellCommand`: si no es una invocación exacta, `effective = tool_name === "Bash" ? stripDataHeredocs(command) : command`, y se evalúa `effective`.
-  - [ ] T5.5 Los tests existentes de `memory-policy*.test.mjs` siguen en verde sin cambios (salvo los tres eliminados en T1).
+  - [x] T5.4 `memory-policy.mjs` `checkShellCommand`: si no es una invocación exacta, `effective = tool_name === "Bash" ? stripDataHeredocs(command) : command`, y se evalúa `effective`.
+  - [x] T5.5 Los tests existentes de `memory-policy*.test.mjs` siguen en verde sin cambios (salvo los tres eliminados en T1).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

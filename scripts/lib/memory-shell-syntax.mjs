@@ -38,6 +38,38 @@ export function splitPipeline(command) {
   return quote === null ? segments.map((segment) => segment.trim()) : null;
 }
 
+const LIST_SEPARATORS = ["&&", "||", ";", "\n"];
+
+// Parte una lista de órdenes por `&&`, `||`, `;` y saltos de línea fuera de comillas. Un `&` o un `|` sueltos se quedan en el elemento; cada elemento se valida después como tubería. Devuelve null con comillas escapadas o sin cerrar.
+export function splitCommandList(command) {
+  const items = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+    } else if (isEscapedQuote(command, i)) {
+      return null;
+    } else if (quote === '"') {
+      if (char === '"') quote = null;
+    } else if (QUOTES.has(char)) {
+      quote = char;
+    } else {
+      const separator = LIST_SEPARATORS.find((candidate) => command.startsWith(candidate, i));
+      if (separator) {
+        items.push(current);
+        current = "";
+        i += separator.length - 1;
+        continue;
+      }
+    }
+    current += char;
+  }
+  items.push(current);
+  return quote === null ? items.map((item) => item.trim()) : null;
+}
+
 // Palabras de un segmento ya validado, sin las comillas que las rodean.
 export function wordsOf(segment) {
   const words = [];

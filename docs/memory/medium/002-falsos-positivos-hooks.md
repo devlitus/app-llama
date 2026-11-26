@@ -112,3 +112,25 @@ estado: abierto
 - **orden-anidada** — definesGitAlias solo mira words[0] y mentionsGit no quita la barra invertida; command/builtin/X=1/!/if delante de alias se permiten (#22) (C1, C2, C3, C4 · #20, #21, #22)
 - **refspec-dwim** — heads/<rama> y remotes/o/<rama> normalizados como refs/heads (#19) (C1, C2 · #19)
 - **reserva-sin-test** — pushVerdict en scripts/lib/push-hook.mjs con tests de excepcion y reserva (C1, C2)
+
+## T5
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | ad93d98d9bf1d2ac8 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T5 hecha: R11 admite listas de lecturas, cd/pwd, check/tags/help y despoja heredocs de datos; gate verde (450 tests). Rojo previo: 3 e2e fallaban y el test de lib no cargaba (sin splitCommandList).
+- C1 · reviewer · T5 aprobada; sondeadas 45 variantes de escritura en memoria (redirecciones, cd, heredocs, node check, PowerShell) sin ninguna nueva escritura directa que pase
+
+### Decisiones
+
+- **analizador-null-ante-duda** — splitCommandList devuelve null con comillas escapadas o sin cerrar y la lista blanca sigue cerrada. (C1)
+- **limitacion-documentada** — cd persistente entre llamadas y cd+node scripts/memory.mjs check ejecutan codigo o rutas relativas fuera del alcance de R11, ya posible antes con cd docs o node fichero (C1)
+
+### Errores
+
+- **orden-anidada** — un heredoc cat a fichero seguido de sh fichero en la misma orden pasa tras el despojo; antes se negaba, aunque Write+sh ya lo permitia (C1)

@@ -3,7 +3,7 @@ import { SESSION_AGENTS } from "./memory-agents.mjs";
 const INVOCATION =
   /^node scripts\/memory\.mjs (session|flush|close|promote|check|tags|help)((?: --[a-z][a-z-]* [A-Za-z0-9._-]+)*)( <<'EOF')?$/;
 const HEREDOC_END = "EOF";
-const READ_ONLY = ["check", "tags", "help"];
+export const READ_ONLY =["check", "tags", "help"];
 const REVIEWER_ONLY = ["close", "promote"];
 const ALLOW = { allow: true };
 

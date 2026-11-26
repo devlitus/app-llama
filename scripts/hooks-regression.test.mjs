@@ -81,7 +81,44 @@ test("hook_excepcion_bloquea", () =>
     assert.equal(result.status, 2);
   }));
 
-const powershellPayload = (command) => ({ tool_name: "PowerShell", tool_input: { command } });
+test("hook_caso_2_heredoc_pr", () =>
+  withRoot((root) => {
+    const pr = join(root, "pr.md");
+    const command = `cat > ${pr} <<'EOF'\nCierre con node scripts/memory.mjs close y docs/memory/medium/001-memoria.md\nEOF\ngh pr create --body-file ${pr}`;
+    const result = runHook(PROTECT_FILES, root, bashPayload(command));
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+test("hook_caso_2_compuesto_check", () =>
+  withRoot((root) => {
+    const command =
+      'cd /w/app-llama && grep -n "Estado" docs/plans/001-memoria.md; ls docs/memory/medium/; grep -n "estado" docs/memory/medium/001-memoria.md; node scripts/memory.mjs check; git status -s';
+    const result = runHook(PROTECT_FILES, root, bashPayload(command));
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+test("hook_caso_3_lectura", () =>
+  withRoot((root) => {
+    const command =
+      'grep -rn "estado" docs/plans/001-memoria.md ; ls docs/memory/medium/; grep -n "estado" docs/memory/medium/001-memoria.md | head; git log --oneline -3; git status -s';
+    const result = runHook(PROTECT_FILES, root, bashPayload(command));
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+test("hook_r11_heredoc_a_memoria", () =>
+  withRoot((root) => {
+    const result = runHook(PROTECT_FILES, root, bashPayload("cat > docs/memory/long/errores.md <<'EOF'\nx\nEOF"));
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /R11/);
+  }));
+
+test("hook_r11_lectura_y_escritura", () =>
+  withRoot((root) => {
+    const result = runHook(PROTECT_FILES, root, bashPayload("ls docs/memory; rm x"));
+    assert.equal(result.status, 2);
+  }));
+
+const powershellPayload =(command) => ({ tool_name: "PowerShell", tool_input: { command } });
 
 test("hook_caso_1_push_a_rama", () =>
   withRoot((root) => {
