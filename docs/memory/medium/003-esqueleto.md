@@ -70,3 +70,25 @@ estado: abierto
 ### Errores
 
 - **codigo-muerto** — sectionLabel tiene una rama de reserva inalcanzable (devuelve id) y globals.node se aplica tambien a src/ (minor, sin issue) (C1)
+
+## T4
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | a6ccea229703c3d6f | rojo | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T4 shell de la UI con navegación y 5 vistas; corregidos hallazgos de T3 (sectionLabel sin rama muerta, globals de eslint por ámbito)
+- C1 · reviewer · Shell de la UI con 5 botones, h1 por vista y aria-current solo en la activa; CA4 cubierto por App.test.ts y minors de T3 corregidos; gate verde
+
+### Decisiones
+
+- **limitacion-documentada** — cleanup de testing-library registrado en test-setup porque vitest no usa globals (C1)
+- **refactor-equivalente** — sectionLabel pasa a un mapa LABELS derivado de SECTIONS, sin rama muerta y mismo contrato (C1)
+
+### Errores
+
+- (ninguno)

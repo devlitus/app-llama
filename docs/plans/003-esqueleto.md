@@ -186,18 +186,18 @@ docs/DESARROLLO.md
   | `ids_de_seccion_invalidos` | `""`, `"Explore"`, `"ajustes"`, `"constructor"`, `"toString"` | `false` en todos (sin buscar en el prototipo) |
   | `etiqueta_de_seccion` | `sectionLabel("chat")` | `"Chat"` |
 
-### T4 — Shell de la UI: navegación y vistas vacías (developer)
+### T4 — Shell de la UI: navegación y vistas vacías (developer) ✅ hecha
 - **Ficheros/módulos:** `ui/src/App.svelte`, `ui/src/App.test.ts`, `ui/src/views/{Explore,Library,Run,Chat,Settings}.svelte`, `ui/src/app.css`
 - **Depende de:** T3
 - **Cubre:** CA4
 - **Subtareas:**
-  - [ ] T4.1 Tests (rojo).
-  - [ ] T4.2 `App.svelte`:
+  - [x] T4.1 Tests (rojo).
+  - [x] T4.2 `App.svelte`:
     - `let active = $state<SectionId>(INITIAL_SECTION)`;
     - `<nav aria-label="Secciones">` con un `<button>` por cada sección de `SECTIONS`, y `aria-current="page"` solo en la activa;
     - `<main>` que muestra la vista activa.
-  - [ ] T4.3 Cada vista es un componente con `<h1>{etiqueta}</h1>` y un párrafo "Próximamente". `Settings.svelte` lleva un hueco para la versión, que se rellena en T6.
-  - [ ] T4.4 `app.css`: estilos mínimos (barra lateral y contenido), sin librería de componentes.
+  - [x] T4.3 Cada vista es un componente con `<h1>{etiqueta}</h1>` y un párrafo "Próximamente". `Settings.svelte` lleva un hueco para la versión, que se rellena en T6.
+  - [x] T4.4 `app.css`: estilos mínimos (barra lateral y contenido), sin librería de componentes.
 - **Tests unitarios** (`App.test.ts`, `@testing-library/svelte`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

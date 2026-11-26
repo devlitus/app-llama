@@ -14,7 +14,11 @@ export function isSectionId(value: string): value is SectionId {
   return SECTIONS.some((section) => section.id === value);
 }
 
+const LABELS = Object.fromEntries(SECTIONS.map(({ id, label }) => [id, label])) as Record<
+  SectionId,
+  string
+>;
+
 export function sectionLabel(id: SectionId): string {
-  const section = SECTIONS.find((candidate) => candidate.id === id);
-  return section ? section.label : id;
+  return LABELS[id];
 }
