@@ -1,7 +1,7 @@
 # 002 — Falsos positivos de los hooks de Bash y retirada de R8
 
 - **Tipo:** bug
-- **Estado:** en curso
+- **Estado:** hecho
 - **Rama:** fix/002-falsos-positivos-hooks
 - **Fase del roadmap:** previa a la fase 0 (Esqueleto) de [docs/MVP.md](../MVP.md), igual que los planes 000 y 001
 
@@ -546,9 +546,9 @@ test("politica_orden_constructor", () => assertAllDenied(["constructor docs/memo
 ### T7 — Revisión final, cierre de memoria y del plan (O + reviewer)
 - **Depende de:** T1-T6
 - **Subtareas:**
-  - [ ] T7.1 El orchestrator lanza el `reviewer` con el plan, el diff completo, los resultados de T6 y `última tarea: sí`.
-  - [ ] T7.2 El reviewer ejecuta `session` y `flush --task T7` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
-  - [ ] T7.3 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`.
+  - [x] T7.1 El orchestrator lanza el `reviewer` con el plan, el diff completo, los resultados de T6 y `última tarea: sí`.
+  - [x] T7.2 El reviewer ejecuta `session` y `flush --task T7` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
+  - [x] T7.3 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`.
 
 ## Fuera de alcance
 
