@@ -251,9 +251,9 @@ test("heredoc_no_datos_intacto", () => {
 - **Depende de:** T1 (arnés e2e), T2, T3
 - **Cubre:** CA1, CA5, CA6, CA7, CA9, CA10
 - **Subtareas:**
-  - [ ] T4.1 Tests unitarios y e2e (rojo).
-  - [ ] T4.2 `push-guard.mjs`: `export function checkPush(command, { tool, currentBranch })` y `export function legacyPushVerdict(command)`, que devuelven `{ allow: true }` o `{ allow: false, reason }`. Motivos: `"prohibido el push forzado. R5."`, `"prohibido hacer push directo a main/master; usa una rama y PR. R5."` y `"no se puede analizar el push con certeza (variables, sustituciones o -c); escribe la orden con la rama literal. R5."`. `legacyPushVerdict` quita las `\` y aplica `\bgit\b[^;&|\n]*\bpush\b`, después la regex de fuerza anterior, después `/\b(main|master)\b/i` y, por último, opaco si el tramo desde `git … push` hasta el siguiente `;`, `&`, `|` o salto de línea contiene `$` o comillas invertidas.
-  - [ ] T4.3 `guard-shell.mjs`: sustituir el bloque `if (isGit("push")) {…}` por `checkPush` con `tool: input.tool_name` y `currentBranch: () => git(["branch", "--show-current"])`. Import dinámico de `push-guard.mjs` con reserva a la regla anterior si falta, y `try/catch` que bloquea si hay una excepción. El resto del hook no cambia.
+  - [x] T4.1 Tests unitarios y e2e (rojo).
+  - [x] T4.2 `push-guard.mjs`: `export function checkPush(command, { tool, currentBranch })` y `export function legacyPushVerdict(command)`, que devuelven `{ allow: true }` o `{ allow: false, reason }`. Motivos: `"prohibido el push forzado. R5."`, `"prohibido hacer push directo a main/master; usa una rama y PR. R5."` y `"no se puede analizar el push con certeza (variables, sustituciones o -c); escribe la orden con la rama literal. R5."`. `legacyPushVerdict` quita las `\` y aplica `\bgit\b[^;&|\n]*\bpush\b`, después la regex de fuerza anterior, después `/\b(main|master)\b/i` y, por último, opaco si el tramo desde `git … push` hasta el siguiente `;`, `&`, `|` o salto de línea contiene `$` o comillas invertidas.
+  - [x] T4.3 `guard-shell.mjs`: sustituir el bloque `if (isGit("push")) {…}` por `checkPush` con `tool: input.tool_name` y `currentBranch: () => git(["branch", "--show-current"])`. Import dinámico de `push-guard.mjs` con reserva a la regla anterior si falta, y `try/catch` que bloquea si hay una excepción. El resto del hook no cambia.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

@@ -77,3 +77,38 @@ estado: abierto
 ### Errores
 
 - **tuberia-tras-cabecera** — Heredoc con cabecera terminada en | (también |& y 2>&1 |) se despojaba y ocultaba un cuerpo ejecutable; #17. (C1, C2 · #17)
+
+## T4
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | ac66b75c86e420c2f | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-26 | 1 | a0b0931e5e80d3d1f | verde | CHANGES_REQUESTED |
+| 3 | 2026-11-26 | 1 | ac93d0e14be38532d | verde | CHANGES_REQUESTED |
+| 4 | 2026-11-26 | 1 | a4921988fa5f95ab8 | verde | CHANGES_REQUESTED |
+
+### Resúmenes
+
+- C1 · developer · T4 R5 analizado: push-guard.mjs (checkPush, legacyPushVerdict), guard-shell.mjs con import dinamico y try/catch, 14 tests unitarios y 5 e2e.
+- C1 · reviewer · checkPush cubre los CA de la tabla pero deja 4 familias de evasiones reales de R5; gate verde
+- C2 · developer · T4 ciclo 2: abreviaturas, DWIM de refs, orden anidada o con xargs, config en linea y reserva testeable (pushVerdict extraido); gate en verde
+- C2 · reviewer · T4 ciclo 2; #18 y #19 resueltos; #20 y #21 parciales, con regresiones frente a la regla anterior; gate verde
+- C3 · developer · T4 ciclo 3: red de seguridad legacy en palabras anidadas, hidden heredado, forma git-push, config en linea con built-in que ejecuta git, import dinamico de push-hook
+- C3 · reviewer · ciclo 3 de T4; #18-#21 resueltos y gate verde, pero hay 2 regresiones nuevas frente a legacyPushVerdict y un falso positivo nuevo con -c
+- C4 · developer · T4 ciclo 4: #22 (redirecciones y alias) y #23 (-c sin push) corregidos, mas quitar barras en isNestedPush y en la reserva.
+- C4 · reviewer · ciclo 4 de T4; cierra here-string y #23, pero quedan alias con prefijo o con barra invertida y --config-env relajado
+
+### Decisiones
+
+- **analizador-null-ante-duda** — alias/unalias que menciona git vuelve opaca la orden completa; el destino de redireccion pasa por checkNestedWord. (C1, C2, C3, C4)
+- **limitacion-documentada** — bash < f y alias con comillas vacías aceptados como deuda, porque la regla anterior tampoco los bloqueaba (C1, C3, C4)
+
+### Errores
+
+- **config-en-linea** — la relajación de -c alcanza a --config-env, cuyo valor viene del entorno y nunca se menciona (#24) (C1, C2, C3, C4 · #21, #22, #23, #24)
+- **opcion-abreviada** — prefijos de --all/--mirror/--branches/--for* tratados como la opcion (#18); rojo previo: 4 tests de push-guard fallaban y push-hook.test no cargaba (C1, C2 · #18)
+- **orden-anidada** — definesGitAlias solo mira words[0] y mentionsGit no quita la barra invertida; command/builtin/X=1/!/if delante de alias se permiten (#22) (C1, C2, C3, C4 · #20, #21, #22)
+- **refspec-dwim** — heads/<rama> y remotes/o/<rama> normalizados como refs/heads (#19) (C1, C2 · #19)
+- **reserva-sin-test** — pushVerdict en scripts/lib/push-hook.mjs con tests de excepcion y reserva (C1, C2)
