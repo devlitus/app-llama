@@ -129,8 +129,8 @@ Al investigar también apareció que **un hook que lanza una excepción sale con
 - **Depende de:** —
 - **Cubre:** base de CA1, CA2, CA5-CA9
 - **Subtareas:**
-  - [ ] T2.1 Tests (rojo).
-  - [ ] T2.2 `export function parseCommandList(command)` → `Array<{ words: string[], redirects: { op: string, target: string }[] }> | null`, según el Diseño (1). Las órdenes vacías se descartan.
+  - [x] T2.1 Tests (rojo).
+  - [x] T2.2 `export function parseCommandList(command)` → `Array<{ words: string[], redirects: { op: string, target: string }[] }> | null`, según el Diseño (1). Las órdenes vacías se descartan.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
