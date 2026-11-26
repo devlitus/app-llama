@@ -1,0 +1,20 @@
+[package]
+name = "app-llama"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "app_llama_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+tauri.workspace = true
+app-llama-core = { path = "../crates/core" }
+
+[dev-dependencies]
+tauri = { workspace = true, features = ["test"] }
+serde_json.workspace = true

@@ -92,3 +92,26 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T5
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | a733b59b2801228ea | rojo | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T5 hecha: app Tauri 2.12.7 con comando app_info, 3 tests IPC en verde, gate verde y tauri build --debug --no-bundle verificado en local
+- C1 · reviewer · T5 app Tauri y comando app_info correctos; gate verde, CA1/CA3/CA9 verificados y manifiesto incrustado en el exe
+
+### Decisiones
+
+- **limitacion-documentada** — csp null aceptado en el esqueleto como minor; la CSP estricta queda para el plan 009 (C1)
+- **manifiesto-cargo-manifest-dir** — build.rs usa CARGO_MANIFEST_DIR para /MANIFESTINPUT y try_build sin unwrap; la ruta es absoluta y robusta (C1)
+- **refactor-equivalente** — build.rs usa manifiesto propio (Common Controls v6) con rustc-link-arg y new_without_app_manifest para que arranquen los tests de la lib en Windows (C1)
+
+### Errores
+
+- (ninguno)

@@ -206,7 +206,7 @@ docs/DESARROLLO.md
   | `navega_a_cada_seccion` | click en cada botón (bucle sobre `SECTIONS`) | `h1` = etiqueta pulsada; exactamente 1 botón con `aria-current="page"` |
   | `click_en_la_activa_no_cambia` | click en "Explorar" estando en Explorar | sigue en Explorar, sin errores |
 
-### T5 — App Tauri y comando `app_info` (developer)
+### T5 — App Tauri y comando `app_info` (developer) ✅ hecha
 - **Ficheros/módulos:**
   - `Cargo.toml` (añade `src-tauri` a `members`, más `tauri` y `tauri-build` a `[workspace.dependencies]`);
   - `src-tauri/Cargo.toml`, `src-tauri/build.rs`, `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`, `src-tauri/icons/*`, `src-tauri/.gitignore`;
@@ -215,22 +215,22 @@ docs/DESARROLLO.md
 - **Depende de:** T1, T3 (`ui/dist` y la CLI)
 - **Cubre:** CA1, CA3, CA9
 - **Subtareas:**
-  - [ ] T5.1 Tests (rojo).
-  - [ ] T5.2 `src-tauri/Cargo.toml`:
+  - [x] T5.1 Tests (rojo).
+  - [x] T5.2 `src-tauri/Cargo.toml`:
     - paquete `app-llama` (D4) con `[lib] name = "app_llama_lib"`, `crate-type = ["rlib"]`;
     - dependencias `tauri` 2, `serde` y `app-llama-core = { path = "../crates/core" }`;
     - `[build-dependencies] tauri-build` 2;
     - `[dev-dependencies] tauri = { …, features = ["test"] }` y `serde_json`.
-  - [ ] T5.3 `tauri.conf.json` (schema v2):
+  - [x] T5.3 `tauri.conf.json` (schema v2):
     - `productName: "app-llama"`, sin `version` (se toma de Cargo);
     - `identifier: "io.github.devlitus.appllama"` (P1, decidido por el usuario);
     - `build.frontendDist: "../ui/dist"`, `build.devUrl: "http://localhost:5173"`, `beforeDevCommand: "npm --prefix ui run dev"` y `beforeBuildCommand: "npm --prefix ui run build"` (si la CLI no los ejecuta desde la raíz, se usa la forma `{ script, cwd }`; ver Riesgos);
     - una ventana `main` con `title: "app-llama"` y 1200×800;
     - `bundle.active: false` (el empaquetado es la fase 7).
-  - [ ] T5.4 `capabilities/default.json` con `windows: ["main"]` y `permissions: ["core:default"]`. Los comandos propios de la app no necesitan permiso.
-  - [ ] T5.5 Iconos: los de la plantilla oficial de `create-tauri-app` (generados con `npm --prefix ui run tauri -- icon <png>`). Son provisionales hasta la fase 7. `src-tauri/.gitignore` ignora `/target/` y `/gen/schemas`.
-  - [ ] T5.6 `commands.rs`: `#[tauri::command] pub fn app_info() -> AppInfo { app_llama_core::about::app_info() }`.
-  - [ ] T5.7 `lib.rs`:
+  - [x] T5.4 `capabilities/default.json` con `windows: ["main"]` y `permissions: ["core:default"]`. Los comandos propios de la app no necesitan permiso.
+  - [x] T5.5 Iconos: los de la plantilla oficial de `create-tauri-app` (generados con `npm --prefix ui run tauri -- icon <png>`). Son provisionales hasta la fase 7. `src-tauri/.gitignore` ignora `/target/` y `/gen/schemas`.
+  - [x] T5.6 `commands.rs`: `#[tauri::command] pub fn app_info() -> AppInfo { app_llama_core::about::app_info() }`.
+  - [x] T5.7 `lib.rs`:
     - `pub fn register<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R>`, que añade `invoke_handler(tauri::generate_handler![commands::app_info])`;
     - `pub fn run() -> Result<(), tauri::Error>`, que hace `register(tauri::Builder::default()).run(tauri::generate_context!())`.
     
