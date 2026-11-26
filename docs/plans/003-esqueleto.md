@@ -1,7 +1,7 @@
 # 003 — Esqueleto: workspace Rust, app Tauri 2 + Svelte 5 y CI
 
 - **Tipo:** chore
-- **Estado:** aprobado
+- **Estado:** en curso
 - **Rama:** chore/003-esqueleto
 - **Fase del roadmap:** 0 (Esqueleto) de [docs/MVP.md](../MVP.md)
 
@@ -94,22 +94,22 @@ docs/DESARROLLO.md
 
 > Todas las tareas de código son **(developer)**, con TDD: primero los tests de la tabla (rojo) y después el código (verde). **(O)** = orchestrator. Los ficheros generados (`Cargo.lock`, `package-lock.json`, iconos) no cuentan para el límite de ~300 líneas por tarea.
 
-### T1 — Workspace Rust y crate `core` (developer)
+### T1 — Workspace Rust y crate `core` (developer) ✅ hecha
 - **Ficheros/módulos:** `Cargo.toml`, `rust-toolchain.toml`, `Cargo.lock`, `crates/core/Cargo.toml`, `crates/core/src/lib.rs`, `crates/core/src/about.rs`, `crates/core/src/{hf,download,gguf,runtime,server,config}/mod.rs`
 - **Depende de:** —
 - **Cubre:** CA1, CA2, CA9 (parte Rust)
 - **Subtareas:**
-  - [ ] T1.1 `Cargo.toml` raíz: `[workspace] members = ["crates/core"]` (T5 añade `src-tauri`), `resolver = "3"`, `[workspace.package] version = "0.1.0"`, `edition = "2024"`, `license` vacío (no se publica), y `[workspace.dependencies]` con `serde = { version = "1", features = ["derive"] }` y `serde_json = "1"`.
-  - [ ] T1.2 `rust-toolchain.toml` según D6, con `profile = "minimal"`.
-  - [ ] T1.3 `crates/core`: paquete `app-llama-core`, `version.workspace = true`, `edition.workspace = true`, dependencia `serde` y dev-dependencia `serde_json`.
-  - [ ] T1.4 Módulos vacíos. Cada `mod.rs` solo lleva un `//!`:
+  - [x] T1.1 `Cargo.toml` raíz: `[workspace] members = ["crates/core"]` (T5 añade `src-tauri`), `resolver = "3"`, `[workspace.package] version = "0.1.0"`, `edition = "2024"`, `license` vacío (no se publica), y `[workspace.dependencies]` con `serde = { version = "1", features = ["derive"] }` y `serde_json = "1"`.
+  - [x] T1.2 `rust-toolchain.toml` según D6, con `profile = "minimal"`.
+  - [x] T1.3 `crates/core`: paquete `app-llama-core`, `version.workspace = true`, `edition.workspace = true`, dependencia `serde` y dev-dependencia `serde_json`.
+  - [x] T1.4 Módulos vacíos. Cada `mod.rs` solo lleva un `//!`:
     - `hf` (cliente de la API de Hugging Face, fase 2);
     - `download` (cola de descargas, reanudación y progreso, fase 3);
     - `gguf` (lector de metadatos GGUF, fase 4);
     - `runtime` (detección de hardware e instalación o selección de llama.cpp, fase 1);
     - `server` (ciclo de vida de llama-server, fase 5);
     - `config` (perfiles, ajustes y rutas, fases 4–5).
-  - [ ] T1.5 `about.rs`: `#[derive(Debug, Clone, PartialEq, Eq, Serialize)] pub struct AppInfo { pub name: String, pub version: String }` y `pub fn app_info() -> AppInfo`, con `name = "app-llama"` (constante `APP_NAME`) y `version = env!("CARGO_PKG_VERSION")`.
+  - [x] T1.5 `about.rs`: `#[derive(Debug, Clone, PartialEq, Eq, Serialize)] pub struct AppInfo { pub name: String, pub version: String }` y `pub fn app_info() -> AppInfo`, con `name = "app-llama"` (constante `APP_NAME`) y `version = env!("CARGO_PKG_VERSION")`.
 - **Tests unitarios** (en `about.rs`, `#[cfg(test)]`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
