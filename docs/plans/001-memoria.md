@@ -86,6 +86,7 @@ Todo se genera con un script determinista, nunca a mano.
     - Si aparece pero quedan sesiones de esa tarea en `short/`, se le bloquea con la orden `flush`.
   - Siempre se bloquea, aunque `stop_hook_active` sea `true`; el tope de 8 continuaciones garantiza que termina.
   - Se permite terminar si la rama no corresponde a un plan, y nunca se bloquea a otros agentes.
+  - **Limitación verificada en T13.** `SubagentStop` se dispara al terminar un `developer` o un `reviewer`, con su `agent_type` y su `agent_id`, y `memory-gate.mjs` sale con 2 y el motivo correcto (reproducido con el payload real). Pero Claude Code no aplica el bloqueo a los subagentes en segundo plano que terminan con `SubagentHandback`, que es como se lanzan todos en este proyecto: el subagente termina igualmente. `PreToolUse` (R8/R11) y `SubagentStart` sí funcionan en vivo. Mitigación: 1) el informe final del `developer` y del `reviewer` incluye la ruta de la sesión y `Memoria: … (Tn C<k>)`; 2) el orchestrator lo comprueba y retoma al agente si falta; 3) `close` se niega si quedan sesiones pendientes y `memory.mjs check` se ejecuta en el gate.
 - **D9 — La lógica de los hooks vive en `scripts/lib/memory-policy.mjs`**, testable. Los hooks protegidos solo la importan. `protect-files` la importa de forma dinámica con `catch`, para que R8 siga activo aunque el módulo falte.
 - **D10 — Entrada de `session` por stdin y slug obligatorio.**
   - Las líneas tienen la forma `resumen:`, `decision: [slug]` y `error: [slug]`, y se pasan con un heredoc `<<'EOF'`.
@@ -1183,18 +1184,19 @@ tipo: decisiones
   | `hook_start_planner_vacio` | SubagentStart `planner` | `additionalContext` == `[R11] La memoria a largo plazo está vacía.` |
   | `hook_start_explore` | SubagentStart `Explore` | 0; stdout vacío |
 - **T13.2 (O, en vivo en `chore/001-memoria`, tras reiniciar Claude Code para que cargue el settings):**
-  - [ ] a) El orchestrator ejecuta `node scripts/memory.mjs close`. Esperado: bloqueado por `R11`, lo que confirma que la sesión principal no tiene `agent_type`.
-  - [ ] b) El orchestrator ejecuta `node scripts/memory.mjs check`. Esperado: permitido.
-  - [ ] c) Lanza el `developer` con este encargo: "Prueba de humo de memoria, tarea T13 del plan 001. No cambies código. 1) Intenta `Write` de `docs/memory/short/prueba.md`. 2) Intenta `session` con `--agent reviewer`. 3) Intenta terminar sin sesión. 4) Registra la sesión con tu `agent_id`, resumen `prueba de humo de memoria`. Informa del resultado literal de cada paso." Esperado:
+  - [x] a) El orchestrator ejecuta `node scripts/memory.mjs close`. Esperado: bloqueado por `R11`, lo que confirma que la sesión principal no tiene `agent_type`.
+  - [x] b) El orchestrator ejecuta `node scripts/memory.mjs check`. Esperado: permitido.
+  - [x] c) Lanza el `developer` con este encargo: "Prueba de humo de memoria, tarea T13 del plan 001. No cambies código. 1) Intenta `Write` de `docs/memory/short/prueba.md`. 2) Intenta `session` con `--agent reviewer`. 3) Intenta terminar sin sesión. 4) Registra la sesión con tu `agent_id`, resumen `prueba de humo de memoria`. Informa del resultado literal de cada paso." Esperado:
     - 1) y 2) bloqueados por `R11`;
-    - 3) bloqueado por `SubagentStop`, con su `agent_id`;
+    - 3) bloqueado por `SubagentStop`, con su `agent_id`; **Resultado real:** no bloquea; el hook sale con 2 pero Claude Code no aplica el bloqueo (limitación de D8);
     - 4) crea `short/<fecha>-001-memoria-T13-developer-1.md`, con el mismo `agent_id` que se inyectó.
-  - [ ] d) Lanza el `reviewer` sobre T13 (resultados de T13.1 y T13.2.a–c) con `última tarea: no`, y le pide que intente terminar tras `session` y antes de `flush`. Esperado:
+  - [x] d) Lanza el `reviewer` sobre T13 (resultados de T13.1 y T13.2.a–c) con `última tarea: no`, y le pide que intente terminar tras `session` y antes de `flush`. Esperado:
     - bloqueado con la orden `flush`;
     - después de volcar, termina;
     - `medium/001-memoria.md` tiene `## T13` con `C1`, y no quedan sesiones de T13 en `short/`.
-  - [ ] e) Lanza el `planner` con este encargo: "Responde solo si tu contexto inicial contiene `[R11] Memoria a largo plazo` o `[R11] La memoria a largo plazo está vacía.`, y cita la línea." Esperado: cita la línea.
-  - [ ] f) Si a) se permite o c.1) no se bloquea, hay que parar y escalar al usuario (D6).
+    - **Resultado real:** no bloquea antes del `flush`; el hook sale con 2 pero Claude Code no aplica el bloqueo (limitación de D8).
+  - [x] e) Lanza el `planner` con este encargo: "Responde solo si tu contexto inicial contiene `[R11] Memoria a largo plazo` o `[R11] La memoria a largo plazo está vacía.`, y cita la línea." Esperado: cita la línea.
+  - [x] f) Si a) se permite o c.1) no se bloquea, hay que parar y escalar al usuario (D6). No aplica: a) bloqueado y c.1) bloqueado.
 
 ### T14 — Revisión final, cierre de memoria y cierre del plan (O + reviewer)
 - **Ficheros/módulos:** el diff de la rama, `docs/memory/` y este plan
@@ -1236,6 +1238,7 @@ tipo: decisiones
 | Los slugs divergen y nada llega al largo plazo. | Se inyectan los slugs existentes y `tags`. El reviewer puede pedir un renombrado como hallazgo `minor`. |
 | `session` vuelve a ejecutar el gate, lo que duplica su coste. | Aceptado por el usuario. Se optimizará en otro plan. |
 | El tope de 8 continuaciones deja terminar a un agente sin sesión o sin volcado. | El informe incluye la sesión o `Memoria: … (Tn C<k>)`, y el orchestrator lo comprueba. `close` falla si quedan sesiones. |
+| `SubagentStop` no bloquea subagentes en segundo plano (verificado en T13, ver D8). | El informe final del `developer` y del `reviewer` incluye la ruta de la sesión y `Memoria: … (Tn C<k>)`; el orchestrator lo comprueba y retoma al agente si falta; `close` se niega si quedan sesiones pendientes y `memory.mjs check` se ejecuta en el gate. |
 | Con `core.autocrlf=true` en Windows, los ficheros generados se extraen con CRLF. | `check` y los parsers normalizan `\r\n` (`check_tolera_crlf`). |
 | El cuerpo del heredoc con `git commit` o `Co-Authored-By:` activa guard-shell. | Bloquea de más, nunca de menos. Está documentado en el cierre de los agentes. |
 | La regla `allow` con heredoc multilínea puede pedir permiso. | El usuario lo aprueba; se ajusta en otro plan si molesta. |
