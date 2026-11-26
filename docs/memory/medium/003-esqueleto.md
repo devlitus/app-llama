@@ -26,3 +26,25 @@ estado: abierto
 ### Errores
 
 - **reserva-sin-test** — Rust no instalado: no se pudo validar rojo/verde ni generar Cargo.lock; requiere decision del usuario para instalar rustup (C1)
+
+## T2
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | ae91771dfbf0346e4 | rojo | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T2 hecha: planSteps puro en gate-steps.mjs con 7 tests, quality-gate lo usa, fila Build UI en GOVERNANCE §2
+- C1 · reviewer · planSteps puro con orden CA6, comandos Rust y etiquetas intactos, fila Build UI en GOVERNANCE; gate verde
+
+### Decisiones
+
+- **limitacion-documentada** — Build UI se planifica primero porque src-tauri incrusta ui/dist; nota en GOVERNANCE §2 (C1)
+- **refactor-equivalente** — la extracción conserva salida, mensajes de error y códigos de salida de quality-gate.mjs (C1)
+
+### Errores
+
+- (ninguno)

@@ -23,6 +23,7 @@ node scripts/quality-gate.mjs
 
 | Paso | Comando | Se ejecuta si existe |
 |---|---|---|
+| Build UI | `npm --prefix ui run build` | script `build` |
 | Formato Rust | `cargo fmt --all -- --check` | `Cargo.toml` |
 | Lint Rust | `cargo clippy --workspace --all-targets --locked -- -D warnings` | `Cargo.toml` |
 | Tests Rust | `cargo test --workspace --locked` | `Cargo.toml` |
@@ -33,6 +34,8 @@ node scripts/quality-gate.mjs
 | Memoria (R11) | `node scripts/memory.mjs check` | `scripts/memory.mjs` |
 | Patrones prohibidos | escaneo propio | siempre |
 | Secretos (R6) | escaneo propio de código, scripts/ y docs/memory/ | siempre |
+
+Build UI va antes de Rust porque `src-tauri` incrusta `ui/dist` al compilar.
 
 Si existe `ui/package.json`, los scripts `lint` y `test` son obligatorios.
 

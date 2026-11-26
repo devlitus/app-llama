@@ -7,6 +7,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findSecrets } from "./lib/secrets.mjs";
+import { planSteps } from "./lib/gate-steps.mjs";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 
@@ -78,31 +79,21 @@ function uiScripts() {
   return JSON.parse(readFileSync(pkg, "utf8")).scripts ?? {};
 }
 
+function reportError(error) {
+  process.stdout.write(`\n✖ ${error}\n`);
+  return false;
+}
+
 function buildSteps() {
-  const steps = [];
-  if (existsSync(join(ROOT, "Cargo.toml"))) {
-    steps.push(["Formato Rust", () => run("Formato Rust", "cargo fmt --all -- --check")]);
-    steps.push(["Lint Rust", () => run("Lint Rust", "cargo clippy --workspace --all-targets --locked -- -D warnings")]);
-    steps.push(["Tests Rust", () => run("Tests Rust", "cargo test --workspace --locked")]);
-  }
-  const scripts = uiScripts();
-  if (scripts) {
-    for (const required of ["lint", "test"]) {
-      if (!scripts[required]) {
-        steps.push([`Script UI '${required}'`, () => {
-          process.stdout.write(`\n✖ ui/package.json debe definir el script '${required}'\n`);
-          return false;
-        }]);
-      }
-    }
-    if (scripts.lint) steps.push(["Lint UI", () => run("Lint UI", "npm --prefix ui run lint")]);
-    if (scripts.check) steps.push(["Tipos UI", () => run("Tipos UI", "npm --prefix ui run check")]);
-    if (scripts.test) steps.push(["Tests UI", () => run("Tests UI", "npm --prefix ui test")]);
-  }
-  if (existsSync(join(ROOT, "scripts", "memory.mjs"))) {
-    steps.push(["Tests scripts", () => run("Tests scripts", 'node --test "scripts/**/*.test.mjs"')]);
-    steps.push(["Memoria (R11)", () => run("Memoria (R11)", "node scripts/memory.mjs check")]);
-  }
+  const planned = planSteps({
+    hasCargo: existsSync(join(ROOT, "Cargo.toml")),
+    uiScripts: uiScripts(),
+    hasMemoryCli: existsSync(join(ROOT, "scripts", "memory.mjs")),
+  });
+  const steps = planned.map(({ label, cmd, error }) => [
+    label,
+    error ? () => reportError(error) : () => run(label, cmd),
+  ]);
   steps.push(["Patrones prohibidos", scanForbiddenPatterns]);
   steps.push(["Secretos", scanSecrets]);
   return steps;

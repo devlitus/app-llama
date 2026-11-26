@@ -118,13 +118,13 @@ docs/DESARROLLO.md
   | `app_info_serializa_campos` | `serde_json::to_value(app_info())` | `{"name":"app-llama","version":"0.1.0"}` exacto (sin campos extra) |
   | `app_info_es_determinista` | dos llamadas | iguales (`assert_eq!`) |
 
-### T2 — Quality gate: pasos extraídos, testeables y con Build UI (developer)
+### T2 — Quality gate: pasos extraídos, testeables y con Build UI (developer) ✅ hecha
 - **Ficheros/módulos:** `scripts/lib/gate-steps.mjs` (nuevo), `scripts/lib/gate-steps.test.mjs` (nuevo), `scripts/quality-gate.mjs`, `docs/GOVERNANCE.md` (§2)
 - **Depende de:** —
 - **Cubre:** CA6, CA10
 - **Subtareas:**
-  - [ ] T2.1 Tests (rojo).
-  - [ ] T2.2 `export function planSteps({ hasCargo, uiScripts, hasMemoryCli })` → `Array<{ label, cmd } | { label, error }>`. Es una función pura, sin acceso a disco. `uiScripts` es `null` si no existe `ui/package.json`, y si existe, el objeto `scripts`. Orden:
+  - [x] T2.1 Tests (rojo).
+  - [x] T2.2 `export function planSteps({ hasCargo, uiScripts, hasMemoryCli })` → `Array<{ label, cmd } | { label, error }>`. Es una función pura, sin acceso a disco. `uiScripts` es `null` si no existe `ui/package.json`, y si existe, el objeto `scripts`. Orden:
     1. `Build UI` (`npm --prefix ui run build`) si `uiScripts?.build`.
     2. Los 3 de Rust si `hasCargo`, con los comandos actuales sin cambios.
     3. Un `{ label: "Script UI '<x>'", error: "ui/package.json debe definir el script '<x>'" }` por cada `lint` o `test` que falte.
@@ -132,8 +132,8 @@ docs/DESARROLLO.md
     5. `Tests scripts` y `Memoria (R11)` si `hasMemoryCli`.
     
     No incluye los escaneos internos (Patrones prohibidos y Secretos), que `quality-gate.mjs` añade siempre al final.
-  - [ ] T2.3 `quality-gate.mjs`: `buildSteps()` usa `planSteps` y conserva la salida y los códigos de salida actuales. Las etiquetas no cambian.
-  - [ ] T2.4 `GOVERNANCE.md` §2: fila `Build UI | npm --prefix ui run build | script build`, la primera de la tabla, y una nota de una línea: "va antes de Rust porque `src-tauri` incrusta `ui/dist` al compilar".
+  - [x] T2.3 `quality-gate.mjs`: `buildSteps()` usa `planSteps` y conserva la salida y los códigos de salida actuales. Las etiquetas no cambian.
+  - [x] T2.4 `GOVERNANCE.md` §2: fila `Build UI | npm --prefix ui run build | script build`, la primera de la tabla, y una nota de una línea: "va antes de Rust porque `src-tauri` incrusta `ui/dist` al compilar".
 - **Tests unitarios** (`scripts/lib/gate-steps.test.mjs`, `node:test`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
