@@ -7,6 +7,7 @@ import { isMemoryPath } from "./memory-path.mjs";
 import { isAllowedRead } from "./memory-readonly.mjs";
 import { startContextFor } from "./memory-start.mjs";
 import { stopDecisionFor } from "./memory-stop.mjs";
+import { stripDataHeredocs } from "./shell-heredoc.mjs";
 import { mentionsCli, touchesMemory } from "./memory-touch.mjs";
 
 const FILE_TOOLS = ["Edit", "Write", "NotebookEdit"];
@@ -17,11 +18,6 @@ const UNSUPPORTED_FORM = "R11: forma de comando no admitida; usa exactamente nod
 const NO_INLINE_CODE = "R11: no se admite código en línea en comandos que tocan la memoria";
 
 const deny = (reason) => ({ allow: false, reason });
-
-// R8 solo debe evaluar la línea de la orden: el cuerpo del heredoc son datos, no órdenes.
-export function memoryCommandLine(command) {
-  return parseInvocation(command)?.line ?? null;
-}
 
 function checkFileTool({ tool_input: toolInput = {} }, root) {
   const filePath = toolInput.file_path ?? toolInput.notebook_path;
@@ -39,7 +35,9 @@ function checkShellCommand(input) {
   const command = input.tool_input?.command ?? "";
   const invocation = parseInvocation(command);
   if (invocation) return checkInvocation(input, invocation);
-  return touchesMemory(command) ? checkMemoryTouchingCommand(command) : ALLOW;
+  // El cuerpo de un heredoc de datos no se ejecuta: solo se evalúa el resto de la orden.
+  const effective = input.tool_name === "Bash" ? stripDataHeredocs(command) : command;
+  return touchesMemory(effective) ? checkMemoryTouchingCommand(effective) : ALLOW;
 }
 
 export function checkMemoryToolUse(input, { root }) {

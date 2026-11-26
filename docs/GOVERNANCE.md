@@ -6,7 +6,7 @@ Reglas innegociables del proyecto. Se aplican **por máquina**, no por confianza
 
 | Capa | Dónde | Qué bloquea |
 |---|---|---|
-| Hooks de Claude Code | `.claude/settings.json` + `.claude/hooks/` | Commits con gate en rojo, `--no-verify`, push a `main`, push forzado, terminar el turno con código en rojo, editar ficheros de governance, commits con líneas de atribución y commits en ramas sin plan, escribir la memoria fuera de scripts/memory.mjs, que developer/reviewer terminen sin registrar o volcar su sesión |
+| Hooks de Claude Code | `.claude/settings.json` + `.claude/hooks/` | Commits con gate en rojo, `--no-verify`, push a `main`, push forzado, terminar el turno con código en rojo, commits con líneas de atribución y commits en ramas sin plan, escribir la memoria fuera de scripts/memory.mjs, que developer/reviewer terminen sin registrar o volcar su sesión |
 | Git hooks `pre-commit` y `commit-msg` | `.githooks/` | Cualquier commit (humano o agente) con gate en rojo o mensaje que incumpla R9 |
 | CI | `.github/workflows/ci.yml` | PRs con gate en rojo en Windows o macOS |
 | Protección de rama | GitHub → Settings → Branches | Merge a `main` sin CI verde ni revisión |
@@ -64,8 +64,8 @@ Ningún secreto en el repo (tokens de HF, certificados de firma). Los tokens del
 - `core` no depende de Tauri ni de la UI.
 - Sin código muerto ni comentarios que repiten el código.
 
-### R8 — Ficheros protegidos
-Los agentes no pueden editar: `.claude/settings.json`, `.claude/hooks/**`, `.githooks/**`, `scripts/quality-gate.mjs`, `scripts/memory.mjs`, `scripts/memory.test.mjs`, `scripts/lib/**`, `.github/workflows/**`, `docs/GOVERNANCE.md`. Los cambios a la governance los hace el usuario a mano.
+### R8 — Retirada
+Retirada en el plan 002 por decisión del usuario: los agentes pueden modificar los ficheros de governance. El número se conserva para no renumerar R9–R11, a los que remiten los planes cerrados.
 
 ### R9 — Mensajes de commit
 - [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/): `tipo(ámbito)!: descripción`.
