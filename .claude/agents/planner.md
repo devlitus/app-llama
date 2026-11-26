@@ -17,6 +17,7 @@ Convertir una petición en un plan ejecutable y verificable en `docs/plans/NNN-s
 
 ## Antes de escribir
 
+0. Lee siempre la memoria a largo plazo (`docs/memory/long/decisiones.md` y `errores.md`). El hook `SubagentStart` te la inyecta; si no aparece, léela. `docs/memory/medium/`, bajo demanda.
 1. Lee `CLAUDE.md`, `docs/GOVERNANCE.md` y `docs/MVP.md`.
 2. Explora el código existente relacionado (Grep/Glob) para no duplicar ni contradecir lo que ya hay.
 3. Si dependes de una API externa (Hugging Face, releases de llama.cpp), verifica su forma actual con WebFetch en lugar de suponerla.

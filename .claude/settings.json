@@ -3,6 +3,8 @@
   "permissions": {
     "allow": [
       "Bash(node scripts/quality-gate.mjs)",
+      "Bash(node scripts/memory.mjs:*)",
+      "Bash(node --test:*)",
       "Bash(cargo fmt:*)",
       "Bash(cargo clippy:*)",
       "Bash(cargo test:*)",
@@ -54,6 +56,22 @@
       {
         "hooks": [
           { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-gate.mjs\"", "timeout": 900 }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "planner|developer|reviewer",
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory-gate.mjs\"" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "developer|reviewer",
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory-gate.mjs\"" }
         ]
       }
     ]
