@@ -1,7 +1,7 @@
 # 001 — Memoria del equipo de agentes (corto, medio y largo plazo)
 
 - **Tipo:** chore
-- **Estado:** aprobado
+- **Estado:** hecho
 - **Rama:** chore/001-memoria
 - **Fase del roadmap:** previa a la fase 0 (Esqueleto) de [docs/MVP.md](../MVP.md), igual que el plan 000
 
@@ -1203,9 +1203,9 @@ tipo: decisiones
 - **Depende de:** T1–T13
 - **Cubre:** CA16
 - **Subtareas:**
-  - [ ] T14.1 El orchestrator lanza el `reviewer` con este plan, el diff de T8–T13 (incluidos los ficheros U), los resultados de T11–T13 y `última tarea: sí`.
-  - [ ] T14.2 El reviewer ejecuta `session` y `flush --task T14`. Si el veredicto es `APPROVED`, ejecuta también `close`. Con `CHANGES_REQUESTED`, el usuario aplica los cambios en los ficheros protegidos (R8); como máximo, 3 ciclos.
-  - [ ] T14.3 El orchestrator marca las tareas y pone `Estado: hecho`. Después ejecuta `check` y el gate, y hace el commit con R9.
+  - [x] T14.1 El orchestrator lanza el `reviewer` con este plan, el diff de T8–T13 (incluidos los ficheros U), los resultados de T11–T13 y `última tarea: sí`.
+  - [x] T14.2 El reviewer ejecuta `session` y `flush --task T14`. Si el veredicto es `APPROVED`, ejecuta también `close`. Con `CHANGES_REQUESTED`, el usuario aplica los cambios en los ficheros protegidos (R8); como máximo, 3 ciclos.
+  - [x] T14.3 El orchestrator marca las tareas y pone `Estado: hecho`. Después ejecuta `check` y el gate, y hace el commit con R9.
 - **Tests unitarios (comprobaciones):**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
