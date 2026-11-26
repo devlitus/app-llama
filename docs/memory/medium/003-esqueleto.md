@@ -115,3 +115,24 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T6
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | a2d980c8054de2b22 | rojo | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T6 versión en Ajustes vía getAppInfo/app_info y hallazgos menores de T5 (CSP, tauri, build.rs, tildes)
+- C1 · reviewer · T6 aprobada; api.ts único punto con app_info, Ajustes muestra versión o no disponible, gate verde, minors de T5 corregidos salvo una tilde
+
+### Decisiones
+
+- **limitacion-documentada** — CSP con style-src unsafe-inline e img-src data: sin uso actual en la UI; se acepta como minor (C1)
+
+### Errores
+
+- **csp-permisiva** — img-src data: y unsafe-inline añadidos sin necesidad verificada; queda "json valido" sin tilde en lib.rs:75; rojo de TDD no ejecutado (proceso) (C1)

@@ -242,14 +242,14 @@ docs/DESARROLLO.md
   | `ipc_app_info_responde` | `register(tauri::test::mock_builder())` + `mock_context(noop_assets())` + `get_ipc_response` con `cmd: "app_info"` | `Ok`, deserializa a `serde_json::Value` `{"name":"app-llama","version":"0.1.0"}` |
   | `ipc_comando_desconocido_falla` | igual, con `cmd: "no_existe"` | `Err` |
 
-### T6 — UI ↔ backend: versión en Ajustes (developer)
+### T6 — UI ↔ backend: versión en Ajustes (developer) ✅ hecha
 - **Ficheros/módulos:** `ui/src/lib/api.ts`, `ui/src/lib/api.test.ts`, `ui/src/views/Settings.svelte`, `ui/src/views/Settings.test.ts`
 - **Depende de:** T4, T5
 - **Cubre:** CA3 (lado UI), CA5
 - **Subtareas:**
-  - [ ] T6.1 Tests (rojo). `afterEach(clearMocks)`. Si jsdom no trae `crypto.getRandomValues`, se añade un polyfill determinista en el `setupFiles`.
-  - [ ] T6.2 `api.ts`: `export interface AppInfo { name: string; version: string }` y `export function getAppInfo(): Promise<AppInfo>`, que llama a `invoke<AppInfo>("app_info")`. Es el único punto de la UI que conoce el nombre del comando.
-  - [ ] T6.3 `Settings.svelte`: al montarse llama a `getAppInfo()`. Mientras carga muestra `Versión …`, si acaba bien `Versión {version}` y si falla `Versión no disponible`.
+  - [x] T6.1 Tests (rojo). `afterEach(clearMocks)`. Si jsdom no trae `crypto.getRandomValues`, se añade un polyfill determinista en el `setupFiles`.
+  - [x] T6.2 `api.ts`: `export interface AppInfo { name: string; version: string }` y `export function getAppInfo(): Promise<AppInfo>`, que llama a `invoke<AppInfo>("app_info")`. Es el único punto de la UI que conoce el nombre del comando.
+  - [x] T6.3 `Settings.svelte`: al montarse llama a `getAppInfo()`. Mientras carga muestra `Versión …`, si acaba bien `Versión {version}` y si falla `Versión no disponible`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

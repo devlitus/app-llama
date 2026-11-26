@@ -31,7 +31,7 @@ mod tests {
                 cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "http://tauri.localhost".parse().expect("url valida"),
+                url: "http://tauri.localhost".parse().expect("url válida"),
                 body: InvokeBody::default(),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),
