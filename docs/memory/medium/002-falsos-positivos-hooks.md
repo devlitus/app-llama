@@ -52,3 +52,28 @@ estado: abierto
 
 - **comentario-oculta-orden** — un comentario con comillas escondía una orden; corregido, issue #15 (C1, C2 · #15)
 - **glob-sin-comillas** — comodines sin comillas llegaban literales; corregido, issue #16 (C1, C2 · #16)
+
+## T3
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-26 | 1 | a3207262c8c2205fa | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-26 | 1 | a1ba82b14b87c5611 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T3 stripDataHeredocs en shell-heredoc.mjs con tests normativos y de cabeceras sospechosas.
+- C1 · reviewer · T3 stripDataHeredocs revisado; gate verde pero despoja el cuerpo de un heredoc canalizado con | al final de la cabecera.
+- C2 · developer · Ciclo 2 de T3: stripDataHeredocs deja intacta la orden si tras la cabecera hay una tubería (#17).
+- C2 · reviewer · Ciclo 2 de T3: #17 resuelto (| , ||, |&, | \, && y & tras la cabecera dejan la orden intacta); gate verde, 6/6 tests.
+
+### Decisiones
+
+- **analizador-null-ante-duda** — Rechazar cualquier | en el resto de la cabecera, incluso entre comillas, es conservador e inocuo. (C1, C2)
+- **limitacion-documentada** — hash -p /bin/sh cat o alias cat=sh con expand_aliases en lineas previas hacen que cat ejecute el cuerpo despojado; evasion deliberada de la misma clase que base64 | sh, minor sin issue. (C2)
+
+### Errores
+
+- **tuberia-tras-cabecera** — Heredoc con cabecera terminada en | (también |& y 2>&1 |) se despojaba y ocultaba un cuerpo ejecutable; #17. (C1, C2 · #17)

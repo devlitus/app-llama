@@ -199,8 +199,8 @@ test("palabras_no_admitidas", () => {
 - **Depende de:** T2
 - **Cubre:** CA2, CA8
 - **Subtareas:**
-  - [ ] T3.1 Tests (rojo).
-  - [ ] T3.2 `export function stripDataHeredocs(command)` → `string`, según el Diseño (2). La línea de cabecera se conserva con el operador `<<'TAG'` sustituido por un espacio, y se eliminan las líneas del cuerpo y el terminador.
+  - [x] T3.1 Tests (rojo).
+  - [x] T3.2 `export function stripDataHeredocs(command)` → `string`, según el Diseño (2). La línea de cabecera se conserva con el operador `<<'TAG'` sustituido por un espacio, y se eliminan las líneas del cuerpo y el terminador.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
