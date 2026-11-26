@@ -25,14 +25,7 @@ export function git(args) {
 }
 
 export const PROTECTED_PATHS = [
-  /^\.claude\/settings\.json$/,
-  /^\.claude\/hooks\//,
-  /^\.githooks\//,
-  /^scripts\/quality-gate\.mjs$/,
-  /^scripts\/memory(\.test)?\.mjs$/,
-  /^scripts\/lib\//,
-  /^\.github\/workflows\//,
-  /^docs\/GOVERNANCE\.md$/,
+
 ];
 
 export function toProjectRelative(filePath) {
