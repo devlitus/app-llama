@@ -187,9 +187,9 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** —
 - **Cubre:** CA4
 - **Subtareas:**
-  - [ ] T1.1 `Release { tag_name, draft, prerelease, assets }` y `Asset { name, size, digest: Option<String>, browser_download_url }` con `serde` (los campos desconocidos se ignoran).
-  - [ ] T1.2 `parse_releases(json: &str) -> Result<Vec<Release>, RuntimeError>`, `build_number(tag) -> Option<u32>` y `Asset::sha256() -> Option<[u8; 32]>` (solo si es `sha256:` + 64 hex).
-  - [ ] T1.3 `latest_build_release(releases, is_compatible: impl Fn(&Release) -> bool) -> Result<&Release, RuntimeError>`: la de mayor `build_number` entre las no `draft` con tag `^b\d+$` que cumplen el predicado. `prerelease` no se tiene en cuenta.
+  - [x] T1.1 `Release { tag_name, draft, prerelease, assets }` y `Asset { name, size, digest: Option<String>, browser_download_url }` con `serde` (los campos desconocidos se ignoran).
+  - [x] T1.2 `parse_releases(json: &str) -> Result<Vec<Release>, RuntimeError>`, `build_number(tag) -> Option<u32>` y `Asset::sha256() -> Option<[u8; 32]>` (solo si es `sha256:` + 64 hex).
+  - [x] T1.3 `latest_build_release(releases, is_compatible: impl Fn(&Release) -> bool) -> Result<&Release, RuntimeError>`: la de mayor `build_number` entre las no `draft` con tag `^b\d+$` que cumplen el predicado. `prerelease` no se tiene en cuenta.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

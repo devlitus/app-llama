@@ -1,0 +1,179 @@
+[
+  {
+    "tag_name": "v1.1.0",
+    "name": "v1.1.0",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-26T10:00:00Z",
+    "assets": [
+      {
+        "name": "nightly-tag.txt",
+        "size": 10000000,
+        "digest": "sha256:33b006167ed62bf5377302601f87c0b6ec486e00e26917143730b810410d0861",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/v1.1.0/nightly-tag.txt"
+      }
+    ]
+  },
+  {
+    "tag_name": "b12780",
+    "name": "b12780",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-11-26T10:00:00Z",
+    "assets": [
+      {
+        "name": "llama-b12780-bin-win-cpu-x64.zip",
+        "size": 10000000,
+        "digest": "sha256:7dab5f8afa51c5bfcc04900853aad8447fb95f57784d9b8afea26e6745d72e40",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-cpu-x64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-cpu-arm64.zip",
+        "size": 10001000,
+        "digest": "sha256:81f39bdff058360f2ccc9f519a33c7184a4a851e0243383dd4226b7b5ed2a78f",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-cpu-arm64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-cuda-12.4-x64.zip",
+        "size": 10002000,
+        "digest": "sha256:eaf265b962e0f49abeed439879519d2ba230d8a77ef5d9d8c9b090c92c43f8c6",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-cuda-12.4-x64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-cuda-13.5-x64.zip",
+        "size": 10003000,
+        "digest": "sha256:d3cd795a11e568fabb081e8b35a6b3b56c50409d82fb69d2bf29e2e48ad9cf4b",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-cuda-13.5-x64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-cuda-13.5-arm64.zip",
+        "size": 10004000,
+        "digest": "sha256:852cd0dafe3fd3b8c0079deeaa029d29ffef1cb5475d2ef05ceccc3c763487d7",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-cuda-13.5-arm64.zip"
+      },
+      {
+        "name": "cudart-llama-bin-win-cuda-12.4-x64.zip",
+        "size": 10005000,
+        "digest": "sha256:d224845b9fea6aadf30330dd5b4d00ed6dc822b63e6a89eb231c12cc09e2e29b",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/cudart-llama-bin-win-cuda-12.4-x64.zip"
+      },
+      {
+        "name": "cudart-llama-bin-win-cuda-13.5-x64.zip",
+        "size": 10006000,
+        "digest": "sha256:130e7cae421a8ac6ad90d0c0e7a55f8f0c7833145eab75f3b2196a6f129b450c",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/cudart-llama-bin-win-cuda-13.5-x64.zip"
+      },
+      {
+        "name": "cudart-llama-bin-win-cuda-13.5-arm64.zip",
+        "size": 10007000,
+        "digest": "sha256:5feb98c4b7b3918852e72133c7b9653b6d1f31263a0902ae674258c25da1eb22",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/cudart-llama-bin-win-cuda-13.5-arm64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-vulkan-x64.zip",
+        "size": 10008000,
+        "digest": "sha256:bea9a2d49f2f5e33d751db03b8fd44abbf43848703bd1eec20215e6cb7310440",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-vulkan-x64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-vulkan-arm64.zip",
+        "size": 10009000,
+        "digest": "sha256:e48282416da97a852b17d8acb5c0179b9f38404756475dce527772d95428bb97",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-vulkan-arm64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-macos-arm64.tar.gz",
+        "size": 10010000,
+        "digest": "sha256:e4d7feb7eb7c91ef2035ff17a9d000a54f2e6a986859b7d8ec703eb0dde798fb",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-macos-arm64.tar.gz"
+      },
+      {
+        "name": "llama-b12780-bin-macos-x64.tar.gz",
+        "size": 10011000,
+        "digest": "sha256:4da19f6a1f8b33988b0805f4f655ab5c58b847f75b77b3ac4c19db44d1ee3453",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-macos-x64.tar.gz"
+      }
+    ]
+  },
+  {
+    "tag_name": "b12779",
+    "name": "b12779",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-11-26T10:00:00Z",
+    "assets": [
+      {
+        "name": "llama-b12779-bin-win-cpu-x64.zip",
+        "size": 10000000,
+        "digest": "sha256:c81fec14443a0bf86a02c6eeea1ecc73f73391a8386725d3849d47e6cc259fcf",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-win-cpu-x64.zip"
+      },
+      {
+        "name": "llama-b12779-bin-win-cpu-arm64.zip",
+        "size": 10001000,
+        "digest": "sha256:ad790f477249a3143f11a7c2d1a764cb386c39a39e1aba29746bfe1a8e387e90",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-win-cpu-arm64.zip"
+      },
+      {
+        "name": "llama-b12779-bin-win-cuda-12.4-x64.zip",
+        "size": 10002000,
+        "digest": "sha256:2bf8bbcfad42d53959fd38152c5ac27131859eebadc5cc2b0ad9e8aa3ed198a3",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-win-cuda-12.4-x64.zip"
+      },
+      {
+        "name": "llama-b12779-bin-win-cuda-13.5-x64.zip",
+        "size": 10003000,
+        "digest": "sha256:9dc92dfa335e1f0966ae83d57ecbc822286441f67876d9c5a37b3daf37c18982",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-win-cuda-13.5-x64.zip"
+      },
+      {
+        "name": "llama-b12779-bin-win-cuda-13.5-arm64.zip",
+        "size": 10004000,
+        "digest": "sha256:f443d1b583d6b1a14c51fd1066c3c9adc4af886e57031109767f9c748b0a0ec1",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-win-cuda-13.5-arm64.zip"
+      },
+      {
+        "name": "cudart-llama-bin-win-cuda-12.4-x64.zip",
+        "size": 10005000,
+        "digest": "sha256:90568c3db8437634dfaf2d126ab0898b9b251c60cc6f68262c702d92eb5ba944",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/cudart-llama-bin-win-cuda-12.4-x64.zip"
+      },
+      {
+        "name": "cudart-llama-bin-win-cuda-13.5-x64.zip",
+        "size": 10006000,
+        "digest": "sha256:7e48186e2307bbacc8d2b2aca65b03e63e2f5cdfec86a7a7ac1e3f2acaea34f0",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/cudart-llama-bin-win-cuda-13.5-x64.zip"
+      },
+      {
+        "name": "cudart-llama-bin-win-cuda-13.5-arm64.zip",
+        "size": 10007000,
+        "digest": "sha256:be155edd4ad53e28b59dde6a221bde53bd4ba1774298955892d14fc5635c42bc",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/cudart-llama-bin-win-cuda-13.5-arm64.zip"
+      },
+      {
+        "name": "llama-b12779-bin-win-vulkan-x64.zip",
+        "size": 10008000,
+        "digest": "sha256:b7226303f530f0218315b661d758928c0d6d39d4ee7a9a7103c371b9c5a1df8c",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-win-vulkan-x64.zip"
+      },
+      {
+        "name": "llama-b12779-bin-win-vulkan-arm64.zip",
+        "size": 10009000,
+        "digest": "sha256:903f2a0a9282cfbf096b084ee8c8f81e80501eb40b0e70ed8e9f0c5fc442e941",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-win-vulkan-arm64.zip"
+      },
+      {
+        "name": "llama-b12779-bin-macos-arm64.tar.gz",
+        "size": 10010000,
+        "digest": "sha256:0c90dac6beaab78b4e8e93584ba80f547e2cb9accd8c58cb0476cdc1c054229e",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-macos-arm64.tar.gz"
+      },
+      {
+        "name": "llama-b12779-bin-macos-x64.tar.gz",
+        "size": 10011000,
+        "digest": "sha256:32dfb6eceef0291021f79a8282c515d450c0299644f96c0c553b881853271a5e",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12779/llama-b12779-bin-macos-x64.tar.gz"
+      }
+    ]
+  }
+]

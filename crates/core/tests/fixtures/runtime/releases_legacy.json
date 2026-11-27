@@ -1,0 +1,59 @@
+[
+  {
+    "tag_name": "b4500",
+    "name": "b4500",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-11-26T10:00:00Z",
+    "assets": [
+      {
+        "name": "llama-b4500-bin-win-avx-x64.zip",
+        "size": 10000000,
+        "digest": "sha256:a4d2a5d31669537edb22e363018c85d27d7f480215f916a2c275bcfbad453586",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/llama-b4500-bin-win-avx-x64.zip"
+      },
+      {
+        "name": "llama-b4500-bin-win-avx2-x64.zip",
+        "size": 10001000,
+        "digest": "sha256:6433d4c96da7ca2504e2832bc8b3128bed04440fdb68a011c4b65fc8f9414e80",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/llama-b4500-bin-win-avx2-x64.zip"
+      },
+      {
+        "name": "llama-b4500-bin-win-avx512-x64.zip",
+        "size": 10002000,
+        "digest": "sha256:264299abfb317fa3c8ddc0ff16426f77e24a4e6e042ea632098273c8bc568ea9",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/llama-b4500-bin-win-avx512-x64.zip"
+      },
+      {
+        "name": "llama-b4500-bin-win-noavx-x64.zip",
+        "size": 10003000,
+        "digest": "sha256:bc2005307aeccedf50a0106480452eb9b5fa1c086c5103a556a7861386bd2cfa",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/llama-b4500-bin-win-noavx-x64.zip"
+      },
+      {
+        "name": "llama-b4500-bin-win-cuda-cu12.4-x64.zip",
+        "size": 10004000,
+        "digest": "sha256:7e8ad0015cd85c03d1335a319f743d4334fdd985175cbe84410e50930f19e389",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/llama-b4500-bin-win-cuda-cu12.4-x64.zip"
+      },
+      {
+        "name": "cudart-llama-bin-win-cu12.4-x64.zip",
+        "size": 10005000,
+        "digest": "sha256:b89aa28f945d4de3eedf2b7a9a87dd5545aec0bf395a57691bb6c6807f4c3150",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/cudart-llama-bin-win-cu12.4-x64.zip"
+      },
+      {
+        "name": "llama-b4500-bin-win-vulkan-x64.zip",
+        "size": 10006000,
+        "digest": "sha256:c08be45a632dbb31366161d0a3eda491a7fa77166334d5b80dfaa6c8ff46a8f1",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/llama-b4500-bin-win-vulkan-x64.zip"
+      },
+      {
+        "name": "llama-b4500-bin-macos-arm64.zip",
+        "size": 10007000,
+        "digest": "sha256:d1c5326d15bd5962beb597f4f5815d6847da029af5f603eacccb4b909bdcda32",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b4500/llama-b4500-bin-macos-arm64.zip"
+      }
+    ]
+  }
+]
