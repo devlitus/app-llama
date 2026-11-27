@@ -1,11 +1,28 @@
+use tauri::Manager;
+
 mod commands;
 
 pub fn register<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
-    builder.invoke_handler(tauri::generate_handler![commands::app_info])
+    builder.invoke_handler(tauri::generate_handler![
+        commands::app_info,
+        commands::runtime::runtime_hardware,
+        commands::runtime::runtime_status,
+        commands::runtime::runtime_check_update,
+        commands::runtime::runtime_install,
+        commands::runtime::runtime_cancel_install,
+        commands::runtime::runtime_use_external,
+    ])
 }
 
 pub fn run() -> Result<(), tauri::Error> {
-    register(tauri::Builder::default()).run(tauri::generate_context!())
+    register(tauri::Builder::default())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let state = commands::runtime::production_state(&app.path().app_data_dir()?)?;
+            app.manage(state);
+            Ok(())
+        })
+        .run(tauri::generate_context!())
 }
 
 #[cfg(test)]

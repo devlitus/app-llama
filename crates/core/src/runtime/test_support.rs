@@ -1,5 +1,6 @@
 //! Dobles de test compartidos por los módulos de `runtime`.
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -362,24 +363,46 @@ impl ArtifactFetcher for FakeFetcher {
     }
 }
 
-/// `DirRemover` que o bien borra de verdad o bien falla siempre.
+enum RemoverMode {
+    Deleting,
+    FailingAlways,
+    FailingFor(OsString),
+}
+
+/// `DirRemover` que borra de verdad, falla siempre o falla solo para una ruta concreta.
 pub struct FakeRemover {
-    fails: bool,
+    mode: RemoverMode,
 }
 
 impl FakeRemover {
     pub fn deleting() -> Self {
-        Self { fails: false }
+        Self {
+            mode: RemoverMode::Deleting,
+        }
     }
 
     pub fn failing() -> Self {
-        Self { fails: true }
+        Self {
+            mode: RemoverMode::FailingAlways,
+        }
+    }
+
+    /// Falla solo para los directorios con ese nombre (el `tempdir` aún no existe al crearlo).
+    pub fn failing_for(dir_name: &str) -> Self {
+        Self {
+            mode: RemoverMode::FailingFor(dir_name.into()),
+        }
     }
 }
 
 impl DirRemover for FakeRemover {
     fn remove_dir_all(&self, path: &Path) -> std::io::Result<()> {
-        if self.fails {
+        let blocked = match &self.mode {
+            RemoverMode::Deleting => false,
+            RemoverMode::FailingAlways => true,
+            RemoverMode::FailingFor(name) => path.file_name() == Some(name.as_os_str()),
+        };
+        if blocked {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "fichero bloqueado",
@@ -448,7 +471,7 @@ pub fn fixture_with_fetcher(
     source: FakeSource,
     probe: FakeProbe,
     runner: FakeRunner,
-    remover: FakeRemover,
+    remover: impl DirRemover + 'static,
     fetcher: FakeFetcher,
 ) -> Fixture {
     let temp = tempfile::tempdir().unwrap();

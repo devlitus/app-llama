@@ -197,7 +197,7 @@ impl RuntimeManager {
         emitter.emit(ProgressPhase::Verifying, 0, 1);
         let version = verify_server(runner, &install_dir.join(&server)).await?;
         cancel.check()?;
-        self.clear_residual(final_dir).await?;
+        self.free_destination(final_dir).await?;
         tokio::fs::rename(&install_dir, final_dir).await?;
         let active = ActiveRuntime {
             source: RuntimeSource::Managed {
@@ -207,13 +207,20 @@ impl RuntimeManager {
             server_path: final_dir.join(server),
             version,
         };
-        // Si no, el siguiente `status()` borraría el runtime recién activado.
-        self.modify_state(|state| {
-            state.active = Some(active.clone());
-            state.pending_cleanup.retain(|path| path != final_dir);
-        })
-        .await?;
+        self.modify_state(|state| state.active = Some(active.clone()))
+            .await?;
         Ok(active)
+    }
+
+    /// Deja `final_dir` libre para el `rename` y lo saca de `pending_cleanup` *antes* de él: si
+    /// no, un `status()` entre el `rename` y el guardado del estado borraría el runtime recién
+    /// instalado. Si el `rename` falla después, no se pierde ningún borrado pendiente porque
+    /// el destino ya no existe.
+    async fn free_destination(&self, final_dir: &Path) -> Result<(), RuntimeError> {
+        self.clear_residual(final_dir).await?;
+        self.modify_state(|state| state.pending_cleanup.retain(|path| path != final_dir))
+            .await?;
+        Ok(())
     }
 
     /// Un destino que ya existe (y no es el activo) es un residuo: se borra antes del `rename`.
@@ -361,7 +368,8 @@ mod tests {
         cuda_vulkan_probe, fixture_with_fetcher, managed, state_with, windows_probe,
     };
     use crate::runtime::{
-        Arch, Backend, CpuIsa, Os, RuntimeSource, RuntimeState, RuntimeStatus, parse_releases,
+        Arch, Backend, CpuIsa, DirRemover, Os, RuntimeSource, RuntimeState, RuntimeStatus,
+        parse_releases,
     };
 
     const CPU_ZIP: &str = "llama-b12780-bin-win-cpu-x64.zip";
@@ -652,10 +660,10 @@ mod tests {
     async fn update_reemplaza_y_borra_anterior() {
         let fx = windows_fixture(windows_fetcher());
         fx.save(&state_with(Some(managed(12779))));
-        make_dir_with_file(&fx.runtime_dir.join("b12779"));
+        make_dir_with_file(&fx.runtime_dir.join("b12779-cpu"));
         let active = install_auto(&fx).await.unwrap();
         assert_eq!(active.version.build, 12780);
-        assert!(!fx.runtime_dir.join("b12779").exists());
+        assert!(!fx.runtime_dir.join("b12779-cpu").exists());
         assert_eq!(fx.saved().active, Some(active));
     }
 
@@ -667,9 +675,11 @@ mod tests {
             backend: None,
             ..managed(12000)
         })));
-        make_dir_with_file(&fx.runtime_dir.join("b12779"));
+        make_dir_with_file(&fx.runtime_dir.join("b12779-cpu"));
+        make_dir_with_file(&fx.runtime_dir.join("b12000"));
         install_auto(&fx).await.unwrap();
-        assert!(!fx.runtime_dir.join("b12779").exists());
+        assert!(!fx.runtime_dir.join("b12779-cpu").exists());
+        assert!(!fx.runtime_dir.join("b12000").exists());
         assert!(matches!(
             fx.saved().active.map(|active| active.source),
             Some(RuntimeSource::Managed { .. })
@@ -740,6 +750,8 @@ mod tests {
         let fx = windows_fixture(windows_fetcher());
         let first = install_auto(&fx).await.unwrap();
         let fetched = fx.fetcher.fetched();
+        let runner_calls = fx.runner.calls().len();
+        let state_file = std::fs::read(fx.runtime_dir.join("runtime.json")).unwrap();
         let events = std::sync::Mutex::new(Vec::new());
         let again = fx
             .manager
@@ -753,6 +765,12 @@ mod tests {
         assert_eq!(again, first);
         assert_eq!(fx.fetcher.fetched(), fetched);
         assert_eq!(events.into_inner().unwrap(), [ProgressPhase::Done]);
+        assert_eq!(fx.runner.calls().len(), runner_calls);
+        assert_eq!(
+            std::fs::read(fx.runtime_dir.join("runtime.json")).unwrap(),
+            state_file
+        );
+        assert!(staging_dirs(&fx).is_empty());
         assert!(first.server_path.is_file());
     }
 
@@ -770,12 +788,14 @@ mod tests {
 
     #[tokio::test]
     async fn install_destino_residual_no_borrable_falla() {
-        let fx = windows_fixture_with_remover(FakeRemover::failing(), windows_fetcher());
+        let fx =
+            windows_fixture_with_remover(FakeRemover::failing_for("b12780-cpu"), windows_fetcher());
         let previous = state_with(Some(managed(12779)));
         fx.save(&previous);
         make_dir_with_file(&fx.runtime_dir.join("b12780-cpu"));
         assert!(matches!(install_auto(&fx).await, Err(RuntimeError::Io(_))));
         assert_eq!(fx.saved(), previous);
+        assert!(staging_dirs(&fx).is_empty());
     }
 
     #[tokio::test]
@@ -798,6 +818,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn free_destination_saca_el_destino_de_pending_antes_del_rename() {
+        let fx = windows_fixture(windows_fetcher());
+        let target = fx.runtime_dir.join("b12780-cpu");
+        let other = fx.runtime_dir.join("b12000");
+        make_dir_with_file(&target);
+        fx.save(&RuntimeState {
+            pending_cleanup: vec![target.clone(), other.clone()],
+            ..RuntimeState::default()
+        });
+        fx.manager.free_destination(&target).await.unwrap();
+        assert!(!target.exists());
+        assert_eq!(fx.saved().pending_cleanup, vec![other]);
+    }
+
+    #[tokio::test]
     async fn install_staging_no_borrable_falla_antes_de_descargar() {
         let fx = windows_fixture_with_remover(FakeRemover::failing(), windows_fetcher());
         make_dir_with_file(&fx.runtime_dir.join(".staging-b12780"));
@@ -811,10 +846,68 @@ mod tests {
         let fx = windows_fixture(windows_fetcher());
         let first = install_auto(&fx).await.unwrap();
         std::fs::remove_file(&first.server_path).unwrap();
+        // Sin contenido, en POSIX el `rename` sobre un directorio vacío funcionaría solo.
+        let leftover = fx.runtime_dir.join("b12780-cpu").join("basura.txt");
+        std::fs::write(&leftover, "old").unwrap();
         let active = install_auto(&fx).await.unwrap();
         assert_eq!(active.server_path, first.server_path);
         assert!(active.server_path.is_file());
+        assert!(!leftover.exists());
         assert_eq!(fx.fetcher.fetched().len(), 2);
-        assert_eq!(fx.saved().active, Some(active));
+        assert_eq!(fx.saved().active, Some(active.clone()));
+        assert_eq!(
+            fx.manager.status().await.unwrap(),
+            RuntimeStatus::Ready(active)
+        );
+        assert!(staging_dirs(&fx).is_empty());
+    }
+
+    /// Borra el directorio viejo y, para forzar el fallo del paso 9, convierte `runtime.json`
+    /// en un directorio; nadie podrá volver a guardar `pending_cleanup`.
+    struct SabotagingRemover;
+
+    impl DirRemover for SabotagingRemover {
+        fn remove_dir_all(&self, path: &Path) -> io::Result<()> {
+            let is_staging = path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(".staging-"));
+            if is_staging {
+                return std::fs::remove_dir_all(path);
+            }
+            let state_file = path.parent().unwrap().join("runtime.json");
+            std::fs::remove_file(&state_file)?;
+            std::fs::create_dir(&state_file)?;
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "fichero bloqueado",
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn limpieza_final_fallida_no_rompe_la_instalacion() {
+        let fx = fixture_with_fetcher(
+            FakeSource::with_releases(parse_releases(RELEASES).unwrap()),
+            windows_probe(),
+            FakeRunner::exits(0, "", VERSION_OK),
+            SabotagingRemover,
+            windows_fetcher(),
+        );
+        fx.save(&state_with(Some(managed(12779))));
+        make_dir_with_file(&fx.runtime_dir.join("b12779-cpu"));
+        let events = std::sync::Mutex::new(Vec::new());
+        let result = fx
+            .manager
+            .install(
+                BackendPreference::Auto,
+                &|event| events.lock().unwrap().push(event.phase),
+                &CancelToken::default(),
+            )
+            .await;
+        assert_eq!(result.unwrap().version.build, 12780);
+        assert_eq!(
+            events.into_inner().unwrap().last(),
+            Some(&ProgressPhase::Done)
+        );
     }
 }

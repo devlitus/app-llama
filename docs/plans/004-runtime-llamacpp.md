@@ -486,10 +486,10 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T11
 - **Cubre:** CA12 (backend)
 - **Subtareas:**
-  - [ ] T12.1 Estado gestionado `RuntimeAppState { manager: Arc<RuntimeManager>, cancel: Mutex<Option<CancelToken>> }`, creado en el `setup` de `run()` con `app.path().app_data_dir()?.join("runtime")` (D9) y las implementaciones reales (`GitHubReleaseSource`, `SimpleHttpFetcher`, `TokioCommandRunner`, `NativeProbe`, `StdDirRemover`). Sin `unwrap()`: los errores de `setup` se propagan.
-  - [ ] T12.2 Comandos `async`: `runtime_hardware`, `runtime_status`, `runtime_check_update`, `runtime_install(preference)`, `runtime_cancel_install` y `runtime_use_external(path)`, añadidos al `generate_handler!` de `register()` junto a `app_info`. Cada comando hace `.await` del método `async` correspondiente de `RuntimeManager` (todos devuelven `Result`, incluidos `hardware()` y `status()`) y no bloquea el hilo del runtime. Los errores se serializan como `{ code, message }` (`code` = nombre de la variante de `RuntimeError`, `message` en español).
-  - [ ] T12.3 `runtime_install` emite `runtime://progress` con `ProgressEvent` serializado (`camelCase`).
-  - [ ] T12.4 Función pura `error_to_payload(&RuntimeError) -> ErrorPayload`, testeable sin Tauri.
+  - [x] T12.1 Estado gestionado `RuntimeAppState { manager: Arc<RuntimeManager>, cancel: Mutex<Option<CancelToken>> }`, creado en el `setup` de `run()` con `app.path().app_data_dir()?.join("runtime")` (D9) y las implementaciones reales (`GitHubReleaseSource`, `SimpleHttpFetcher`, `TokioCommandRunner`, `NativeProbe`, `StdDirRemover`). Sin `unwrap()`: los errores de `setup` se propagan.
+  - [x] T12.2 Comandos `async`: `runtime_hardware`, `runtime_status`, `runtime_check_update`, `runtime_install(preference)`, `runtime_cancel_install` y `runtime_use_external(path)`, añadidos al `generate_handler!` de `register()` junto a `app_info`. Cada comando hace `.await` del método `async` correspondiente de `RuntimeManager` (todos devuelven `Result`, incluidos `hardware()` y `status()`) y no bloquea el hilo del runtime. Los errores se serializan como `{ code, message }` (`code` = nombre de la variante de `RuntimeError`, `message` en español).
+  - [x] T12.3 `runtime_install` emite `runtime://progress` con `ProgressEvent` serializado (`camelCase`).
+  - [x] T12.4 Función pura `error_to_payload(&RuntimeError) -> ErrorPayload`, testeable sin Tauri.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

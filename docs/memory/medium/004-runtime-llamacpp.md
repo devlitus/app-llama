@@ -280,3 +280,28 @@ estado: abierto
 - **rename-sobre-existente** — rename de staging a runtime/<tag> falla con Io al reinstalar el mismo tag con otro backend #33 (C1 · #33)
 - **reserva-sin-test** — el best-effort del paso 9 sigue sin test; provocable con un DirRemover que rompa runtime.json (C2 · #33)
 - **staging-reutilizado** — si no se pudo borrar .staging-<tag> huérfano, la extracción mezcla contenido viejo y nuevo (C1)
+
+## T12
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | ab22f887797c7f532 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T12 comandos y eventos Tauri (runtime_*), error_to_payload, estado con timeouts reqwest; minors de T11 incorporados
+- C1 · reviewer · comandos Tauri del runtime, error_to_payload y estado de cancelación correctos; gate verde; solo minors
+
+### Decisiones
+
+- **csp-estricta** — capability mínima dialog:allow-open y CSP intacta; use_external con ruta arbitraria aceptado por validación de nombre y --version en core (C1)
+- **directorio-por-tag-y-backend** — free_destination saca final_dir de pending_cleanup tras clear_residual y antes del rename; si el rename falla no se pierde nada porque el destino ya no existe (C1)
+- **limpieza-best-effort** — el token de cancelación se libera tras install con éxito o error; pánico queda como minor (guarda RAII recomendada) (C1)
+
+### Errores
+
+- **carrera-pending-cleanup** — status() entre rename y modify_state borraba el runtime recien instalado; corregido con free_destination previo al rename (C1)
+- **plan-desalineado** — el paso 8 del plan dice que final_dir sale de pending_cleanup en la misma escritura; ahora ocurre antes del rename (minor) (C1)
+- **token-sin-guarda-raii** — finish_install no se ejecuta si install entra en pánico: runtime_install respondería AlreadyInstalling hasta reiniciar (minor) (C1)
