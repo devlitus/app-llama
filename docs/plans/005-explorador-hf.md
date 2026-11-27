@@ -363,11 +363,11 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T1 (T5.5 también de T3, ya hecha)
 - **Cubre:** CA1, CA2, CA3, CA12
 - **Subtareas:**
-  - [ ] T5.1 `RepoId::parse(&str) -> Result<RepoId, HfError>` según la regex de CA12, rechazando `..`.
-  - [ ] T5.2 `SearchParams { query: String, sort: SortBy::{Downloads, Likes}, limit: u32 }` → `search_url(base, &params)`, con la query codificada en porcentaje y los `expand[]` de la tabla del Contexto. Una query vacía o solo con espacios omite `search`.
-  - [ ] T5.3 `model_info_url(base, &RepoId)` y `tree_url(base, &RepoId)` (con `recursive=true`). El `/` del repo id no se codifica.
-  - [ ] T5.4 `parse_next_link(header: &str, base: &Url) -> Option<Url>`: extrae la URL con `rel="next"` de entre varias separadas por comas y solo la devuelve si su esquema, host y puerto coinciden con `base`.
-  - [ ] T5.5 Firma definitiva de `download_request` (seguimiento de la revisión de T3; toca también `crates/core/src/hf/files.rs`): se añade `RepoId::as_str(&self) -> &str` y `GgufVariant::download_request(&self, repo_id: &str)` pasa a `download_request(&self, repo: &RepoId)`. **Decisión:** `DownloadRequest.repo_id` sigue siendo `String` (serializable sin depender de cómo se serialice `RepoId`), rellenado con `repo.as_str().to_owned()`. Se ajustan los tests de T3 `download_request_from_split_variant` (construye el repo con `RepoId::parse("unsloth/Qwen3.8-27B-GGUF").unwrap()` y sigue comprobando `request.repo_id == "unsloth/Qwen3.8-27B-GGUF"`) y `download_request_non_lfs_has_no_sha` (con `RepoId::parse("a/b").unwrap()`); sus resultados esperados no cambian. No queda ninguna llamada con `&str`.
+  - [x] T5.1 `RepoId::parse(&str) -> Result<RepoId, HfError>` según la regex de CA12, rechazando `..`.
+  - [x] T5.2 `SearchParams { query: String, sort: SortBy::{Downloads, Likes}, limit: u32 }` → `search_url(base, &params)`, con la query codificada en porcentaje y los `expand[]` de la tabla del Contexto. Una query vacía o solo con espacios omite `search`.
+  - [x] T5.3 `model_info_url(base, &RepoId)` y `tree_url(base, &RepoId)` (con `recursive=true`). El `/` del repo id no se codifica.
+  - [x] T5.4 `parse_next_link(header: &str, base: &Url) -> Option<Url>`: extrae la URL con `rel="next"` de entre varias separadas por comas y solo la devuelve si su esquema, host y puerto coinciden con `base`.
+  - [x] T5.5 Firma definitiva de `download_request` (seguimiento de la revisión de T3; toca también `crates/core/src/hf/files.rs`): se añade `RepoId::as_str(&self) -> &str` y `GgufVariant::download_request(&self, repo_id: &str)` pasa a `download_request(&self, repo: &RepoId)`. **Decisión:** `DownloadRequest.repo_id` sigue siendo `String` (serializable sin depender de cómo se serialice `RepoId`), rellenado con `repo.as_str().to_owned()`. Se ajustan los tests de T3 `download_request_from_split_variant` (construye el repo con `RepoId::parse("unsloth/Qwen3.8-27B-GGUF").unwrap()` y sigue comprobando `request.repo_id == "unsloth/Qwen3.8-27B-GGUF"`) y `download_request_non_lfs_has_no_sha` (con `RepoId::parse("a/b").unwrap()`); sus resultados esperados no cambian. No queda ninguna llamada con `&str`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

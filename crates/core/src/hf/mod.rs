@@ -7,6 +7,7 @@ pub mod hint;
 pub mod memory;
 pub mod model;
 pub mod quant;
+pub mod url;
 
 pub use budget_cache::BudgetCache;
 pub use error::HfError;
@@ -18,3 +19,6 @@ pub use model::{
     Gated, GgufInfo, LfsInfo, ModelInfo, ModelSummary, TreeEntry, TreeEntryKind, WhoAmI,
 };
 pub use quant::extract_quant;
+pub use url::{
+    RepoId, SearchParams, SortBy, model_info_url, parse_next_link, search_url, tree_url,
+};

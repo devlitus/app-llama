@@ -7,6 +7,7 @@ use super::model::{TreeEntry, TreeEntryKind};
 use super::quant::{
     GGUF_EXTENSION, SplitSuffix, extract_quant, parse_split_suffix, strip_gguf_extension,
 };
+use super::url::RepoId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GgufPart {
@@ -34,9 +35,9 @@ pub struct DownloadRequest {
 const DEFAULT_REVISION: &str = "main";
 
 impl GgufVariant {
-    pub fn download_request(&self, repo_id: &str) -> DownloadRequest {
+    pub fn download_request(&self, repo: &RepoId) -> DownloadRequest {
         DownloadRequest {
-            repo_id: repo_id.to_owned(),
+            repo_id: repo.as_str().to_owned(),
             revision: DEFAULT_REVISION.to_owned(),
             parts: self.parts.clone(),
         }
@@ -375,7 +376,8 @@ mod tests {
     #[test]
     fn download_request_from_split_variant() {
         let variants = group_gguf_files(&bf16_entries_reversed());
-        let request = variants[0].download_request("unsloth/Qwen3.8-27B-GGUF");
+        let request =
+            variants[0].download_request(&RepoId::parse("unsloth/Qwen3.8-27B-GGUF").unwrap());
         assert_eq!(request.repo_id, "unsloth/Qwen3.8-27B-GGUF");
         assert_eq!(request.revision, "main");
         let paths: Vec<&str> = request.parts.iter().map(|p| p.path.as_str()).collect();
@@ -398,7 +400,7 @@ mod tests {
     #[test]
     fn download_request_non_lfs_has_no_sha() {
         let variants = group_gguf_files(&[file("m-Q4_0.gguf", 10)]);
-        let request = variants[0].download_request("a/b");
+        let request = variants[0].download_request(&RepoId::parse("a/b").unwrap());
         assert_eq!(request.parts.len(), 1);
         assert_eq!(request.parts[0].sha256, None);
     }

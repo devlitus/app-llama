@@ -98,6 +98,29 @@ estado: abierto
 
 - (ninguno)
 
+## T5
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a83574ccfb62a9a43 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T5 url.rs (RepoId, SearchParams, URLs, parse_next_link same-origin) y T5.5 download_request(&RepoId)
+- C1 · reviewer · T5 aprobada en ciclo 1; RepoId, URLs y Link seguros, 19 tests del plan + extras, gate verde
+
+### Decisiones
+
+- **limitacion-documentada** — separar el header Link por comas se acepta: una URL con coma solo corta la paginacion (None), nunca acepta otro origen (C1)
+- **origen-estricto-link** — parse_next_link compara esquema, host normalizado y port_or_known_default; relativas descartadas por Url::parse (C1)
+- **refactor-equivalente** — regex de CA12 a mano con split_once y segmentos validados; sin crate regex (C1)
+
+### Errores
+
+- **literal-duplicado** — minor: tree_url fija "main" a mano mientras files.rs tiene DEFAULT_REVISION (C1)
+
 ## T15
 
 ### Ciclos
