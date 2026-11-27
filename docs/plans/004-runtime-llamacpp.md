@@ -1,7 +1,7 @@
 # 004 — Runtime de llama.cpp: detección de hardware, instalación y actualización
 
 - **Tipo:** feature
-- **Estado:** borrador
+- **Estado:** hecho
 - **Rama:** feat/004-runtime-llamacpp
 - **Fase del roadmap:** Fase 1 (Runtime) de [docs/MVP.md](../MVP.md), funcionalidad A
 
@@ -11,12 +11,41 @@ Que el usuario tenga un `llama-server` funcional sin compilar nada. La app detec
 
 ## Contexto
 
-### Punto de partida
+### Punto de partida (plan 003 hecho y en `main`)
 
-- Se supone hecho el plan 003 (esqueleto): workspace Cargo con `crates/core` (módulos vacíos, entre ellos `runtime`), `src-tauri/` (Tauri 2), `ui/` (Svelte 5 + TS, con `lint`, `check` y `test` con Vitest), CI Windows + macOS y quality gate. Si 003 nombra las rutas de otra forma (por ejemplo, la pantalla de Ajustes), se usan las suyas. El módulo y las responsabilidades de este plan no cambian.
-- `crates/core` no depende de Tauri (R7). Toda la lógica va en `crates/core/src/runtime/`. `src-tauri/` solo expone comandos y eventos.
-- Decisiones del usuario: la app **descarga** la release de `ggml-org/llama.cpp` **y además** permite seleccionar un binario ya instalado.
+- **Workspace** (`Cargo.toml` raíz): miembros `crates/core` y `src-tauri`, `resolver = "3"`, `edition = "2024"`, versión `0.1.0` compartida. `[workspace.dependencies]` ya fija `serde = { version = "1", features = ["derive"] }`, `serde_json = "1"`, `tauri = "2"` (2.12.x) y `tauri-build = "2"`. Toolchain `1.100.0` en `rust-toolchain.toml`.
+- **Crate core:** paquete `app-llama-core` (lib `app_llama_core`) en `crates/core`. Depende solo de `serde`; `serde_json` es dev-dependency. `src/lib.rs` declara `about, config, download, gguf, hf, runtime, server`. `crates/core/src/runtime/mod.rs` solo tiene el `//!`. No depende de Tauri (R7).
+- **App Tauri:** paquete `app-llama` (lib `app_llama_lib`) en `src-tauri/`. `src/lib.rs` tiene `register(builder)`, que añade el `invoke_handler` (hoy solo `commands::app_info`) y lo usan los tests IPC con `tauri::test::mock_builder()`, y `run()`, que llama a `register(tauri::Builder::default())`. Los comandos viven en `src-tauri/src/commands.rs`. `capabilities/default.json` solo concede `core:default` (incluye `listen` de eventos). Identificador `io.github.devlitus.appllama`. CSP estricta: `style-src 'self'`, sin estilos en línea (ver `docs/DESARROLLO.md`).
+- **UI:** `ui/` con Svelte 5 + TS + Vite, Vitest + `@testing-library/svelte` + jsdom, `@tauri-apps/api` 2.12.x. Vistas en `ui/src/views/{Explore,Library,Run,Chat,Settings}.svelte`; la navegación está en `ui/src/lib/navigation.ts`. **`Settings.svelte` existe**: muestra `<h1>Ajustes</h1>`, un párrafo "Próximamente" y `Versión {x}` (vía `getAppInfo()` de `ui/src/lib/api.ts`). `Settings.test.ts` hace `mockIPC` con una respuesta única para cualquier comando, y `App.test.ts` navega a Ajustes **sin** `mockIPC`.
+- **Quality gate** (`node scripts/quality-gate.mjs`): build UI → `cargo fmt --check` → `cargo clippy --workspace --all-targets --locked -D warnings` → `cargo test --workspace --locked` → lint, `check` (`svelte-check --fail-on-warnings`) y tests de la UI → tests de scripts → memoria → patrones prohibidos (R2: sin `#[allow(...)]`, `#[ignore]`, `todo!`, `dbg!`…) → secretos.
+- **CI** (`.github/workflows/ci.yml`): `windows-latest` y `macos-latest` (Apple Silicon), gate completo y `npm --prefix ui run tauri -- build --debug --no-bundle`.
+- **Comando de desarrollo:** `npm --prefix ui run tauri -- dev` (`docs/DESARROLLO.md`).
 - El gestor de descargas completo (cola, reanudación, pausa) es el **plan 006**. Aquí solo hay un descargador simple detrás del trait `ArtifactFetcher`, que es el punto de integración: 006 aportará otra implementación y `RuntimeManager` no cambiará.
+- El plan 008 (servidor) consume la ruta del binario con `RuntimeManager::active_server_path().await`, que devuelve `Result<Option<PathBuf>, RuntimeError>`: `Ok(Some(ruta))` solo con un runtime `Ready`, `Ok(None)` si no hay runtime o está roto, y `Err` si falla la lectura de `runtime.json` (error de E/S distinto de "no existe"). Como pasa por `status()`, también reintenta los borrados pendientes.
+
+### Decisiones
+
+Del usuario (2026-11-26):
+
+- **D1:** la app **descarga** la release de `ggml-org/llama.cpp` **y además** permite seleccionar un binario ya instalado.
+- **D2:** un único crate core (`app-llama-core`); todo va en el módulo `runtime` (`crates/core/src/runtime/`). `src-tauri/` solo expone comandos y eventos.
+- **D3:** tests HTTP con `wiremock` (servidor local en `127.0.0.1`).
+- **D4:** orden de `Auto`: **CUDA > Metal > Vulkan > CPU**. Con NVIDIA y un driver compatible se prefiere CUDA aunque la descarga sea unas 15 veces mayor (≈ 600 MB frente a ≈ 40 MB de Vulkan).
+- **D5:** tras una actualización **verificada** se **borra** la versión gestionada anterior. No hay rollback.
+- **D6:** sin pruebas manuales en Mac por ahora: **macOS solo se valida por CI** (como en el plan 003, memoria larga `limitacion-documentada`).
+- **D7:** sin certificados ni firma (ni de la app ni ad hoc de los binarios de llama.cpp).
+- **D8:** macOS mínimo de la app: **11.0** (lo configura el plan 010 en `bundle.macOS.minimumSystemVersion`).
+
+Por defecto de este plan (antes preguntas abiertas):
+
+- **D9, persistencia:** el estado del runtime va en su propio fichero `<app_data_dir>/runtime/runtime.json`, donde `<app_data_dir>` es `app.path().app_data_dir()` de Tauri (en Windows, `%APPDATA%\io.github.devlitus.appllama`). `core` recibe la ruta `runtime_dir` ya resuelta y no añade `directories`. No se migra a ningún almacén común: si un plan posterior (007, `config`) crea uno, decidirá él si lo absorbe.
+- **D10, binario externo en macOS:** sin botón "Quitar cuarentena". Un binario externo nunca se modifica; si `--version` falla, se muestra el error con su stderr. Queda fuera de alcance.
+- **D11, Windows ARM64:** la selección lo soporta por patrones (assets `…-win-cpu-arm64`, `…-win-vulkan-arm64`, `…-win-cuda-13.5-arm64`) y está cubierto por tests unitarios, pero **no se verifica en máquina real ni en CI**: no tiene soporte oficial en el MVP.
+- **D12, dependencias:** todas las nuevas se declaran en `[workspace.dependencies]` del `Cargo.toml` raíz y se usan con `.workspace = true`, como hace 003. Cada tarea añade solo las que usa y actualiza `Cargo.lock` en el mismo commit (el gate usa `--locked`).
+- **D13, registro en Tauri:** `register()` solo añade comandos (los tests IPC siguen sin tocar el disco real). El plugin de diálogo y el `setup` que crea `RuntimeAppState` van en `run()`.
+- **D14, sección en Ajustes:** la sección "llama.cpp" es un componente `RuntimeSettings.svelte` que se incrusta en `ui/src/views/Settings.svelte`, en lugar del párrafo "Próximamente", y encima de la línea `Versión …`. No se crea una vista nueva ni se toca la navegación.
+- **D15, activo roto con el mismo tag y backend (antes pregunta abierta 2, revisión de T11, #33):** si el destino `<managed_dir_name(tag, backend)>/` ya existe y es el directorio del activo pero el binario del activo (`server_path`) no existe, se trata como residuo y se borra antes del `rename` (paso 7). Es seguro: ese runtime ya está roto y no hay salida temprana en el paso 2.
+- **D16, reinstalar con otro backend desde la UI (antes pregunta abierta 3):** si el backend elegido en el selector no es el del runtime gestionado activo, o el activo es externo, la acción principal es "Instalar <backend>" habilitada aunque no haya actualización. "Al día" solo aparece cuando el backend elegido coincide con el del activo gestionado y no hay versión nueva. Con "auto" se compara con el backend que elegiría Auto, que es el primer elemento de `available_backends`. Es lo que permite ejecutar T14.2.
 
 ### API de GitHub verificada (2026-11-26)
 
@@ -36,45 +65,75 @@ Hechos comprobados que condicionan el diseño:
    | `cudart-llama-bin-win-cuda-12.4-x64.zip`, `cudart-llama-bin-win-cuda-13.5-x64.zip`, `cudart-llama-bin-win-cuda-13.5-arm64.zip` | DLL `cudart`. **Sin tag en el nombre** (en Ubuntu sí lo llevan: `cudart-llama-b12780-bin-ubuntu-…`) |
    | `llama-b12780-bin-win-vulkan-x64.zip`, `llama-b12780-bin-win-vulkan-arm64.zip` | |
    | `llama-b12780-bin-macos-arm64.tar.gz` | Metal incluido. **macOS usa `.tar.gz`, no `.zip`** |
-   | `llama-b12780-bin-macos-x64.tar.gz` | Intel: se trata como CPU |
+   | `llama-b12780-bin-macos-x64.tar.gz` | Intel: se compila con `GGML_METAL=OFF`, se trata como CPU |
    | `…-win-sycl-x64.zip`, `…-win-rocm-10.0-x64.zip`, `…-win-openvino-2026.4.1-x64.zip`, `…-win-opencl-adreno-arm64.zip`, `…-ubuntu-*`, `…-android-*`, `llama-b12780-xcframework.zip`, `llama-b12780-ui.tar.gz` | Fuera de alcance: se descartan |
 
 4. En versiones antiguas los nombres eran otros (`…-bin-win-avx2-x64.zip`, `…-bin-win-avx512-x64.zip`, `…-bin-win-noavx-x64.zip`, `…-bin-win-cuda-cu12.4-x64.zip`, `cudart-llama-bin-win-cu12.4-x64.zip`, `…-bin-macos-arm64.zip`). Por eso **la clasificación usa tokens, no nombres fijos** (riesgo del MVP §5). Estos nombres antiguos se usan solo como fixture sintético de robustez.
 
+### Builds de macOS de llama.cpp (verificado 2026-11-27)
+
+En `.github/workflows/release.yml` de llama.cpp, el job `macos-cpu` compila `arm64` en `macos-26` y `x64` en `macos-15-intel`, ambos con `-DCMAKE_OSX_DEPLOYMENT_TARGET=13.3`. Es decir, **los binarios gestionados exigen macOS 13.3 o posterior**, mientras que la app declara 11.0 (D8). En macOS 11.0–13.2 la instalación gestionada fallará en `--version` (`VerificationFailed`, con el error de `dyld` en el stderr) y el runtime anterior se conserva. Ver Riesgos y Preguntas abiertas.
+
+### Dependencias externas (verificado 2026-11-27)
+
+- `reqwest` 0.13.x: TLS con `rustls` **por defecto** (`default-tls`), así que solo hacen falta las features `json` y `stream`. Sin OpenSSL.
+- Las demás (`tokio`, `thiserror`, `async-trait`, `futures-util`, `sha2`, `hex`, `zip`, `flate2`, `tar`, `wiremock`, `tempfile`, `tauri-plugin-dialog`, `@tauri-apps/plugin-dialog`): la última estable compatible en el momento de la tarea que las introduce, fijada por `Cargo.lock` / `ui/package-lock.json`. `tauri-plugin-dialog` y `@tauri-apps/plugin-dialog` con el mismo *major* 2 que `tauri`.
+
 ### `llama-server --version`
 
-Escribe en stderr (a veces en stdout), detrás de posibles líneas de inicialización de backends (`ggml_cuda_init: …`), algo como:
+Escribe en stderr (a veces en stdout), detrás de posibles líneas de inicialización de backends (`ggml_cuda_init: …`). Hay **dos formatos**, y el parser acepta ambos:
 
-```
-version: 12780 (a1b2c3d)
-built with MSVC 19.44.35211.0 for Windows AMD64
-```
+- **Antiguo** (builds anteriores):
 
-Se busca la primera línea que cumpla `^version: (\d+) \(([0-9a-f]+)\)` en stdout y stderr. El número coincide con el del tag (`b12780` → `12780`), y así se comparan versiones.
+  ```
+  version: 12780 (a1b2c3d)
+  built with MSVC 19.44.35211.0 for Windows AMD64
+  ```
+
+- **Nuevo** (semver + build y commit; visto en `b12816` durante T14.1, 2026-11-27):
+
+  ```
+  version: 1.1.0-dev (build 12816, commit 7b74cb92d)
+  built with Clang 22.1.8 for Windows x86_64
+  ```
+
+Se busca, en stdout y después en stderr, la primera línea (sin `\r` final) que cumpla una de estas dos expresiones:
+
+- antiguo: `^version: (\d+) \(([0-9a-f]+)\)`
+- nuevo: `^version: \S+ \(build (\d+), commit ([0-9a-f]+)\)`
+
+En ambos casos el grupo 1 es el número de build y el grupo 2 el commit. La parte semver (`1.1.0-dev`) se ignora: no se usa para comparar. El número de build sigue coincidiendo con el del tag (`b12780` → `12780`, `b12816` → `12816`), y así se comparan versiones.
 
 ### Diseño
 
 ```
 crates/core/src/runtime/
-├─ mod.rs        # re-exports + RuntimeError (thiserror)
-├─ release.rs    # Release/Asset (serde) + latest_build_release
-├─ asset.rs      # classify_asset: nombre → AssetDescriptor (tokens)
-├─ hardware.rs   # HardwareInfo, SystemProbe (trait), parsers de nvidia-smi, detect
-├─ select.rs     # select_install(release, hw, preference) → InstallPlan
-├─ fetch.rs      # ArtifactFetcher (trait) + SimpleHttpFetcher (reqwest)
-├─ extract.rs    # extract_archive (zip / tar.gz seguro) + find_server_binary
-├─ verify.rs     # CommandRunner (trait), parse_version, verify_server, remove_quarantine
-├─ state.rs      # RuntimeState persistido en <data>/runtime/runtime.json
-├─ github.rs     # ReleaseSource (trait) + GitHubReleaseSource (reqwest)
-└─ manager.rs    # RuntimeManager: status, check_update, install, use_external
-src-tauri/src/commands/runtime.rs   # comandos + evento runtime://progress
-ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSettings.svelte
+├─ mod.rs           # re-exports + RuntimeError (thiserror)
+├─ release.rs       # Release/Asset (serde) + latest_build_release
+├─ asset.rs         # classify_asset: nombre → AssetDescriptor (tokens)
+├─ hardware.rs      # HardwareInfo, SystemProbe (trait), parsers de nvidia-smi, detect
+├─ select.rs        # select_install(release, hw, preference) → InstallPlan
+├─ fetch.rs         # ArtifactFetcher (trait) + SimpleHttpFetcher (reqwest) + CancelToken
+├─ extract.rs       # extract_archive (zip / tar.gz seguro) + find_server_binary
+├─ verify.rs        # CommandRunner (trait), parse_version, verify_server, remove_quarantine
+├─ state.rs         # RuntimeState persistido en <runtime_dir>/runtime.json
+├─ github.rs        # ReleaseSource (trait) + GitHubReleaseSource (reqwest)
+├─ manager.rs       # RuntimeManager: status, hardware, active_server_path, check_update, use_external
+├─ install.rs       # RuntimeManager::install (pasos 1-9) y limpieza de versiones
+└─ test_support.rs  # #[cfg(test)] FakeProbe, FakeRunner, FakeSource, FakeFetcher, FakeRemover
+crates/core/tests/fixtures/runtime/   # releases_*.json, nvidia_smi_header*.txt, version_*.txt
+src-tauri/src/commands.rs             # + `pub mod runtime;`
+src-tauri/src/commands/runtime.rs     # comandos + evento runtime://progress
+ui/src/lib/runtime/                   # api.ts, view-model.ts (+ tests), RuntimeSettings.svelte
+ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 ```
 
 - **Tipos clave:**
   - `Os { Windows, MacOs }` y `Arch { X86_64, Aarch64 }`.
   - `Backend { Cpu { isa: CpuIsa }, Cuda { major: u32, minor: u32 }, Vulkan, Metal }`, con `CpuIsa { Generic, Avx, Avx2, Avx512 }`. `Generic` es la build CPU actual, que lleva todas las variantes dentro.
   - `BackendPreference { Auto, Cpu, Cuda, Vulkan, Metal }`.
+  - `ActiveRuntime { source, backend: Option<Backend>, server_path, version }`: `backend` es `Some(..)` en los runtimes gestionados (el del `InstallPlan`) y `None` en los externos, porque no se conoce el backend de un binario ajeno.
+- **API asíncrona de `RuntimeManager`:** `status()`, `hardware()`, `active_server_path()`, `check_update()`, `use_external()` e `install()` son `async` y devuelven `Result<_, RuntimeError>`. `hardware()` ejecuta `detect` (que lanza `nvidia-smi`) con `tokio::task::spawn_blocking`. `StateStore::load()` devuelve `Result<RuntimeState, RuntimeError>`: si no existe → `Default`; si está corrupto → `.bak` + `Default`; cualquier otro error de E/S → `Err(Io)`, que se propaga por `status()` y `active_server_path()`.
 - **Clasificación por tokens** (`classify_asset`):
   - Asset principal: `llama-[bN-]bin-<os>-<resto>.<zip|tar.gz>`. Cudart: `cudart-llama-[bN-]bin-<os>-<resto>.<ext>`.
   - `<resto>` se parte por `-`. El token de arquitectura (`x64` | `arm64`) es el último.
@@ -87,28 +146,25 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
 - **Selección (`select_install`)**, sobre los assets compatibles con el SO y la arquitectura de la máquina:
   - CUDA solo si hay GPU NVIDIA con `driver_cuda` detectado. Se elige la versión de mayor número cuyo `major ≤ driver_cuda.major` (compatibilidad de versión menor de CUDA). Exige el cudart de la misma versión y arquitectura; si falta, ese candidato se descarta.
   - Vulkan solo si `vulkan_available`. Metal solo en macOS arm64.
-  - CPU: se prefiere `Generic`. Si no existe (releases antiguas), la mayor `isa` soportada por la CPU.
-  - `Auto` = primer candidato disponible en el orden **CUDA > Metal > Vulkan > CPU**. Con una preferencia explícita no disponible → `RuntimeError::BackendUnavailable`.
+  - CPU: la mayor `isa` soportada por la CPU, con `Generic` como mínimo. `Avx` y `Avx2` se consideran soportadas si `avx2 || avx512` (no hay detección de AVX a secas) y `Avx512` si `avx512`. En las releases actuales solo existe `Generic`; en las antiguas, `noavx` (= `Generic`) solo se elige si la CPU no soporta ninguna otra.
+  - `Auto` = primer candidato disponible en el orden **CUDA > Metal > Vulkan > CPU** (D4). Con una preferencia explícita no disponible → `RuntimeError::BackendUnavailable`.
   - `available_backends(release, hw)` devuelve la lista para el selector de la UI.
+- **Directorio de cada runtime gestionado:** `<runtime_dir>/<tag>-<backend>/`, calculado con la función pura `managed_dir_name(tag, backend) -> String`. El sufijo de backend es: `Cpu{Generic}` → `cpu`, `Cpu{Avx}` → `cpu-avx`, `Cpu{Avx2}` → `cpu-avx2`, `Cpu{Avx512}` → `cpu-avx512`, `Cuda{M,m}` → `cuda-M.m`, `Vulkan` → `vulkan`, `Metal` → `metal`. Ejemplos: `b12780-cpu`, `b12780-cuda-13.5`, `b12780-vulkan`, `b12780-metal`; en releases antiguas con ISA, `b4500-cpu-avx2` (y `noavx`, que es `Cpu{Generic}`, da `b4500-cpu`). Motivo: reinstalar el mismo tag con otro backend (T14.2) escribe en un directorio distinto y nunca renombra sobre el directorio activo, que en Windows puede estar bloqueado. El staging sigue siendo `.staging-<tag>`.
 - **Instalación** (`RuntimeManager::install`), con un solo proceso a la vez (`AlreadyInstalling`):
+  0. Borrar los `.staging-*` huérfanos de una ejecución anterior interrumpida. Si `.staging-<tag>` sigue existiendo después (el borrado falló), se devuelve `Err` **antes de descargar** y el estado no cambia. (El tag solo se conoce tras el paso 1, así que esta comprobación se hace justo después de `select_install`, pero siempre antes del paso 3.)
   1. Listar releases → `latest_build_release`.
-  2. `select_install`.
-  3. Descargar el principal (y el cudart) a `<data>/runtime/.staging-<tag>/downloads/`, verificando tamaño y SHA256.
-  4. Extraer a `<data>/runtime/.staging-<tag>/install/`; el cudart va al directorio de `llama-server`.
-  5. En macOS, `xattr -cr <install>`.
+  2. `select_install`. Si el activo es `Managed { tag }` con el mismo tag, el mismo `backend` que el `InstallPlan` y su `server_path` existe → `Ok(activo)` **sin descargar** (0 `fetch`), sin tocar `runtime.json` ni el disco.
+  3. Descargar el principal (y el cudart) a `<runtime_dir>/.staging-<tag>/downloads/`, verificando tamaño y SHA256.
+  4. Extraer a `<runtime_dir>/.staging-<tag>/install/`; el cudart va al directorio de `llama-server`.
+  5. En macOS, `/usr/bin/xattr -cr <install>`.
   6. `verify_server`.
-  7. Borrar `downloads/` y renombrar `install/` → `<data>/runtime/<tag>/`.
-  8. Guardar el estado.
-  9. Borrar el directorio de la versión gestionada anterior (si falla, por ejemplo porque Windows tiene el fichero bloqueado, se apunta en `pending_cleanup` y se reintenta en el siguiente `status`).
+  7. Borrar `downloads/` y renombrar `install/` → `<runtime_dir>/<managed_dir_name(tag, backend)>/`. Si ese destino ya existe y es un residuo, se borra antes del `rename`. Es residuo si no es el directorio del runtime activo (resto de una ejecución anterior) o si lo es pero el binario del activo (`server_path`) no existe (activo roto con el mismo tag y backend, D15). Si ese borrado falla, `Err` y el estado no cambia (el staging se limpia como en cualquier error). Esta liberación del destino la hace `free_destination(final_dir)` **antes del `rename`**: borra el residuo y, solo si lo consigue, quita `final_dir` de `pending_cleanup` (si estaba, p. ej. por un intento de borrado previo que falló) en una escritura del estado bajo su cerrojo. Así se cierra la carrera en la que un `status()` concurrente entre el `rename` y el paso 8 reintentaría ese borrado pendiente y eliminaría el runtime recién instalado. Si el `rename` falla después, no se pierde ningún borrado pendiente, porque el destino ya no existe.
+  8. Guardar el estado activo (`Managed { tag }`, `backend: Some(..)`). Este paso solo escribe `active`; `pending_cleanup` ya se actualizó en el paso 7.
+  9. **Best-effort:** borrar **todos los demás** directorios de `<runtime_dir>` cuyo nombre sea `b<N>` (forma antigua) o `b<N>-…`, salvo el directorio final (versiones gestionadas anteriores o del mismo tag con otro backend, estuvieran activas o no; D5). No toca `runtime.json` ni `.staging-*`. Si un borrado falla (por ejemplo, Windows tiene un fichero bloqueado), la ruta se apunta en `pending_cleanup` y se reintenta en el siguiente `status()`. Un fallo al listar `<runtime_dir>` o al guardar `pending_cleanup` **no** convierte el éxito en error: `install` devuelve igualmente `Ok(activo)`.
 
-  Con cualquier error o cancelación se borra `.staging-<tag>` y el estado no cambia.
-- **Binario externo** (`use_external(path)`): el nombre debe ser `llama-server` o `llama-server.exe` y debe pasar `verify_server`. No se modifica (sin `xattr`). Se guarda como `source: external`.
+  Con cualquier error o cancelación en los pasos 0–8 se borra `.staging-<tag>` y el estado activo no cambia. La única escritura que puede haber quedado es la retirada de `final_dir` de `pending_cleanup` del paso 7, que solo ocurre si ese directorio ya se borró, así que no deja ningún borrado pendiente sin hacer.
+- **Binario externo** (`use_external(path)`): si hay una instalación en curso falla con `AlreadyInstalling` (comparte el mismo `Mutex` que `install`). El nombre debe ser `llama-server` o `llama-server.exe` y debe pasar `verify_server`. No se modifica (sin `xattr`, D10). Se guarda como `source: external` y `backend: None`. No borra los directorios gestionados (`<tag>-<backend>/`) que haya en disco: los limpia la siguiente instalación gestionada (paso 9).
 - **Progreso:** `ProgressEvent { phase: Fetching{artifact} | Extracting | Verifying | Done, done: u64, total: u64 }`. Se emite solo cuando cambia la fase o el porcentaje entero (sin reloj, determinista). Se cancela con un `CancelToken` (`Arc<AtomicBool>`) que se comprueba en cada bloque descargado y en cada entrada extraída.
-- **Dependencias nuevas** (con `--locked`, en `Cargo.lock`):
-  - `crates/core`: `reqwest` (rustls, stream, json), `tokio`, `serde`, `serde_json`, `sha2`, `hex`, `zip`, `flate2`, `tar`, `thiserror`, `async-trait`, `futures-util`.
-  - Dev de `crates/core`: `wiremock`, `tempfile`.
-  - `src-tauri`: `tauri-plugin-dialog`. `ui`: `@tauri-apps/plugin-dialog`.
-  - Si 003 ya fija alguna, se reutiliza su versión.
 
 ## Criterios de aceptación
 
@@ -118,39 +174,41 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   - Driver CUDA 12.8 → `…-cuda-12.4-x64.zip` + `cudart-…-cuda-12.4-x64.zip`.
   - Driver CUDA 11.8 con Vulkan → `…-win-vulkan-x64.zip`.
   - Sin GPU ni Vulkan → `…-win-cpu-x64.zip`.
+  - Windows arm64 sin GPU → `…-win-cpu-arm64.zip` (D11: solo por test).
   - macOS arm64 → `…-macos-arm64.tar.gz` (Metal).
   - macOS x64 → `…-macos-x64.tar.gz`.
 - **CA3** — Dado el fixture sintético de nombres antiguos, cuando se selecciona para CPU con AVX2 sin AVX512, entonces se elige `…-win-avx2-x64.zip`. Con CUDA 12, `…-win-cuda-cu12.4-x64.zip` + `cudart-llama-bin-win-cu12.4-x64.zip`.
 - **CA4** — Dada una lista de releases con `v1.1.0` primero, después un `draft` y después `b12780`, cuando se llama a `latest_build_release`, entonces devuelve `b12780`. Si ninguna release tiene un asset compatible, el error es `NoCompatibleRelease`.
-- **CA5** — Dado un servidor HTTP local que sirve un artefacto, cuando el `digest` o el tamaño no coinciden, entonces `fetch` devuelve `IntegrityMismatch` o `SizeMismatch`, no queda ningún fichero en el destino y el estado del runtime no cambia.
-- **CA6** — Dado un zip o tar.gz con una entrada `../evil` o una ruta absoluta, cuando se extrae, entonces se devuelve `UnsafeArchivePath` y no se escribe nada fuera del directorio de destino. En Unix, un tar.gz con `llama-server` en modo `0755` conserva el bit de ejecución.
-- **CA7** — Dado un `llama-server` cuyo `--version` falla o no muestra `version: N (hash)`, cuando se instala, entonces `install` devuelve `VerificationFailed`, `.staging-<tag>` se borra y el runtime activo anterior sigue intacto (mismo `runtime.json`).
-- **CA8** — Dada una instalación gestionada en macOS, cuando se instala, entonces se ejecuta `xattr -cr <directorio de instalación>` antes de `--version`. En Windows no se ejecuta. Para un binario externo no se ejecuta nunca.
-- **CA9** — Dada la ruta de un `llama-server[.exe]` válido, cuando se llama a `use_external`, entonces queda activo con `source: external` y su versión. Si el nombre no es `llama-server[.exe]` o la verificación falla, el error es `InvalidExternalBinary` o `VerificationFailed` y el estado no cambia.
-- **CA10** — Dado `b12779` gestionado y activo con `b12780` publicada, cuando se llama a `check_update`, entonces `{ installed: 12779, latest: 12780, update_available: true }`. Tras `install`, queda activo `b12780` y el directorio `runtime/b12779/` ya no existe. Con `b12780` instalado, `update_available: false`.
+- **CA5** — Dado un servidor HTTP local (`wiremock`) que sirve un artefacto, cuando el `digest` o el tamaño no coinciden, entonces `fetch` devuelve `IntegrityMismatch` o `SizeMismatch`, no queda ningún fichero en el destino y el estado del runtime no cambia.
+- **CA6** — Dado un zip o tar.gz con una entrada `../evil` o una ruta absoluta, cuando se extrae, entonces se devuelve `UnsafeArchivePath` y no se escribe nada fuera del directorio de destino. En Unix (CI macOS), un tar.gz con `llama-server` en modo `0755` conserva el bit de ejecución.
+- **CA7** — Dado un `llama-server` cuyo `--version` falla o no muestra una línea de versión reconocible (`version: N (hash)` o `version: <semver> (build N, commit hash)`, ver Contexto), cuando se instala, entonces `install` devuelve `VerificationFailed`, `.staging-<tag>` se borra y el runtime activo anterior sigue intacto (mismo `runtime.json`).
+- **CA8** — Dada una instalación gestionada en macOS, cuando se instala, entonces se ejecuta `/usr/bin/xattr -cr <directorio de instalación>` antes de `--version`. En Windows no se ejecuta. Para un binario externo no se ejecuta nunca. Además, en la CI de macOS, `remove_quarantine` con el runner real elimina un atributo `com.apple.quarantine` puesto en un fichero de un `tempdir`.
+- **CA9** — Dada la ruta de un `llama-server[.exe]` válido, cuando se llama a `use_external`, entonces queda activo con `source: external`, su versión y `backend: None`. Si hay una instalación en curso, el error es `AlreadyInstalling`. Si el nombre no es `llama-server[.exe]` o la verificación falla, el error es `InvalidExternalBinary` o `VerificationFailed` y el estado no cambia.
+- **CA10** — Dado `b12779` gestionado y activo con `b12780` publicada, cuando se llama a `check_update`, entonces `{ installed: 12779, latest: 12780, update_available: true }`. Tras `install` con el mismo backend (p. ej. `Cpu{Generic}`), queda activo `b12780` en `runtime/b12780-cpu/` y el directorio `runtime/b12779-cpu/` ya no existe. Con `b12780` instalado, `update_available: false`.
 - **CA11** — Dado `runtime.json` escrito por una instalación, cuando se crea un `RuntimeManager` nuevo sobre el mismo directorio, entonces `status` devuelve el mismo runtime activo. Si el binario ya no existe, devuelve `Broken { path }`. Si `runtime.json` está corrupto, devuelve `NotInstalled` y conserva una copia `runtime.json.bak`.
-- **CA12** — Dada la pantalla Ajustes → llama.cpp, cuando se abre, entonces muestra:
+- **CA12** — Dada la vista Ajustes (`ui/src/views/Settings.svelte`) con la sección "llama.cpp", cuando se abre, entonces muestra:
   - el hardware detectado;
-  - el runtime activo (versión `bN`, backend, origen gestionado o externo, y ruta) o "No instalado";
-  - un selector de backend con solo los disponibles;
-  - los botones "Instalar" o "Actualizar a bN", "Buscar actualizaciones" y "Usar binario existente…".
+  - el runtime activo (versión `bN`, backend solo si es gestionado, origen gestionado o externo, y ruta) o "No instalado";
+  - un selector de backend con solo los disponibles y, mientras no se haya consultado `runtime_check_update` (`update` = `null`, el selector solo ofrece "Automático"), el aviso «Pulsa "Buscar actualizaciones" para ver los backends disponibles.» justo debajo del selector. El aviso desaparece en cuanto hay `UpdateInfo` y no provoca peticiones extra a GitHub (hallazgo 3 de T14);
+  - una acción principal según `primaryAction` (D16): "Instalar", "Actualizar a bN", "Instalar <backend>" (habilitada aunque no haya actualización si el backend elegido no es el del runtime gestionado activo, o el activo es externo), "Al día" (deshabilitada, solo si el backend elegido coincide con el activo y no hay versión nueva) o "Buscar actualizaciones"; y el botón "Usar binario existente…";
+  - la línea `Versión 0.1.0` de la app, como hasta ahora.
 
-  Durante la instalación muestra la fase y el porcentaje (evento `runtime://progress`) y un botón "Cancelar". Lo cubren los tests de `view-model.ts`.
-- **CA13** — Dado un PC Windows x64 real y un Mac Apple Silicon real, cuando se pulsa "Instalar" en Ajustes, entonces termina con la versión `bN` visible, y `llama-server --version`, ejecutado a mano desde el directorio instalado, da el mismo número. Comprobación manual en T13.
-- **CA14** — Dado el plan aplicado, cuando se ejecuta `node scripts/quality-gate.mjs`, entonces termina en verde en Windows y macOS (CI).
+  Durante la instalación muestra la fase y el porcentaje (evento `runtime://progress`) y un botón "Cancelar". Si una llamada al backend falla (o no hay IPC, como en `App.test.ts`), la sección muestra el mensaje de error y no hay rechazos sin capturar. Lo cubren los tests de `view-model.ts`, `RuntimeSettings.test.ts` y `Settings.test.ts`.
+- **CA13** — Dado un PC Windows x64 real, cuando se ejecuta `npm --prefix ui run tauri -- dev` y se pulsa "Instalar" en Ajustes, entonces termina con la versión `bN` visible, y `llama-server.exe --version`, ejecutado a mano desde `%APPDATA%\io.github.devlitus.appllama\runtime\bN-<backend>\…` (p. ej. `b12780-cuda-13.5`), da el mismo número. Comprobación manual en T14. **macOS no se prueba a mano (D6):** lo cubren los tests unitarios y la CI (CA8, CA14).
+- **CA14** — Dado el plan aplicado, cuando se ejecuta `node scripts/quality-gate.mjs`, entonces termina en verde en local (Windows) y en la CI de Windows y macOS, incluido el paso `tauri build --debug --no-bundle`.
 
 ## Tareas
 
-> Todas las tareas de código son **(developer)** con TDD: primero los tests de la tabla (rojo) y después el código (verde). **(O)** = orchestrator. Tests sin red real (servidor local con `wiremock`), sin reloj y sin aleatoriedad (R3). Ficheros temporales con `tempfile`. Rutas con `Path`/`PathBuf`. Fixtures en `crates/core/tests/fixtures/runtime/`.
+> Todas las tareas de código son **(developer)** con TDD: primero los tests de la tabla (rojo) y después el código (verde). **(O)** = orchestrator. Tests sin red real (servidor local con `wiremock`), sin reloj y sin aleatoriedad (R3). Ficheros temporales con `tempfile`. Rutas con `Path`/`PathBuf`. Fixtures en `crates/core/tests/fixtures/runtime/`, cargados con `include_str!(concat!(env!("CARGO_MANIFEST_DIR"), …))`. Los dobles de test (`FakeProbe`, `FakeRunner`, `FakeSource`, `FakeFetcher`, `FakeRemover`) se definen una sola vez en `runtime/test_support.rs` (`#[cfg(test)]`), cada uno en la tarea que lo necesita por primera vez. Cada tarea añade sus dependencias al `[workspace.dependencies]` raíz y actualiza `Cargo.lock` en el mismo commit (D12). Sin `unwrap()`/`expect()` fuera de tests (R7) ni `#[allow]` (R2).
 
 ### T1 — Modelo de releases y elección de la última build
-- **Ficheros/módulos:** `crates/core/src/runtime/mod.rs` (`RuntimeError` inicial), `crates/core/src/runtime/release.rs`, fixtures `releases_b12780.json` (respuesta real recortada a `v1.1.0` + `b12780` + `b12779`, con solo los assets de la tabla del Contexto) y `releases_legacy.json` (sintético con nombres antiguos)
-- **Depende de:** — (plan 003)
+- **Ficheros/módulos:** `Cargo.toml` (workspace: `thiserror`), `crates/core/Cargo.toml` (`serde_json` pasa de dev a dependencia normal; `thiserror`), `crates/core/src/runtime/mod.rs` (`RuntimeError` inicial), `crates/core/src/runtime/release.rs`, fixtures `releases_b12780.json` (respuesta real recortada a `v1.1.0` + `b12780` + `b12779`, con solo los assets de la tabla del Contexto) y `releases_legacy.json` (sintético con nombres antiguos)
+- **Depende de:** —
 - **Cubre:** CA4
 - **Subtareas:**
-  - [ ] T1.1 `Release { tag_name, draft, prerelease, assets }` y `Asset { name, size, digest: Option<String>, browser_download_url }` con `serde` (los campos desconocidos se ignoran).
-  - [ ] T1.2 `parse_releases(json: &str) -> Result<Vec<Release>, RuntimeError>`, `build_number(tag) -> Option<u32>` y `Asset::sha256() -> Option<[u8; 32]>` (solo si es `sha256:` + 64 hex).
-  - [ ] T1.3 `latest_build_release(releases, is_compatible: impl Fn(&Release) -> bool) -> Result<&Release, RuntimeError>`: la de mayor `build_number` entre las no `draft` con tag `^b\d+$` que cumplen el predicado. `prerelease` no se tiene en cuenta.
+  - [x] T1.1 `Release { tag_name, draft, prerelease, assets }` y `Asset { name, size, digest: Option<String>, browser_download_url }` con `serde` (los campos desconocidos se ignoran).
+  - [x] T1.2 `parse_releases(json: &str) -> Result<Vec<Release>, RuntimeError>`, `build_number(tag) -> Option<u32>` y `Asset::sha256() -> Option<[u8; 32]>` (solo si es `sha256:` + 64 hex).
+  - [x] T1.3 `latest_build_release(releases, is_compatible: impl Fn(&Release) -> bool) -> Result<&Release, RuntimeError>`: la de mayor `build_number` entre las no `draft` con tag `^b\d+$` que cumplen el predicado. `prerelease` no se tiene en cuenta.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -169,8 +227,8 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
 - **Depende de:** T1
 - **Cubre:** CA2, CA3 (base)
 - **Subtareas:**
-  - [ ] T2.1 Tipos `Os`, `Arch`, `Backend`, `CpuIsa`, `ArchiveFormat { Zip, TarGz }`, `AssetKind { Main, Cudart }` y `AssetDescriptor { kind, os, arch, backend, format }`.
-  - [ ] T2.2 `classify_asset(name: &str) -> Option<AssetDescriptor>`, según el Diseño. Para `Cudart`, `backend` es `Cuda{..}`.
+  - [x] T2.1 Tipos `Os`, `Arch`, `Backend`, `CpuIsa`, `ArchiveFormat { Zip, TarGz }`, `AssetKind { Main, Cudart }` y `AssetDescriptor { kind, os, arch, backend, format }`.
+  - [x] T2.2 `classify_asset(name: &str) -> Option<AssetDescriptor>`, según el Diseño. Para `Cudart`, `backend` es `Cuda{..}`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -184,24 +242,25 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `clasificacion_sensible_a_mayusculas` | `LLAMA-B1-BIN-WIN-CPU-X64.ZIP` | `None` |
 
 ### T3 — Detección de hardware
-- **Ficheros/módulos:** `crates/core/src/runtime/hardware.rs`
+- **Ficheros/módulos:** `crates/core/src/runtime/hardware.rs`, `crates/core/src/runtime/test_support.rs` (`FakeProbe`), fixtures `nvidia_smi_header.txt` (formato antiguo, `CUDA Version: 13.0`) y `nvidia_smi_header_umd.txt` (formato nuevo, driver 621.24, `CUDA UMD Version: 13.5`)
 - **Depende de:** T2 (`Os`, `Arch`)
 - **Cubre:** CA1
 - **Subtareas:**
-  - [ ] T3.1 `GpuInfo { name, vram_mib: Option<u64> }`, `CudaVersion { major, minor }` y `HardwareInfo { os, arch, avx2, avx512, gpus, driver_cuda: Option<CudaVersion>, vulkan_available, metal }` (`Serialize`).
-  - [ ] T3.2 Parsers puros:
+  - [x] T3.1 `GpuInfo { name, vram_mib: Option<u64> }`, `CudaVersion { major, minor }` y `HardwareInfo { os, arch, avx2, avx512, gpus, driver_cuda: Option<CudaVersion>, vulkan_available, metal }` (`Serialize`).
+  - [x] T3.2 Parsers puros:
     - `parse_nvidia_smi_gpus(csv: &str) -> Vec<GpuInfo>` (salida de `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`).
     - `parse_nvidia_smi_cuda(header: &str) -> Option<CudaVersion>` (busca `CUDA Version: X.Y` en la salida de `nvidia-smi` sin argumentos).
-  - [ ] T3.3 Trait `SystemProbe`:
+    - **Ampliación (hallazgo de T14.1, 2026-11-27, driver 621.24):** `parse_nvidia_smi_cuda` acepta los **dos formatos** de cabecera: el antiguo `Driver Version: 581.42   CUDA Version: 13.0` y el nuevo `NVIDIA-SMI 621.24   KMD Version: 621.24   CUDA UMD Version: 13.5`. Etiqueta tolerante y acotada: en **una misma línea**, la palabra `CUDA`, seguida de cero o más palabras (letras, separadas por espacios), seguida de `Version:` y el valor `X.Y` (`major.minor` numéricos). La etiqueta no puede cruzar saltos de línea y `KMD Version` (sin `CUDA` delante) no cuenta. Se toma la primera coincidencia válida. Los tests existentes del formato antiguo no cambian.
+  - [x] T3.3 Trait `SystemProbe`:
     - `os()`, `arch()`, `cpu_has(feature: &str) -> bool`;
     - `run(program, args) -> Option<String>` (stdout si el código de salida es 0);
     - `file_exists(&Path)`, `system_root() -> Option<PathBuf>`.
-  - [ ] T3.4 `detect(probe: &dyn SystemProbe) -> HardwareInfo`:
+  - [x] T3.4 `detect(probe: &dyn SystemProbe) -> HardwareInfo`:
     - `avx2`/`avx512` (`avx512f`) solo en x86_64.
     - `nvidia-smi` solo en Windows.
     - Vulkan: en Windows, existe `<system_root>/System32/vulkan-1.dll`. En macOS siempre `vulkan_available = false` (no hay build Vulkan para macOS).
     - `metal = os == MacOs && arch == Aarch64`.
-  - [ ] T3.5 `NativeProbe`: implementación real con `std::env::consts`, `is_x86_feature_detected!` (bajo `cfg(target_arch = "x86_64")`), `std::process::Command` y `%SystemRoot%`.
+  - [x] T3.5 `NativeProbe`: implementación real con `std::env::consts`, `is_x86_feature_detected!` (bajo `cfg(target_arch = "x86_64")`), `std::process::Command` y `%SystemRoot%`.
 - **Tests unitarios** (con `FakeProbe` configurable):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -209,8 +268,10 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `parse_gpus_varias_y_espacios` | dos líneas con espacios y `\r\n` | 2 GPU recortadas |
   | `parse_gpus_vram_no_numerica` | `"Tesla X, [N/A]"` | `vram_mib: None` |
   | `parse_gpus_vacio` | `""` | `[]` |
-  | `parse_cuda_cabecera_real` | cabecera de `nvidia-smi` con `CUDA Version: 13.0` (fixture `nvidia_smi_header.txt`) | `Some(13.0)` |
-  | `parse_cuda_ausente_o_raro` | `""`, `CUDA Version: N/A`, `CUDA Version: 12` | `None` |
+  | `parse_cuda_cabecera_real` | `nvidia_smi_header.txt` con `CUDA Version: 13.0` | `Some(13.0)` |
+  | `parse_cuda_cabecera_umd` | `nvidia_smi_header_umd.txt` (cabecera real del driver 621.24: `\| NVIDIA-SMI 621.24                 KMD Version: 621.24        CUDA UMD Version: 13.5     \|`) | `Some(13.5)` |
+  | `parse_cuda_cabecera_umd_crlf` | contenido de `nvidia_smi_header_umd.txt` con `\r\n` explícitos en cada línea | `Some(13.5)` |
+  | `parse_cuda_ausente_o_raro` | `""`, `CUDA Version: N/A`, `CUDA Version: 12`, `CUDA UMD Version: N/A`, cabecera con solo `KMD Version: 621.24` (sin `CUDA … Version:`) | `None` |
   | `detect_windows_nvidia_vulkan` | probe de CA1 | `HardwareInfo` de CA1 |
   | `detect_sin_nvidia_smi` | `run` → `None` | `gpus: []`, `driver_cuda: None` |
   | `detect_sin_vulkan` | `vulkan-1.dll` ausente | `vulkan_available: false` |
@@ -224,9 +285,9 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
 - **Depende de:** T1, T2, T3
 - **Cubre:** CA2, CA3
 - **Subtareas:**
-  - [ ] T4.1 `BackendPreference` (`Deserialize`) e `InstallPlan { tag, backend, main: Asset, cudart: Option<Asset> }`.
-  - [ ] T4.2 `available_backends(release, hw) -> Vec<Backend>`, en el orden CUDA > Metal > Vulkan > CPU, con las reglas del Diseño.
-  - [ ] T4.3 `select_install(release, hw, preference) -> Result<InstallPlan, RuntimeError>` (`NoCompatibleAsset` o `BackendUnavailable`) e `is_compatible(release, hw) -> bool` (predicado para T1.3).
+  - [x] T4.1 `BackendPreference` (`Deserialize`, `rename_all = "lowercase"`) e `InstallPlan { tag, backend, main: Asset, cudart: Option<Asset> }`.
+  - [x] T4.2 `available_backends(release, hw) -> Vec<Backend>`, en el orden CUDA > Metal > Vulkan > CPU, con las reglas del Diseño.
+  - [x] T4.3 `select_install(release, hw, preference) -> Result<InstallPlan, RuntimeError>` (`NoCompatibleAsset` o `BackendUnavailable`) e `is_compatible(release, hw) -> bool` (predicado para T1.3).
 - **Tests unitarios** (fixtures de T1):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -248,17 +309,17 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `release_sin_compatibles` | release con solo `ubuntu-*` | `Err(NoCompatibleAsset)`; `is_compatible` → `false` |
 
 ### T5 — Descargador simple (punto de integración con 006)
-- **Ficheros/módulos:** `crates/core/src/runtime/fetch.rs`
+- **Ficheros/módulos:** `crates/core/src/runtime/fetch.rs`; dependencias `reqwest` (0.13, features `json`, `stream`; rustls por defecto), `tokio` (`fs`, `io-util`, `sync`, `process`, `time`, `rt`; en dev además `macros`, `rt-multi-thread`), `futures-util`, `async-trait`, `sha2`, `hex`; dev: `wiremock`, `tempfile`
 - **Depende de:** T1
 - **Cubre:** CA5
 - **Subtareas:**
-  - [ ] T5.1 `#[async_trait] trait ArtifactFetcher { async fn fetch(&self, req: FetchRequest, progress: &(dyn Fn(u64, u64) + Send + Sync), cancel: &CancelToken) -> Result<(), RuntimeError>; }`, con `FetchRequest { url, dest: PathBuf, expected_size: u64, sha256: Option<[u8; 32]> }`. Doc-comment: "el plan 006 aportará una implementación con reanudación".
-  - [ ] T5.2 `SimpleHttpFetcher` (con `reqwest::Client` inyectado):
+  - [x] T5.1 `#[async_trait] trait ArtifactFetcher { async fn fetch(&self, req: FetchRequest, progress: &(dyn Fn(u64, u64) + Send + Sync), cancel: &CancelToken) -> Result<(), RuntimeError>; }`, con `FetchRequest { url, dest: PathBuf, expected_size: u64, sha256: Option<[u8; 32]> }`. Doc-comment: "el plan 006 aportará una implementación con reanudación".
+  - [x] T5.2 `SimpleHttpFetcher` (con `reqwest::Client` inyectado):
     - Descarga en streaming a `<dest>.part`, calculando el SHA256 sobre la marcha y llamando a `progress(done, total)` por bloque.
     - Al terminar, comprueba tamaño y hash y renombra a `dest`.
     - Con error HTTP, de tamaño, de hash o cancelación, borra `.part`.
-  - [ ] T5.3 `CancelToken` (`Arc<AtomicBool>`, `cancel()`, `is_cancelled()`).
-- **Tests unitarios** (`wiremock` en `127.0.0.1`, `tempfile`):
+  - [x] T5.3 `CancelToken` (`Arc<AtomicBool>`, `cancel()`, `is_cancelled()`).
+- **Tests unitarios** (`wiremock` en `127.0.0.1`, `tempfile`, `#[tokio::test]`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
   | `fetch_ok_verifica_hash_y_tamano` | 1 MiB fijo (bytes `i % 251`) + su SHA256 | `Ok`, `dest` existe con esos bytes y no queda `.part` |
@@ -269,27 +330,28 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `fetch_cancelado` | token cancelado antes del primer bloque | `Err(Cancelled)`, sin ficheros |
   | `fetch_progreso_monotono` | 1 MiB | llamadas con `done` creciente; la última es `(1048576, 1048576)` |
   | `fetch_sigue_redirecciones` | 302 → otra ruta del mock (como `browser_download_url` → CDN) | `Ok` |
+  | `cancel_token_compartido` | clon del token + `cancel()` en el original | el clon devuelve `is_cancelled() == true` |
 
 ### T6 — Extracción segura y localización de `llama-server`
-- **Ficheros/módulos:** `crates/core/src/runtime/extract.rs`
+- **Ficheros/módulos:** `crates/core/src/runtime/extract.rs`; dependencias `zip`, `flate2`, `tar`
 - **Depende de:** T2 (`ArchiveFormat`), T5 (`CancelToken`)
 - **Cubre:** CA6
 - **Subtareas:**
-  - [ ] T6.1 `extract_archive(archive: &Path, format, dest: &Path, cancel) -> Result<(), RuntimeError>`:
+  - [x] T6.1 `extract_archive(archive: &Path, format, dest: &Path, cancel) -> Result<(), RuntimeError>`:
     - Zip con `enclosed_name()`; tar.gz con `Entry::unpack_in` y modos preservados.
     - Rechaza las rutas absolutas, `..` y los enlaces simbólicos que apuntan fuera de `dest` (`UnsafeArchivePath`).
-  - [ ] T6.2 `find_server_binary(root: &Path, os) -> Result<PathBuf, RuntimeError>`: busca `llama-server.exe` (Windows) o `llama-server` (macOS) con profundidad ≤ 4, sin suponer la estructura del archivo. Si hay varios, el menos profundo; con empate, el primero en orden lexicográfico. Si no hay ninguno, `ServerBinaryNotFound`.
-  - [ ] T6.3 Los archivos de prueba se generan en el propio test con `zip`/`tar` en un `tempdir` (sin binarios versionados).
+  - [x] T6.2 `find_server_binary(root: &Path, os) -> Result<PathBuf, RuntimeError>`: busca `llama-server.exe` (Windows) o `llama-server` (macOS) con profundidad ≤ 4, sin suponer la estructura del archivo. Si hay varios, el menos profundo; con empate, el primero en orden lexicográfico. Si no hay ninguno, `ServerBinaryNotFound`.
+  - [x] T6.3 Los archivos de prueba se generan en el propio test con `zip`/`tar` en un `tempdir` (sin binarios versionados).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
   | `zip_plano_se_extrae` | zip con `llama-server.exe`, `ggml.dll` | los 2 ficheros en `dest` con su contenido |
   | `targz_con_carpeta_se_extrae` | `llama-b1/llama-server`, `llama-b1/libllama.dylib` | estructura conservada |
-  | `targz_preserva_ejecutable` (`cfg(unix)`) | `llama-server` con `0o755` | el modo extraído tiene `0o111` |
+  | `targz_preserva_ejecutable` (`cfg(unix)`, corre en la CI de macOS) | `llama-server` con `0o755` | el modo extraído tiene `0o111` |
   | `zip_slip_rechazado` | entrada `../evil.txt` | `Err(UnsafeArchivePath)`, no existe `<dest>/../evil.txt` |
   | `targz_ruta_absoluta_rechazada` | entrada `/tmp/evil` | `Err(UnsafeArchivePath)` |
   | `targz_symlink_fuera_rechazado` (`cfg(unix)`) | enlace `lib -> ../../etc` | `Err(UnsafeArchivePath)` |
-  | `archivo_corrupto` | bytes aleatorios fijos `b"not a zip"` | `Err(Extract(_))` |
+  | `archivo_corrupto` | bytes fijos `b"not a zip"` | `Err(Extract(_))` |
   | `extraccion_cancelada` | token cancelado | `Err(Cancelled)` |
   | `busca_server_en_raiz` | `dest/llama-server.exe` (Windows) | esa ruta |
   | `busca_server_anidado` | `dest/build/bin/llama-server` (macOS) | esa ruta |
@@ -298,14 +360,15 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `busca_server_ignora_nombre_parecido` | `llama-server-old`, `llama-server.exe.bak` | `Err(ServerBinaryNotFound)` |
 
 ### T7 — Verificación con `--version` y cuarentena de macOS
-- **Ficheros/módulos:** `crates/core/src/runtime/verify.rs`, fixtures `version_cpu.txt`, `version_cuda_stderr.txt`
-- **Depende de:** T2
+- **Ficheros/módulos:** `crates/core/src/runtime/verify.rs`, `crates/core/src/runtime/test_support.rs` (`FakeRunner`), fixtures `version_cpu.txt`, `version_cuda_stderr.txt`, `version_semver.txt`
+- **Depende de:** T2, T5 (`tokio`, `async-trait`)
 - **Cubre:** CA7, CA8
 - **Subtareas:**
-  - [ ] T7.1 `RuntimeVersion { build: u32, commit: String }` y `parse_version(stdout, stderr) -> Option<RuntimeVersion>`.
-  - [ ] T7.2 `#[async_trait] trait CommandRunner { async fn run(&self, program: &Path, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput, RuntimeError>; }` y `TokioCommandRunner` (`tokio::process`, `kill_on_drop`, timeout de 15 s y, en Windows, `CREATE_NO_WINDOW`).
-  - [ ] T7.3 `verify_server(runner, server: &Path) -> Result<RuntimeVersion, RuntimeError>`: ejecuta `--version` con `cwd` = el directorio del binario (los DLL se resuelven allí). Si el código de salida es distinto de 0 o no se puede parsear, `VerificationFailed { stderr_tail }` (últimos 2000 caracteres).
-  - [ ] T7.4 `remove_quarantine(runner, os, dir)`: en macOS ejecuta `/usr/bin/xattr -cr <dir>`; en Windows no hace nada. Si `xattr` falla, `QuarantineFailed`.
+  - [x] T7.1 `RuntimeVersion { build: u32, commit: String }` y `parse_version(stdout, stderr) -> Option<RuntimeVersion>`.
+    - **Ampliación (hallazgo de T14.1, 2026-11-27):** `parse_version` acepta los **dos formatos** del Contexto (antiguo `version: N (hash)` y nuevo `version: <semver> (build N, commit hash)`), con la primera línea que cumpla cualquiera de ellos. La parte semver se ignora. Nuevo fixture `version_semver.txt` con la salida real de `b12816` (las dos líneas del Contexto, formato nuevo). Los tests existentes del formato antiguo no cambian.
+  - [x] T7.2 `#[async_trait] trait CommandRunner { async fn run(&self, program: &Path, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput, RuntimeError>; }` y `TokioCommandRunner` (`tokio::process`, `kill_on_drop`, timeout de 15 s y, en Windows, `CREATE_NO_WINDOW`).
+  - [x] T7.3 `verify_server(runner, server: &Path) -> Result<RuntimeVersion, RuntimeError>`: ejecuta `--version` con `cwd` = el directorio del binario (los DLL se resuelven allí). Si el código de salida es distinto de 0, no se puede lanzar o no se puede parsear, `VerificationFailed { stderr_tail }` (últimos 2000 caracteres).
+  - [x] T7.4 `remove_quarantine(runner, os, dir)`: en macOS ejecuta `/usr/bin/xattr -cr <dir>`; en Windows no hace nada. Si `xattr` falla, `QuarantineFailed`.
 - **Tests unitarios** (con `FakeRunner`, que registra las llamadas):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -313,7 +376,9 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `version_tras_lineas_cuda` | `version_cuda_stderr.txt` (líneas `ggml_cuda_init: …` antes) | `12780` |
   | `version_en_stdout` | la línea en stdout y stderr vacío | `12780` |
   | `version_con_crlf` | `version: 5 (abc)\r\n` | `{ 5, "abc" }` |
-  | `version_no_parseable` | `""`, `version: x (abc)`, `version 12 (abc)`, `version: 12 abc` | `None` |
+  | `version_formato_semver` | `version_semver.txt` en stderr (`version: 1.1.0-dev (build 12816, commit 7b74cb92d)` + `built with Clang 22.1.8 for Windows x86_64`) | `{ build: 12816, commit: "7b74cb92d" }` |
+  | `version_formato_semver_tras_lineas_cuda` | stderr con líneas `ggml_cuda_init: …` y `Device 0: NVIDIA GeForce RTX 4070, …` antes de la línea de `version_semver.txt`, con `\r\n` explícitos al final de cada línea (incluida la última) | `{ build: 12816, commit: "7b74cb92d" }` |
+  | `version_no_parseable` | Formato antiguo: `""`, `version: x (abc)`, `version 12 (abc)`, `version: 12 abc`. Formato nuevo: `version: 1.1.0-dev`, `version: 1.1.0-dev (build x, commit abc)`, `version: 1.1.0-dev (build 12816)`, `version: 1.1.0-dev (commit 7b74cb92d)`, `version: 1.1.0-dev (build 12816, commit XYZ)`, `version: (build 12816, commit abc)` | `None` |
   | `verify_ok_usa_cwd_del_binario` | fake con salida 0 + versión | `Ok`; la llamada es `[server, ["--version"], Some(dir)]` |
   | `verify_codigo_no_cero` | salida 1, stderr `"missing cudart64_12.dll"` | `Err(VerificationFailed)` con ese texto |
   | `verify_sin_version` | salida 0, sin línea de versión | `Err(VerificationFailed)` |
@@ -322,37 +387,41 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `quarantine_windows_no_hace_nada` | `Windows` | 0 llamadas |
   | `quarantine_fallo` | `xattr` con salida 1 | `Err(QuarantineFailed)` |
   | `runner_real_programa_inexistente` | `TokioCommandRunner` con una ruta inexistente en `tempdir` | `Err(Io)` |
+  | `quarantine_real_macos_limpia_atributo` (`cfg(target_os = "macos")`, corre en la CI de macOS) | fichero en `tempdir` marcado con `/usr/bin/xattr -w com.apple.quarantine "0081;00000000;app-llama;" <f>`; `remove_quarantine(&TokioCommandRunner, MacOs, dir)` | `Ok`; después `/usr/bin/xattr -p com.apple.quarantine <f>` sale con código ≠ 0 |
 
 ### T8 — Estado persistido del runtime
 - **Ficheros/módulos:** `crates/core/src/runtime/state.rs`
 - **Depende de:** T2, T7
 - **Cubre:** CA11
 - **Subtareas:**
-  - [ ] T8.1 `RuntimeState { schema: 1, active: Option<ActiveRuntime>, pending_cleanup: Vec<PathBuf> }` y `ActiveRuntime { source: Managed { tag } | External, backend, server_path, version: RuntimeVersion }` (`serde`, JSON legible).
-  - [ ] T8.2 `StateStore::new(runtime_dir)`:
-    - `load()`: si no existe → `Default`; si está corrupto → copia a `runtime.json.bak` y devuelve `Default`.
-    - `save()`: atómico (`runtime.json.tmp` + `rename`).
-  - [ ] T8.3 `RuntimeStatus { NotInstalled, Ready(ActiveRuntime), Broken { path } }` y `status_of(state, exists: impl Fn(&Path) -> bool)`.
+  - [x] T8.1 `RuntimeState { schema: 1, active: Option<ActiveRuntime>, pending_cleanup: Vec<PathBuf> }` y `ActiveRuntime { source: Managed { tag } | External, backend: Option<Backend>, server_path, version: RuntimeVersion }` (`serde`, JSON legible). `backend` es `Some(..)` en los gestionados y `None` en los externos; al leer, un `runtime.json` sin el campo o con `null` da `None` y uno con backend da `Some` (compatibilidad con ficheros ya escritos).
+  - [x] T8.2 `StateStore::new(runtime_dir)`:
+    - `load() -> Result<RuntimeState, RuntimeError>`: si no existe (`NotFound`) → `Ok(Default)`; si está corrupto → copia a `runtime.json.bak` y devuelve `Ok(Default)`; cualquier otro error de E/S → `Err(Io)`.
+    - `save()`: atómico (`runtime.json.tmp` + `rename`); crea `runtime_dir` si no existe.
+  - [x] T8.3 `RuntimeStatus { NotInstalled, Ready(ActiveRuntime), Broken { path } }` (`Serialize`) y `status_of(state, exists: impl Fn(&Path) -> bool)`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
-  | `estado_roundtrip_gestionado` | `Managed { tag: "b12780" }`, `Cuda{13,5}` | `save` + `load` → igual |
-  | `estado_roundtrip_externo` | `External` con ruta con espacios y no ASCII (`Él dir`) | igual |
+  | `estado_roundtrip_gestionado` | `Managed { tag: "b12780" }`, `backend: Some(Cuda{13,5})` | `save` + `load` → igual |
+  | `estado_roundtrip_externo` | `External`, `backend: None`, ruta con espacios y no ASCII (`Él dir`) | igual |
+  | `estado_con_backend_existente_se_lee_como_some` | JSON con `"backend":"Vulkan"` | `backend: Some(Vulkan)` |
+  | `estado_sin_backend_o_null_se_lee_como_none` | JSON sin `backend` y con `"backend":null` | `backend: None` en ambos |
   | `estado_inexistente` | directorio vacío | `Default` (`active: None`) |
   | `estado_corrupto_hace_copia` | `runtime.json` = `"{"` | `Default` y existe `runtime.json.bak` con `"{"` |
   | `estado_schema_desconocido` | `schema: 99` | `Default` + `.bak` |
   | `estado_guardado_atomico` | `save` | no queda `runtime.json.tmp` |
+  | `estado_crea_directorio` | `runtime_dir` inexistente dentro de `tempdir` | `save` crea el directorio y el fichero |
   | `status_no_instalado` | `active: None` | `NotInstalled` |
   | `status_listo` | activo + `exists` → `true` | `Ready(..)` |
   | `status_roto` | activo + `exists` → `false` | `Broken { path }` |
 
 ### T9 — Cliente de releases de GitHub
 - **Ficheros/módulos:** `crates/core/src/runtime/github.rs`
-- **Depende de:** T1
+- **Depende de:** T1, T5 (`reqwest`, `wiremock`)
 - **Cubre:** CA4 (red), base de CA10
 - **Subtareas:**
-  - [ ] T9.1 `#[async_trait] trait ReleaseSource { async fn list_releases(&self) -> Result<Vec<Release>, RuntimeError>; }`.
-  - [ ] T9.2 `GitHubReleaseSource { client, base_url }`: `GET {base_url}/repos/ggml-org/llama.cpp/releases?per_page=10` con las cabeceras del Contexto. `base_url` se inyecta (en producción, `https://api.github.com`).
+  - [x] T9.1 `#[async_trait] trait ReleaseSource { async fn list_releases(&self) -> Result<Vec<Release>, RuntimeError>; }`.
+  - [x] T9.2 `GitHubReleaseSource { client, base_url }`: `GET {base_url}/repos/ggml-org/llama.cpp/releases?per_page=10` con las cabeceras del Contexto. `base_url` se inyecta (en producción, `https://api.github.com`).
     - 403 o 429 con `x-ratelimit-remaining: 0` → `RateLimited { reset_epoch: Option<u64> }` (de `x-ratelimit-reset`).
     - Otro estado distinto de 2xx → `HttpStatus(code)`.
 - **Tests unitarios** (`wiremock`):
@@ -361,115 +430,202 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
   | `lista_releases_ok` | 200 + `releases_b12780.json` | 3 releases |
   | `lista_releases_envia_cabeceras` | el mock exige `User-Agent: app-llama`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28` y `per_page=10` | `Ok` (si falta alguna, el mock responde 404 y el test falla) |
   | `lista_releases_rate_limit` | 403, `x-ratelimit-remaining: 0`, `x-ratelimit-reset: 1764150000` | `Err(RateLimited { reset_epoch: Some(1764150000) })` |
+  | `lista_releases_429_rate_limit` | 429, `x-ratelimit-remaining: 0`, sin `x-ratelimit-reset` | `Err(RateLimited { reset_epoch: None })` |
   | `lista_releases_403_sin_rate_limit` | 403 sin cabeceras | `Err(HttpStatus(403))` |
   | `lista_releases_500` | 500 | `Err(HttpStatus(500))` |
   | `lista_releases_json_roto` | 200 + `"<html>"` | `Err(ReleaseParse(_))` |
 
-### T10 — `RuntimeManager`: estado, actualización, instalación y binario externo
-- **Ficheros/módulos:** `crates/core/src/runtime/manager.rs`
-- **Depende de:** T3–T9
-- **Cubre:** CA5, CA7, CA8, CA9, CA10, CA11
+### T10 — `RuntimeManager`: estado, hardware, actualización y binario externo
+- **Ficheros/módulos:** `crates/core/src/runtime/manager.rs`, `crates/core/src/runtime/test_support.rs` (`FakeSource`, `FakeRemover`)
+- **Depende de:** T3, T4, T7, T8, T9
+- **Cubre:** CA9, CA10 (`check_update`), CA11
 - **Subtareas:**
-  - [ ] T10.1 `RuntimeManager::new(runtime_dir, deps: RuntimeDeps { source, fetcher, runner, probe })`, con dependencias `Arc<dyn …>` inyectadas. Un `Mutex` impide dos instalaciones a la vez (`AlreadyInstalling`).
-  - [ ] T10.2 `status()`: `status_of` + reintenta borrar `pending_cleanup`. `hardware()` → `detect`. `active_server_path() -> Option<PathBuf>`: punto de integración para el plan del servidor.
-  - [ ] T10.3 `check_update() -> UpdateInfo { installed: Option<u32>, latest: u32, latest_tag, available_backends, update_available }`.
-  - [ ] T10.4 `install(preference, on_progress, cancel) -> Result<ActiveRuntime, RuntimeError>`: los 9 pasos del Diseño, con limpieza de `.staging-<tag>` ante cualquier error.
-  - [ ] T10.5 `use_external(path) -> Result<ActiveRuntime, RuntimeError>`. No borra la versión gestionada previa (se mantiene en disco hasta la siguiente instalación gestionada; ver Preguntas abiertas).
-- **Tests unitarios** (con `FakeSource`, `FakeFetcher` que escribe un zip o tar.gz generado en el test, `FakeRunner` y `FakeProbe`; `tempdir` como `runtime_dir`):
+  - [x] T10.1 `RuntimeManager::new(runtime_dir, deps: RuntimeDeps { source, fetcher, runner, probe, remover })`, con dependencias `Arc<dyn …>` inyectadas. `remover: Arc<dyn DirRemover>` (`fn remove_dir_all(&self, &Path) -> io::Result<()>`) con `StdDirRemover` en producción. Un `tokio::sync::Mutex` (`try_lock`) impide dos instalaciones a la vez (`AlreadyInstalling`).
+  - [x] T10.2 Consultas `async`:
+    - `status() -> Result<RuntimeStatus, RuntimeError>`: carga el estado (propaga el `Err(Io)` de `load()`), reintenta borrar `pending_cleanup` (quita de la lista las que se borren y guarda) y devuelve `status_of`. Un borrado pendiente que vuelve a fallar no es un error.
+    - `hardware() -> Result<HardwareInfo, RuntimeError>`: ejecuta `detect` con `tokio::task::spawn_blocking` (lanza `nvidia-smi`, bloqueante); un fallo del `JoinHandle` se convierte en `RuntimeError`.
+    - `active_server_path() -> Result<Option<PathBuf>, RuntimeError>`: llama a `status()` (y por tanto reintenta los borrados pendientes y propaga su error); `Ok(Some(ruta))` solo con `Ready`, `Ok(None)` con `NotInstalled` o `Broken`. Punto de integración con el plan 008.
+  - [x] T10.3 `check_update() -> UpdateInfo { installed: Option<u32>, latest: u32, latest_tag, available_backends, update_available }`. `installed` es la `build` del runtime activo (gestionado o externo); `update_available` es cierto si no hay runtime activo o si `latest > installed`.
+  - [x] T10.4 `use_external(path) -> Result<ActiveRuntime, RuntimeError>`. Si hay una instalación en curso (el `Mutex` de T10.1 está tomado), falla con `AlreadyInstalling` sin tocar el estado ni llamar al runner. Guarda `backend: None`. No borra las versiones gestionadas en disco (las limpia la siguiente instalación gestionada).
+- **Tests unitarios** (con `FakeSource`, `FakeRunner`, `FakeProbe`, `FakeRemover`; `tempdir` como `runtime_dir`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
-  | `install_cpu_windows_ok` | Win x64 sin GPU, `Auto` | `runtime/b12780/llama-server.exe` existe, `runtime.json` es `Managed{b12780}` `Cpu{Generic}`, no queda `.staging-*` |
-  | `install_cuda_extrae_cudart_junto_al_server` | driver 13.0; el zip principal tiene `bin/llama-server.exe`; el cudart, `cudart64_13.dll` | `runtime/b12780/bin/cudart64_13.dll` existe; 2 `fetch` |
-  | `install_macos_quita_cuarentena_antes_de_verificar` | macOS arm64 | orden de llamadas al runner: `xattr -cr <staging/install>` y después `--version` |
-  | `install_verificacion_falla_conserva_anterior` | activo `b12779`; `--version` con salida 1 | `Err(VerificationFailed)`, `runtime.json` sin cambios, `runtime/b12779/` intacto, sin `.staging-*` |
-  | `install_hash_falla_no_cambia_estado` | el fetcher devuelve `IntegrityMismatch` | error propagado, sin `.staging-*` |
-  | `install_cancelado` | token cancelado durante el fetch | `Err(Cancelled)`, sin `.staging-*` |
-  | `install_concurrente_rechazado` | segunda llamada mientras la primera espera en el fetcher (sincronizado con `tokio::sync::Notify`) | `Err(AlreadyInstalling)` |
-  | `install_progreso_por_fases` | instalación OK | eventos en orden `Fetching(main)` → `Extracting` → `Verifying` → `Done`; sin dos eventos seguidos con la misma fase y el mismo porcentaje |
-  | `update_reemplaza_y_borra_anterior` | activo `b12779` gestionado y source con `b12780` | activo `b12780`, `runtime/b12779/` no existe |
-  | `update_borrado_fallido_queda_pendiente` | el directorio anterior sustituido por un fichero no borrable simulado (`remove_dir_all` inyectado que falla) | `pending_cleanup` contiene la ruta; el siguiente `status()` la reintenta |
-  | `check_update_disponible` | activo `12779`, latest `b12780` | `update_available: true`, `latest: 12780` |
+  | `status_sin_estado` | `runtime_dir` vacío | `Ok(NotInstalled)`; `active_server_path().await` → `Ok(None)` |
+  | `status_error_io_se_propaga` | `runtime.json` creado como **directorio** (la lectura falla con un error distinto de `NotFound`) | `status()` y `active_server_path()` → `Err(Io)`; no se crea `runtime.json.bak` |
+  | `active_server_path_roto` | activo con `server_path` inexistente | `Ok(None)` |
+  | `hardware_usa_probe` | `FakeProbe` de CA1 | `Ok(HardwareInfo)` igual al de CA1 |
+  | `status_reintenta_pendientes` | `pending_cleanup: [dir existente]`, `FakeRemover` que borra | el directorio ya no existe y `runtime.json` tiene `pending_cleanup: []` |
+  | `status_pendiente_sigue_fallando` | `FakeRemover` que siempre falla | `pending_cleanup` conserva la ruta; `status()` no devuelve error |
+  | `check_update_disponible` | activo `12779`, latest `b12780` | `update_available: true`, `latest: 12780`, `latest_tag: "b12780"` |
   | `check_update_al_dia` | activo `12780` | `update_available: false` |
   | `check_update_sin_instalar` | `active: None` | `installed: None`, `update_available: true` |
+  | `check_update_backends` | Win x64, driver 13.0, Vulkan | `available_backends: [Cuda{13,5}, Vulkan, Cpu{Generic}]` |
   | `check_update_rate_limit` | source → `RateLimited` | error propagado sin tocar el estado |
-  | `external_valido` | `tempdir/llama-server.exe` + versión 12000 | `Ready(External, 12000)`; el runner no recibe `xattr` |
-  | `external_nombre_invalido` | `tempdir/llama-cli.exe` | `Err(InvalidExternalBinary)`, estado sin cambios |
+  | `external_valido` | `tempdir/llama-server.exe` + versión 12000 | `Ready(External, 12000)` con `backend: None`; el runner no recibe `xattr`; `active_server_path().await` → `Ok(Some(esa ruta))` |
+  | `external_durante_instalacion_rechazado` | `Mutex` de instalación tomado (p. ej. con el guard de `begin_install()`) | `Err(AlreadyInstalling)`, estado sin cambios, 0 llamadas al runner |
+  | `external_nombre_invalido` | `tempdir/llama-cli.exe` | `Err(InvalidExternalBinary)`, estado sin cambios, 0 llamadas al runner |
   | `external_verificacion_falla` | `--version` con salida 1 | `Err(VerificationFailed)`, estado sin cambios |
-  | `status_persistente_entre_instancias` | `install` OK y después un `RuntimeManager` nuevo | el mismo `Ready(..)` |
+  | `external_no_borra_gestionado` | activo `Managed b12780` con `runtime/b12780-cpu/` en disco | tras `use_external`, `runtime/b12780-cpu/` sigue existiendo |
 
-### T11 — Comandos y eventos Tauri
-- **Ficheros/módulos:** `src-tauri/src/commands/runtime.rs` (nuevo), `src-tauri/src/lib.rs` (registro), `src-tauri/Cargo.toml` (`tauri-plugin-dialog`), `src-tauri/capabilities/*.json` (`dialog:allow-open`)
-- **Depende de:** T10
+### T11 — `RuntimeManager::install`: instalación, actualización y limpieza
+- **Ficheros/módulos:** `crates/core/src/runtime/install.rs`, `crates/core/src/runtime/test_support.rs` (`FakeFetcher`, que escribe un zip o tar.gz generado en el test)
+- **Depende de:** T5, T6, T10
+- **Cubre:** CA5, CA7, CA8, CA10 (instalación), CA11
+- **Subtareas:**
+  - [x] T11.1 `ProgressEvent` + `ProgressPhase` (`Serialize`, `#[serde(tag = "kind", rename_all = "camelCase")]`) y un emisor que solo notifica cuando cambia la fase o el porcentaje entero.
+  - [x] T11.2 `install(preference, on_progress, cancel) -> Result<ActiveRuntime, RuntimeError>`: los pasos 0–9 del Diseño, con limpieza de `.staging-<tag>` ante cualquier error o cancelación. Incluye la función pura `managed_dir_name(tag, backend)` (destino `<runtime_dir>/<tag>-<backend>/`), la salida temprana sin descarga si ya está activo el mismo tag y backend con su binario presente, el `Err` antes de descargar si `.staging-<tag>` no se pudo borrar, el reemplazo de un destino residual antes del `rename` (incluido el directorio del activo cuando su binario no existe, D15) y la retirada del directorio final de `pending_cleanup` en `free_destination(final_dir)`, antes del `rename` (paso 7) y solo si el borrado del residuo tuvo éxito; el paso 8 solo guarda `active`.
+  - [x] T11.3 Limpieza tras el éxito (paso 9, best-effort): borra con `DirRemover` todos los directorios `b<N>` y `b<N>-…` distintos del final; los fallos van a `pending_cleanup`. Un fallo al listar o al guardar `pending_cleanup` no convierte el éxito en error.
+- **Tests unitarios** (con `FakeSource`, `FakeFetcher`, `FakeRunner`, `FakeProbe`, `FakeRemover`; `tempdir` como `runtime_dir`):
+  | Test | Entrada | Resultado esperado |
+  |---|---|---|
+  | `managed_dir_name_por_backend` | (`b12780`, `Cpu{Generic}`), (`b12780`, `Cuda{13,5}`), (`b12780`, `Vulkan`), (`b12780`, `Metal`), (`b4500`, `Cpu{Avx2}`), (`b4500`, `Cpu{Avx512}`), (`b4500`, `Cpu{Avx}`) | `b12780-cpu`, `b12780-cuda-13.5`, `b12780-vulkan`, `b12780-metal`, `b4500-cpu-avx2`, `b4500-cpu-avx512`, `b4500-cpu-avx` |
+  | `install_cpu_windows_ok` | Win x64 sin GPU, `Auto` | `runtime/b12780-cpu/llama-server.exe` existe, `runtime.json` es `Managed{b12780}` con `backend: Some(Cpu{Generic})`, no queda `.staging-*` |
+  | `install_cuda_extrae_cudart_junto_al_server` | driver 13.0; el zip principal tiene `bin/llama-server.exe`; el cudart, `cudart64_13.dll` | `runtime/b12780-cuda-13.5/bin/cudart64_13.dll` existe; 2 `fetch` |
+  | `install_macos_quita_cuarentena_antes_de_verificar` | macOS arm64 | orden de llamadas al runner: `/usr/bin/xattr -cr <staging/install>` y después `--version` |
+  | `install_windows_no_llama_xattr` | Win x64 | ninguna llamada a `xattr` |
+  | `install_verificacion_falla_conserva_anterior` | activo `b12779` en `runtime/b12779-cpu/`; `--version` con salida 1 | `Err(VerificationFailed)`, `runtime.json` sin cambios, `runtime/b12779-cpu/` intacto, sin `.staging-*` |
+  | `install_hash_falla_no_cambia_estado` | el fetcher devuelve `IntegrityMismatch` | error propagado, `runtime.json` sin cambios, sin `.staging-*` |
+  | `install_cancelado` | token cancelado durante el fetch | `Err(Cancelled)`, sin `.staging-*` |
+  | `install_concurrente_rechazado` | segunda llamada mientras la primera espera en el fetcher (sincronizado con `tokio::sync::Notify`) | `Err(AlreadyInstalling)` |
+  | `install_limpia_staging_huerfano` | existe `runtime/.staging-b12000/` de antes | tras `install` OK no queda ningún `.staging-*` |
+  | `install_progreso_por_fases` | instalación OK | eventos en orden `Fetching(main)` → `Extracting` → `Verifying` → `Done`; sin dos eventos seguidos con la misma fase y el mismo porcentaje |
+  | `update_reemplaza_y_borra_anterior` | activo `b12779` gestionado en `runtime/b12779-cpu/` y source con `b12780`, Win x64 sin GPU | activo `b12780` en `runtime/b12780-cpu/`, `runtime/b12779-cpu/` no existe |
+  | `install_tras_externo_borra_gestionada_previa` | activo `External`, `runtime/b12779-cpu/` y un directorio con la forma antigua `runtime/b12000/` en disco | activo `Managed b12780`, ni `runtime/b12779-cpu/` ni `runtime/b12000/` existen |
+  | `update_borrado_fallido_queda_pendiente` | `FakeRemover` que falla con `runtime/b12779-cpu` | `install` devuelve `Ok`; `pending_cleanup` contiene la ruta; con un remover que ya funciona, el siguiente `status()` la borra |
+  | `reinstalar_mismo_tag_otro_backend` | activo `Managed b12780` con `Cpu{Generic}` en `runtime/b12780-cpu/`; Win x64 con Vulkan; `install(Vulkan)` | `Ok`; activo `Managed b12780` con `backend: Some(Vulkan)` y `server_path` bajo `runtime/b12780-vulkan/`; `runtime/b12780-cpu/` no existe; 1 `fetch` |
+  | `reinstalar_mismo_tag_y_backend_no_descarga` | activo `Managed b12780` con `Cpu{Generic}` y su `llama-server.exe` presente en `runtime/b12780-cpu/`; Win x64 sin GPU; `install(Auto)` | `Ok(activo)` igual al anterior; 0 `fetch`; 0 llamadas al runner; `runtime.json` sin cambios (mismo contenido); no se crea `.staging-*` |
+  | `install_destino_residual_se_reemplaza` | activo `None`; existe `runtime/b12780-cpu/` con un fichero `basura.txt` y sin `runtime.json` que lo apunte; Win x64 sin GPU | `Ok`; `runtime/b12780-cpu/llama-server.exe` existe y `basura.txt` no; sin `.staging-*` |
+  | `install_destino_residual_no_borrable_falla` | como el anterior, con `FakeRemover` que falla con `runtime/b12780-cpu` | `Err(Io)`; `runtime.json` sin cambios; sin `.staging-*` (el remover sí borra el staging) |
+  | `install_staging_no_borrable_falla_antes_de_descargar` | existe `runtime/.staging-b12780/` y `FakeRemover` que falla con esa ruta | `Err(Io)`; 0 `fetch`; `runtime.json` sin cambios |
+  | `install_saca_destino_de_pending_cleanup` | `runtime.json` con `pending_cleanup: [<runtime_dir>/b12780-cpu]` (un borrado previo falló) y ese directorio en disco; Win x64 sin GPU | `Ok`; `runtime.json` tiene activo `b12780` en `runtime/b12780-cpu/` y `pending_cleanup` vacío (la ruta se retiró en `free_destination`, antes del `rename`); un `status()` posterior desde un `RuntimeManager` nuevo devuelve `Ready(activo)` y `runtime/b12780-cpu/llama-server.exe` sigue existiendo |
+  | `free_destination_saca_el_destino_de_pending_antes_del_rename` | `runtime.json` con `pending_cleanup: [<runtime_dir>/b12780-cpu, <runtime_dir>/b12000]` y `runtime/b12780-cpu/` en disco; se llama directamente a `free_destination(<runtime_dir>/b12780-cpu)` | `Ok`; `runtime/b12780-cpu/` ya no existe; `pending_cleanup` = `[<runtime_dir>/b12000]` (solo se retira el destino; el resto de pendientes se conserva) |
+  | `limpieza_final_fallida_no_rompe_la_instalacion` | activo `Managed b12779` con `runtime/b12779-cpu/` en disco; Win x64 sin GPU; remover que en el paso 9 falla y además deja `runtime.json` sin poder guardarse (lo sustituye por un directorio), pero sí borra `.staging-*` | `install` devuelve `Ok` con build `12780`; el último evento de progreso es `Done` (ni el fallo del borrado ni el de guardar `pending_cleanup` convierten el éxito en error) |
+  | `reinstalar_activo_roto_reemplaza` | `runtime.json` con activo `Managed b12780`, `backend: Some(Cpu{Generic})` y `server_path` en `runtime/b12780-cpu/llama-server.exe`; el directorio `runtime/b12780-cpu/` existe con un fichero `basura.txt` pero sin `llama-server.exe` (`status()` → `Broken`); Win x64 sin GPU; `install(Auto)` | `Ok`; 1 `fetch` (no hay salida temprana); `runtime/b12780-cpu/llama-server.exe` existe y `basura.txt` no; `runtime.json` con activo `Managed b12780` y `backend: Some(Cpu{Generic})`; `status()` → `Ready`; sin `.staging-*` |
+  | `status_persistente_entre_instancias` | `install` OK y después un `RuntimeManager` nuevo sobre el mismo `runtime_dir` | el mismo `Ready(..)` |
+
+### T12 — Comandos y eventos Tauri
+- **Ficheros/módulos:** `src-tauri/src/commands.rs` (`pub mod runtime;`), `src-tauri/src/commands/runtime.rs` (nuevo), `src-tauri/src/lib.rs` (comandos en `register()`; plugin y `setup` en `run()`, D13), `Cargo.toml` raíz y `src-tauri/Cargo.toml` (`tauri-plugin-dialog`, `app-llama-core` ya está), `src-tauri/capabilities/default.json` (`dialog:allow-open`)
+- **Depende de:** T11
 - **Cubre:** CA12 (backend)
 - **Subtareas:**
-  - [ ] T11.1 Estado gestionado `RuntimeAppState { manager: Arc<RuntimeManager>, cancel: Mutex<Option<CancelToken>> }`, creado en `setup` con `app.path().app_data_dir()/runtime` y las implementaciones reales.
-  - [ ] T11.2 Comandos: `runtime_hardware`, `runtime_status`, `runtime_check_update`, `runtime_install(preference)`, `runtime_cancel_install` y `runtime_use_external(path)`. Los errores se serializan como `{ code, message }` (`code` = nombre de la variante de `RuntimeError`, `message` en español).
-  - [ ] T11.3 `runtime_install` emite `runtime://progress` con `ProgressEvent` serializado (`camelCase`).
-  - [ ] T11.4 Función pura `error_to_payload(&RuntimeError) -> ErrorPayload`, testeable sin Tauri.
+  - [x] T12.1 Estado gestionado `RuntimeAppState { manager: Arc<RuntimeManager>, cancel: Mutex<Option<CancelToken>> }`, creado en el `setup` de `run()` con `app.path().app_data_dir()?.join("runtime")` (D9) y las implementaciones reales (`GitHubReleaseSource`, `SimpleHttpFetcher`, `TokioCommandRunner`, `NativeProbe`, `StdDirRemover`). Sin `unwrap()`: los errores de `setup` se propagan.
+  - [x] T12.2 Comandos `async`: `runtime_hardware`, `runtime_status`, `runtime_check_update`, `runtime_install(preference)`, `runtime_cancel_install` y `runtime_use_external(path)`, añadidos al `generate_handler!` de `register()` junto a `app_info`. Cada comando hace `.await` del método `async` correspondiente de `RuntimeManager` (todos devuelven `Result`, incluidos `hardware()` y `status()`) y no bloquea el hilo del runtime. Los errores se serializan como `{ code, message }` (`code` = nombre de la variante de `RuntimeError`, `message` en español).
+  - [x] T12.3 `runtime_install` emite `runtime://progress` con `ProgressEvent` serializado (`camelCase`).
+  - [x] T12.4 Función pura `error_to_payload(&RuntimeError) -> ErrorPayload`, testeable sin Tauri.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
   | `error_payload_codigos` | `RateLimited{..}`, `VerificationFailed{..}`, `Cancelled`, `NoCompatibleAsset` | `code` = `"RateLimited"`, `"VerificationFailed"`, `"Cancelled"`, `"NoCompatibleAsset"`; `message` no vacío |
   | `error_payload_rate_limit_mensaje` | `RateLimited { reset_epoch: Some(..) }` | `message` contiene "límite de GitHub" |
+  | `error_payload_verificacion_incluye_stderr` | `VerificationFailed { stderr_tail: "dyld: …" }` | `message` contiene `"dyld: …"` |
   | `progress_event_serializa_camel_case` | `ProgressEvent { phase: Fetching{ artifact: "main" }, done: 1, total: 2 }` | JSON `{"phase":{"kind":"fetching","artifact":"main"},"done":1,"total":2}` |
   | `preference_deserializa` | `"auto"`, `"cuda"`, `"x"` | `Auto`, `Cuda`, error |
+  | `ipc_app_info_responde`, `ipc_comando_desconocido_falla` (existentes en `lib.rs`) | sin cambios | siguen en verde: `register()` no toca el disco ni necesita el estado |
 
-### T12 — Pantalla Ajustes → llama.cpp
-- **Ficheros/módulos:** `ui/src/lib/runtime/api.ts` (envoltura de `invoke`/`listen`), `ui/src/lib/runtime/view-model.ts` + `view-model.test.ts`, `ui/src/lib/runtime/RuntimeSettings.svelte`, la pantalla de Ajustes de 003 (incluye la sección), `ui/package.json` (`@tauri-apps/plugin-dialog`)
-- **Depende de:** T11
+### T13 — Sección llama.cpp en Ajustes
+- **Ficheros/módulos:** `ui/src/lib/runtime/api.ts` (envoltura de `invoke`/`listen`), `ui/src/lib/runtime/view-model.ts` + `view-model.test.ts`, `ui/src/lib/runtime/RuntimeSettings.svelte` + `RuntimeSettings.test.ts`, `ui/src/views/Settings.svelte` (incrusta la sección, D14) y `ui/src/views/Settings.test.ts`, `ui/package.json` + `package-lock.json` (`@tauri-apps/plugin-dialog`)
+- **Depende de:** T12
 - **Cubre:** CA12
 - **Subtareas:**
-  - [ ] T12.1 Tipos TS espejo de `HardwareInfo`, `RuntimeStatus`, `UpdateInfo`, `ProgressEvent` y `ErrorPayload`.
-  - [ ] T12.2 `view-model.ts` (funciones puras):
+  - [x] T13.1 Tipos TS espejo de `HardwareInfo`, `RuntimeStatus`, `UpdateInfo`, `ProgressEvent` y `ErrorPayload`. En `ActiveRuntime`, `backend: Backend | null` (`null` en los externos).
+  - [x] T13.2 `view-model.ts` (funciones puras):
     - `describeHardware(hw)`;
-    - `describeStatus(status)`;
-    - `primaryAction(status, update)` → `{ label: "Instalar" | "Actualizar a bN" | "Al día", enabled }`;
+    - `describeStatus(status)` (el backend solo aparece si no es `null`);
+    - `primaryAction(status, update, selectedBackend)` → `{ label: "Instalar" | "Instalar <backend>" | "Actualizar a bN" | "Al día" | "Buscar actualizaciones", enabled }`, donde `selectedBackend` es el valor del selector (`"auto" | "cuda" | "vulkan" | "metal" | "cpu"`). Reglas, en este orden (D16):
+      1. `NotInstalled` o `Broken` → `{ "Instalar", true }`.
+      2. `update` = `null` → `{ "Buscar actualizaciones", true }`.
+      3. `update_available: true` → `{ "Actualizar a bN", true }` (instala la última con el backend elegido).
+      4. Backend efectivo: con `"auto"`, `available_backends[0]`; con otro valor, el elemento de `available_backends` de ese tipo (si no hay ninguno, se trata como `"auto"`). Si el activo es externo (`backend: null`) o el backend efectivo no es igual (comparación estructural, incluida la versión de CUDA) al `backend` del activo gestionado → `{ "Instalar <backend>", true }`, con la misma etiqueta de backend que `describeStatus` (`"Instalar CPU"`, `"Instalar Vulkan"`, `"Instalar CUDA 13.5"`, `"Instalar Metal"`).
+      5. En otro caso → `{ "Al día", false }`;
     - `backendOptions(update)`;
     - `progressLabel(event)` → `"Descargando llama.cpp… 42 %"`, etc.;
-    - `errorMessage(payload)`.
-  - [ ] T12.3 `RuntimeSettings.svelte` (Svelte 5, runes): sin lógica propia; usa `view-model` y `api`. "Usar binario existente…" abre el diálogo de `plugin-dialog` filtrado por `llama-server` / `llama-server.exe`. "Cancelar" solo se ve durante la instalación.
-- **Tests unitarios** (Vitest, sin Tauri):
+    - `errorMessage(payload)` (acepta también un error que no sea `ErrorPayload`, p. ej. sin IPC).
+  - [x] T13.3 `RuntimeSettings.svelte` (Svelte 5, runes): sin lógica propia; usa `view-model` y `api`. Al montarse pide `runtime_hardware` y `runtime_status`; todas las promesas tienen manejo de error (muestra `errorMessage`). La acción principal se recalcula con `primaryAction(status, update, selectedBackend)` cada vez que cambia el selector; "Buscar actualizaciones" llama a `runtime_check_update` y las acciones "Instalar…" y "Actualizar…" llaman a `runtime_install(selectedBackend)`. La suscripción a `runtime://progress` se crea al pulsar una acción de instalación y se libera al terminar. El progreso usa `<progress value max>` (sin atributo `style`: la CSP no permite estilos en línea). "Usar binario existente…" abre `open()` de `plugin-dialog`: en Windows con filtro de extensión `exe`; en macOS sin filtro (el nombre lo valida el backend con `InvalidExternalBinary`). "Cancelar" solo se ve durante la instalación.
+  - [x] T13.4 `Settings.svelte`: sustituye "Próximamente" por `<RuntimeSettings />` bajo un `<h2>llama.cpp</h2>` y mantiene `Versión …`. `Settings.test.ts`: el `mockIPC` responde según `cmd` (`app_info` y los `runtime_*`).
+  - [x] T13.5 **Aviso de backends sin consultar (hallazgo 3 de T14, decisión del usuario 2026-11-27).** Problema: hasta pulsar "Buscar actualizaciones" el selector solo muestra "Automático" y nada lo explica. Solución:
+    - `view-model.ts`: nueva función pura `backendHint(update: UpdateInfo | null): string | null` → con `update` = `null` devuelve `'Pulsa "Buscar actualizaciones" para ver los backends disponibles.'`; con cualquier `UpdateInfo` devuelve `null`.
+    - `RuntimeSettings.svelte`: si `backendHint(update)` no es `null`, lo muestra en un `<p>` justo debajo del selector, asociado a él con `aria-describedby`. Sin lógica propia en el componente.
+    - **Sin peticiones extra:** no se llama a `runtime_check_update` al montar ni al abrir el selector; la consulta a GitHub sigue ocurriendo solo al pulsar "Buscar actualizaciones" (o dentro de instalar/actualizar, como hasta ahora).
+    - Ficheros: `ui/src/lib/runtime/view-model.ts` + `view-model.test.ts`, `ui/src/lib/runtime/RuntimeSettings.svelte` + `RuntimeSettings.test.ts`.
+- **Tests unitarios** (Vitest, sin Tauri real; `mockIPC` de `@tauri-apps/api/mocks` en los de componente):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
   | `describe_hardware_nvidia` | `HardwareInfo` de CA1 | contiene `"AVX2"`, `"NVIDIA GeForce RTX 4070 (12 GB)"`, `"Vulkan"`; no contiene `"AVX512"` |
   | `describe_hardware_mac` | macOS arm64 | contiene `"Apple Silicon (Metal)"` |
   | `describe_status_no_instalado` | `NotInstalled` | `"No instalado"` |
-  | `describe_status_listo_gestionado` | `Ready(Managed b12780, Cuda 13.5)` | `"b12780 · CUDA 13.5 · gestionado"` |
-  | `describe_status_externo` | `Ready(External, 12000)` | contiene `"externo"` y la ruta |
+  | `describe_status_listo_gestionado` | `Ready(Managed b12780, backend: Cuda 13.5)` | `"b12780 · CUDA 13.5 · gestionado"` (el gestionado sigue mostrando el backend) |
+  | `describe_status_externo` | `Ready(External, 12000, backend: null)` | contiene `"b12000"`, `"externo"` y la ruta; no contiene ningún nombre de backend (`"CPU"`, `"CUDA"`, `"Vulkan"`, `"Metal"`) |
   | `describe_status_roto` | `Broken { path }` | contiene `"no se encuentra"` y la ruta |
-  | `accion_instalar` | `NotInstalled` | `{ label: "Instalar", enabled: true }` |
-  | `accion_actualizar` | `installed: 12779`, `latest: 12780` | `"Actualizar a b12780"` |
-  | `accion_al_dia` | `update_available: false` | `{ label: "Al día", enabled: false }` |
-  | `accion_sin_info_update` | `update` = `null` (sin consultar todavía) y `Ready` | `{ label: "Buscar actualizaciones", enabled: true }` |
+  | `accion_instalar` | `NotInstalled`, `update` = `null`, `"auto"` | `{ label: "Instalar", enabled: true }` |
+  | `accion_instalar_roto` | `Broken { path }`, `update` con `update_available: false`, `"cpu"` | `{ label: "Instalar", enabled: true }` |
+  | `accion_actualizar` | `Ready(Managed b12779, Cpu)`, `installed: 12779`, `latest: 12780`, `available_backends: [Vulkan, Cpu]`, `"cpu"` | `{ label: "Actualizar a b12780", enabled: true }` |
+  | `accion_actualizar_otro_backend` | como el anterior con `"vulkan"` | `{ label: "Actualizar a b12780", enabled: true }` |
+  | `accion_al_dia` | `Ready(Managed b12780, Cpu)`, `update_available: false`, `available_backends: [Vulkan, Cpu]`, `"cpu"` | `{ label: "Al día", enabled: false }` |
+  | `accion_sin_info_update` | `Ready(Managed b12780, Cpu)`, `update` = `null` (sin consultar todavía), `"vulkan"` | `{ label: "Buscar actualizaciones", enabled: true }` |
+  | `accion_reinstalar_otro_backend` | `Ready(Managed b12780, Cpu)`, `update_available: false`, `available_backends: [Vulkan, Cpu]`, `"vulkan"` | `{ label: "Instalar Vulkan", enabled: true }` |
+  | `accion_auto_compara_con_primero` | `available_backends: [Cuda 13.5, Vulkan, Cpu]`, `update_available: false`, `"auto"`; (a) activo `Managed b12780, Cpu`; (b) activo `Managed b12780, Cuda 13.5` | (a) `{ label: "Instalar CUDA 13.5", enabled: true }`; (b) `{ label: "Al día", enabled: false }` |
+  | `accion_cuda_otra_version` | activo `Managed b12780, Cuda 12.4`, `available_backends: [Cuda 13.5, Cpu]`, `update_available: false`, `"cuda"` | `{ label: "Instalar CUDA 13.5", enabled: true }` |
+  | `accion_externo_ofrece_instalar` | `Ready(External, 12780, backend: null)`, `update_available: false`, `available_backends: [Vulkan, Cpu]`, `"auto"` | `{ label: "Instalar Vulkan", enabled: true }` |
+  | `accion_backend_no_disponible_usa_auto` | activo `Managed b12780, Cpu`, `available_backends: [Cpu]`, `update_available: false`, `"vulkan"` | `{ label: "Al día", enabled: false }` |
   | `opciones_backend` | `available_backends: [Cuda 13.5, Vulkan, Cpu]` | `["auto", "cuda", "vulkan", "cpu"]` con etiquetas en español |
   | `progreso_etiquetas` | `Fetching(main) 42/100`, `Fetching(cudart)`, `Extracting`, `Verifying`, `total: 0` | `"Descargando llama.cpp… 42 %"`, `"Descargando DLL de CUDA… N %"`, `"Extrayendo…"`, `"Verificando…"`, sin división por cero (`"Descargando llama.cpp…"`) |
   | `mensaje_error_rate_limit` | `{ code: "RateLimited", message }` | incluye "Inténtalo más tarde" |
+  | `mensaje_error_desconocido` | `new Error("ipc")` | texto genérico en español, sin lanzar |
+  | `runtime_settings_muestra_estado` | `mockIPC`: `runtime_hardware` → HW de CA1, `runtime_status` → `NotInstalled` | aparecen `"No instalado"` y el botón `"Instalar"` |
+  | `runtime_settings_error_backend` | `mockIPC` que lanza `{ code: "Io", message: "…" }` en `runtime_status` | se ve el mensaje; sin rechazos sin capturar |
+  | `backend_hint_sin_consultar` (T13.5) | `backendHint(null)` | `'Pulsa "Buscar actualizaciones" para ver los backends disponibles.'` |
+  | `backend_hint_tras_consultar` (T13.5) | `backendHint(update)` con (a) `available_backends: [Cuda 13.5, Vulkan, Cpu]`, `update_available: false`; (b) `available_backends: [Cpu]`, `update_available: true` | `null` en ambos casos |
+  | `runtime_settings_aviso_backends` (T13.5) | `mockIPC`: `runtime_hardware` → HW de CA1, `runtime_status` → `Ready(Managed b12816, Cpu)`, `runtime_check_update` → `available_backends: [Cuda 13.5, Vulkan, Cpu]`, `update_available: false`; se registra cada `cmd` recibido | (1) al montar se ve el aviso y el selector solo tiene "Automático"; `runtime_check_update` **no** se ha llamado; (2) tras pulsar "Buscar actualizaciones" el aviso desaparece, el selector ofrece CUDA, Vulkan y CPU, y `runtime_check_update` se ha llamado exactamente una vez |
+  | `ajustes_muestra_version` (existente, adaptado) | `mockIPC` por comando | `Versión 0.1.0` |
+  | `ajustes_version_no_disponible` (existente, adaptado) | `app_info` lanza; `runtime_*` responden | `Versión no disponible` |
+  | `ajustes_incluye_seccion_llama_cpp` | `render(Settings)` con `mockIPC` por comando | existe el `heading` de nivel 2 `"llama.cpp"` |
+  | `navega_a_cada_seccion` (existente en `App.test.ts`) | sin `mockIPC` | sigue en verde |
 
-### T13 — Verificación manual en Windows y macOS (O)
-- **Depende de:** T1–T12 integradas
+### T14 — Verificación manual en Windows (O)
+- **Depende de:** T1–T13 integradas
 - **Cubre:** CA13
 - **Subtareas:**
-  - [ ] T13.1 Windows x64 (con GPU NVIDIA si la hay): `npm --prefix ui run tauri dev` (o el comando de 003) → Ajustes → Instalar (`Auto`) → versión visible. Ejecutar a mano `runtime\bNNNNN\…\llama-server.exe --version` y comparar.
-  - [ ] T13.2 Forzar `Cpu` y `Vulkan`, y repetir.
-  - [ ] T13.3 "Usar binario existente…" con el binario instalado de T13.1 → `externo`.
-  - [ ] T13.4 macOS Apple Silicon: igual que T13.1 (comprobar que no aparece el aviso de Gatekeeper).
-  - [ ] T13.5 Anotar los resultados (tag, backend, tiempos aproximados) en este plan.
+  - [x] T14.1 Windows x64 (con GPU NVIDIA si la hay): `npm --prefix ui run tauri -- dev` → Ajustes → Instalar (`Auto`) → versión visible. Ejecutar a mano `%APPDATA%\io.github.devlitus.appllama\runtime\bNNNNN-<backend>\…\llama-server.exe --version` (p. ej. `b12780-cuda-13.5`) y comparar.
+  - [x] T14.2 Tras "Buscar actualizaciones", elegir `CPU` en el selector: la acción principal pasa a "Instalar CPU" (habilitada, D16); pulsarla. Después elegir `Vulkan` → "Instalar Vulkan" y pulsarla (mismo tag, otro backend). Comprobar que tras cada instalación solo queda un directorio gestionado, el del backend recién instalado (`bNNNNN-cpu`, `bNNNNN-vulkan`…), y ningún `.staging-*`. Con el backend elegido igual al activo y sin versión nueva, la acción muestra "Al día" deshabilitada (la reinstalación sin descarga del mismo tag y backend la cubre el test de core `reinstalar_mismo_tag_y_backend_no_descarga`).
+  - [x] T14.3 "Usar binario existente…" con el binario instalado de T14.1 → `externo`.
+  - [ ] T14.4 **Diferida (D6):** prueba manual en macOS Apple Silicon. No se ejecuta en este plan; queda para la checklist de Mac del plan 010 (`docs/checklist-prueba-mac.md`, paso "Fase 1"). En este plan macOS se valida solo por la CI (CA8, CA14).
+  - [x] T14.5 Anotar los resultados (tag, backend, tiempos aproximados) en este plan.
+- **Nota (primer intento de T14.1, 2026-11-27, Windows x64, RTX 4070):** la instalación de `b12816` falló con `VerificationFailed` porque `llama-server --version` ya usa el formato nuevo `version: 1.1.0-dev (build 12816, commit 7b74cb92d)`, que el parser no reconocía. El rollback fue correcto (CA7: sin `.staging-*`, runtime anterior intacto). Corrección: ampliación de T7.1 (parser tolerante a ambos formatos, fixture `version_semver.txt`). Hay que repetir T14.1 tras la corrección; T14.5 debe recoger este intento fallido junto con el resultado definitivo.
+- **Nota (segundo intento de T14.1, 2026-11-27, Windows x64, RTX 4070, driver 621.24):** con la corrección de `--version`, `Auto` instaló `b12816` **Vulkan** y la verificación fue correcta. Pero `Auto` no eligió CUDA porque `driver_cuda` salió `None`: el driver 621 escribe en la cabecera de `nvidia-smi` `CUDA UMD Version: 13.5` (junto a `KMD Version: 621.24`) en lugar de `CUDA Version: X.Y`, y el parser solo buscaba esta última. Corrección: ampliación de T3.2 (etiqueta tolerante `CUDA … Version:`, fixture `nvidia_smi_header_umd.txt`). Hay que repetir T14.1 esperando que `Auto` elija CUDA con `driver_cuda = 13.5` (directorio `b12816-cuda-…`); T14.5 debe recoger los dos intentos anteriores junto con el resultado definitivo.
+- **Resultados (T14.5), 2026-11-27.** Equipo: Windows 11 x64, NVIDIA RTX 4070 12 GB, driver 621.24 (`CUDA UMD Version: 13.5`), CPU con AVX2, Vulkan disponible. Release probada: `b12816`.
+  - **Intento 1 (fallido):** verificación fallida por el formato nuevo de `--version` (`version: 1.1.0-dev (build 12816, commit 7b74cb92d)`). Rollback correcto (CA7). Corregido en el commit `e22043e` (ampliación de T7.1).
+  - **Intento 2 (parcial):** instaló `b12816` **Vulkan** y verificó, pero `Auto` no eligió CUDA por la cabecera nueva de `nvidia-smi` (`CUDA UMD Version:`). Corregido en el commit `ecce1e9` (ampliación de T3.2).
+  - **T14.1 (intento 3, correcto):** el hardware muestra "CUDA 13.5"; la acción principal es "Instalar CUDA 13.5". Progreso visible ("Descargando DLL de CUDA… 42 %", barra, "Cancelar", resto de botones deshabilitados). Resultado: `b12816 · CUDA 13.5 · gestionado` y "Al día". Comprobado por terminal:
+    - en `runtime/` solo queda `b12816-cuda-13.5/` (con `llama-server.exe` y `cudart64_13.dll`), sin `.staging-*`; el directorio Vulkan del intento 2 se borró;
+    - `runtime.json`: `Managed`, `b12816`, `Cuda 13.5`, build `12816`, commit `7b74cb92d`, `pending_cleanup: []`;
+    - `llama-server.exe --version` a mano: `version: 1.1.0-dev (build 12816, commit 7b74cb92d)`, coincide con lo mostrado (**CA13 cumplido**).
+  - **T14.2 (correcto, parcial a propósito):** tras "Buscar actualizaciones", `CPU` en el selector → "Instalar CPU" → `b12816 · CPU · gestionado`. Solo queda `runtime/b12816-cpu/`, sin `.staging-*`; `--version` coincide. No se volvió a CUDA (ni se probó Vulkan como segundo cambio) para no repetir la descarga de ~600 MB: el cambio de backend con el mismo tag queda verificado con CUDA → CPU.
+  - **T14.3 (correcto):** "Usar binario existente…" con `runtime/b12816-cpu/llama-server.exe` → `b12816 · externo · <ruta>`; `runtime.json` con `source: External`, `backend: null`, build `12816`.
+  - **Tiempos (aproximados, sin medición precisa):** descarga e instalación CUDA (~600 MB) del orden de un minuto; CPU, segundos.
+  - **Hallazgo 3 (usabilidad):** el selector solo muestra "Automático" hasta pulsar "Buscar actualizaciones" y nada lo indica. Decisión del usuario: aviso bajo el selector, sin peticiones extra a GitHub → T13.5 y CA12.
+  - **Consola visible (#28):** no apareció ninguna consola en toda la prueba (instalaciones, detección de hardware, binario externo); confirmado por el usuario el 2026-11-27.
 - **Tests unitarios:** no aplica.
 
-### T14 — Revisión final y cierre (O + reviewer)
-- **Depende de:** T1–T13
+### T15 — Revisión final y cierre (O + reviewer)
+- **Depende de:** T1–T14
+- **Cubre:** CA14
 - **Subtareas:**
-  - [ ] T14.1 Reviewer con el diff completo y `última tarea: sí` → `flush` y, con `APPROVED`, `close`.
-  - [ ] T14.2 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`.
+  - [x] T15.1 Reviewer con el diff completo y `última tarea: sí` → `flush` y, con `APPROVED`, `close`.
+  - [x] T15.2 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde, y CI verde en Windows y macOS → `Estado: hecho`.
+- **Tests unitarios:** no aplica.
 
 ## Fuera de alcance
 
 - Gestor de descargas completo (cola, reanudación con `Range`, pausa, varias descargas a la vez, comprobación de espacio en disco): **plan 006**. Aquí solo `SimpleHttpFetcher` detrás de `ArtifactFetcher`.
-- Lanzar y parar `llama-server`, perfiles, logs y health check: plan del servidor. Este plan solo expone `active_server_path()`.
+- Lanzar y parar `llama-server`, perfiles, logs y health check: plan 008. Este plan solo expone `async fn active_server_path(&self) -> Result<Option<PathBuf>, RuntimeError>`.
 - Backends SYCL, ROCm/HIP, OpenVINO, OpenCL/Adreno y KleidiAI. Linux y Android.
-- Elegir una build concreta (anterior a la última) o volver a la versión previa (rollback).
-- Quitar la cuarentena o modificar de cualquier forma un binario **externo**.
-- Firma y notarización de la propia app (Fase 7).
+- Verificación en Windows ARM64 (D11): la selección lo soporta, pero sin máquina ni CI.
+- Prueba manual en macOS (D6): solo CI; la prueba en un Mac real queda para la checklist del plan 010.
+- Detectar la versión de macOS y bloquear la instalación gestionada en macOS < 13.3 (ver Preguntas abiertas).
+- Elegir una build concreta (anterior a la última) o volver a la versión previa (rollback): la anterior se borra (D5).
+- Quitar la cuarentena o modificar de cualquier forma un binario **externo** (D10).
+- Firma de cualquier tipo (D7): ni de la app (Fase 7) ni ad hoc (`codesign -s -`) de los binarios de llama.cpp.
+- Almacén de configuración común y migración de `runtime.json` (D9).
 - Token de GitHub para ampliar el límite de peticiones.
 - Comprobación automática de actualizaciones al arrancar o en segundo plano: solo bajo demanda ("Buscar actualizaciones").
 
@@ -480,18 +636,18 @@ ui/src/lib/runtime/                 # api.ts, view-model.ts (+ tests), RuntimeSe
 | llama.cpp vuelve a cambiar los nombres de los assets o el esquema de releases (ya pasó con `v1.1.0` en `/latest`) | Clasificación por tokens con fixture actual + fixture antiguo. Selección por `^b\d+$` en `/releases`, no en `/latest`. Un error claro `NoCompatibleRelease` y la alternativa "Usar binario existente…" |
 | Límite de 60 peticiones/hora sin token | Solo se consulta bajo demanda (1 petición por consulta). `RateLimited` con la hora de reinicio y un mensaje en español |
 | Compatibilidad de versión menor de CUDA (asset 13.5 con driver 13.0) falla en algún driver | Verificación con `--version` antes de activar. Si falla, se conserva la versión anterior y el usuario puede forzar `Vulkan` o `Cpu` |
-| Descargas grandes (CUDA + cudart ≈ 600 MB) sin reanudación | Progreso y cancelación. La reanudación llega con el plan 006 por `ArtifactFetcher` |
+| Descargas grandes (CUDA + cudart ≈ 600 MB, D4) sin reanudación | Progreso y cancelación. La reanudación llega con el plan 006 por `ArtifactFetcher` |
+| El formato de `llama-server --version` cambia entre versiones (ya pasó: `b12816` pasó de `version: N (hash)` a `version: 1.1.0-dev (build N, commit hash)` y la instalación falló en T14.1) | Parser tolerante a ambos formatos, cubierto con fixtures de cada uno (`version_cpu.txt`, `version_semver.txt`). Si aparece un tercero, la verificación falla de forma segura: `VerificationFailed` con el stderr visible, rollback (sin `.staging-*`) y runtime anterior intacto (CA7); queda "Usar binario existente…" |
 | `--version` de un build CUDA tarda o se cuelga al inicializar la GPU | Timeout de 15 s en `TokioCommandRunner` y `kill_on_drop` |
-| Gatekeeper bloquea `llama-server` aunque se quite la cuarentena (binarios sin firma ad hoc en arm64) | Verificación manual en T13.4. Si falla, `VerificationFailed` con el stderr y se abre una pregunta para firmar ad hoc (`codesign -s -`) en un plan aparte |
-| Windows bloquea el borrado del directorio anterior (servidor en marcha, antivirus) | `pending_cleanup` y reintento en `status()`. Se instala en un directorio nuevo por tag, nunca encima del activo |
+| Los binarios de llama.cpp exigen macOS 13.3 y la app declara 11.0 (D8) | En macOS < 13.3 la instalación termina en `VerificationFailed` con el error de `dyld` visible y el runtime anterior intacto; queda "Usar binario existente…". La decisión de fondo está en Preguntas abiertas |
+| Gatekeeper bloquea `llama-server` en Apple Silicon aunque se quite la cuarentena, y no hay Mac para probarlo (D6) ni firma (D7) | `xattr -cr` cubierto por tests con `FakeRunner` y por un test real en la CI de macOS (CA8). Si en la práctica falla, `VerificationFailed` muestra el stderr y no se activa nada. La primera prueba real va en la checklist de Mac del plan 010; si falla, la firma ad hoc se plantea en un plan aparte |
+| Al borrar la versión anterior (D5) no hay vuelta atrás si la nueva da problemas al cargar modelos (no solo en `--version`) | Se borra solo tras verificar la nueva. El usuario puede forzar otro backend y reinstalar, o usar un binario externo |
+| Windows bloquea el borrado del directorio anterior (servidor en marcha, antivirus) | `pending_cleanup` y reintento en `status()`. Se instala en un directorio nuevo por tag y backend (`<tag>-<backend>/`), nunca encima del activo, de modo que reinstalar el mismo tag con otro backend no renombra sobre un directorio bloqueado |
 | Archivo malicioso o corrupto (zip slip) | SHA256 del `digest` de GitHub antes de extraer + extracción con rutas encerradas en `dest` (CA6) |
-| `nvidia-smi` no está en el `PATH` o su formato cambia | Si falla, se trata como "sin NVIDIA" sin error. Parsers tolerantes con fixtures. El usuario puede forzar `Cuda` solo si se detectó; si no, `Vulkan` o `Cpu` |
-| Choque con el plan 003 en las rutas o en las versiones de dependencias | El plan nombra módulos, no rutas de UI de 003. Se reutilizan las versiones ya fijadas en `Cargo.lock` |
+| `nvidia-smi` no está en el `PATH` o su formato cambia | El formato **ya cambió**: con el driver 621 la cabecera dice `CUDA UMD Version: 13.5` (y `KMD Version`) en lugar de `CUDA Version: X.Y` (hallazgo de T14.1, 2026-11-27). Mitigación: parser tolerante (`CUDA` + palabras + `Version:` en la misma línea, T3.2) y fixtures de ambos formatos (`nvidia_smi_header.txt`, `nvidia_smi_header_umd.txt`). Si aun así falla, se trata como "sin NVIDIA" sin error y `Auto` cae a `Vulkan`/`Cpu`; el usuario puede forzar `Cuda` solo si se detectó |
+| Integrar `RuntimeSettings` en Ajustes rompe los tests existentes (`Settings.test.ts` responde lo mismo a cualquier comando; `App.test.ts` no mockea IPC) | T13.4 adapta `Settings.test.ts` a un `mockIPC` por comando, y el componente captura todos los errores de IPC (test `runtime_settings_error_backend`; `navega_a_cada_seccion` sigue en verde) |
+| El plan 007 resuelve el directorio de datos con `directories::ProjectDirs`, que no coincide con `app_data_dir()` de Tauri | Este plan usa `app_data_dir()` (D9) y `core` recibe la ruta ya resuelta. Se avisa al planner de 007 para que use la misma base |
 
 ## Preguntas abiertas
 
-1. **Orden de `Auto`:** se propone CUDA > Metal > Vulkan > CPU. ¿Confirmas que con NVIDIA y un driver compatible se prefiere CUDA aunque la descarga sea unas 15 veces mayor (≈ 600 MB frente a ≈ 40 MB de Vulkan)?
-2. **Persistencia:** el estado del runtime va en su propio fichero `<app_data>/runtime/runtime.json`. Si otro plan (ajustes o `config`) define un almacén común, ¿se migra allí o se mantiene separado?
-3. **Versión anterior:** se borra tras una actualización verificada. ¿Prefieres conservar la anterior para poder volver atrás (ocupa entre 40 y 600 MB más)?
-4. **Binario externo en macOS con cuarentena:** el plan no lo modifica y muestra el error de `--version`. ¿Quieres un botón explícito "Quitar cuarentena" (con confirmación) para binarios externos?
-5. **Windows ARM64:** la selección lo soporta gratis por patrones, pero no hay máquina para verificarlo. ¿Se declara "no soportado oficialmente" en el MVP?
+1. **macOS mínimo frente a llama.cpp.** Las builds de macOS de llama.cpp se compilan con `CMAKE_OSX_DEPLOYMENT_TARGET=13.3`, pero la app declara macOS 11.0 (D8). Con 11.0, en macOS 11.0–13.2 la app arranca pero la instalación gestionada falla en la verificación (solo funcionaría un binario externo compilado por el usuario). ¿Mantienes 11.0 (este plan no cambia: error claro y binario externo) o subes el mínimo de la app a **13.3** en el plan 010? No bloquea este plan: ninguna tarea cambia con una u otra respuesta.

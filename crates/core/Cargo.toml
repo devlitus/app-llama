@@ -6,6 +6,19 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+async-trait.workspace = true
+sha2.workspace = true
+hex.workspace = true
+zip.workspace = true
+flate2.workspace = true
+tar.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock.workspace = true
+tempfile.workspace = true

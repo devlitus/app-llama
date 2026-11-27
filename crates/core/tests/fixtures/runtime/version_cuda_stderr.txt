@@ -1,0 +1,6 @@
+ggml_cuda_init: GGML_CUDA_FORCE_MMQ:    no
+ggml_cuda_init: GGML_CUDA_FORCE_CUBLAS: no
+ggml_cuda_init: found 1 CUDA devices:
+  Device 0: NVIDIA GeForce RTX 4070, compute capability 8.9, VMM: yes
+version: 12780 (a1b2c3d)
+built with MSVC 19.44.35213.0 for x64

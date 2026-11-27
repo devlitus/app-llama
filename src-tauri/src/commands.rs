@@ -1,3 +1,5 @@
+pub mod runtime;
+
 use app_llama_core::about::AppInfo;
 
 #[tauri::command]

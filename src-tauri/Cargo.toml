@@ -14,7 +14,11 @@ tauri-build.workspace = true
 [dependencies]
 tauri.workspace = true
 app-llama-core = { path = "../crates/core" }
+serde.workspace = true
+reqwest.workspace = true
+tauri-plugin-dialog.workspace = true
 
 [dev-dependencies]
 tauri = { workspace = true, features = ["test"] }
 serde_json.workspace = true
+tempfile.workspace = true
