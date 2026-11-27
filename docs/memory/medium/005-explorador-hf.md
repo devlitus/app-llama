@@ -118,3 +118,24 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T16
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | ab5e9a28923314ddb | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T16 fit.rs (Fit, MemoryBudget, fit, recommended) con 26 tests de la tabla; T15 refresh_memory_specifics solo RAM.
+- C1 · reviewer · fit.rs conforme a la regla de encaje y a la de recomendada; 26 tests de la tabla con cifras de CA15 verificadas; arreglo de T15 (solo RAM) correcto
+
+### Decisiones
+
+- **aritmetica-u128-sin-desborde** — 80 % aplicado en u128 sobre VRAM en bytes y saturación final a u64, verificado con budget_saturates (C1)
+
+### Errores
+
+- (ninguno)

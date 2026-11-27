@@ -297,10 +297,10 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T3 (`GgufVariant`), T4 (`MemoryEstimate`), T15 (`HardwareInfo.ram_bytes`)
 - **Cubre:** CA15, CA16
 - **Subtareas:**
-  - [ ] T16.1 `Fit` (`Gpu` | `Ram` | `NoFit`), con `Serialize` por defecto (`"Gpu"`, `"Ram"`, `"NoFit"`).
-  - [ ] T16.2 `SAFETY_MARGIN_PERCENT: u64 = 20` y `MemoryBudget { gpu_bytes: Option<u64>, ram_bytes: Option<u64>, unified: bool, usable_percent: u8 }` (`Clone`, `Copy`, `Serialize`; `usable_percent = 100 − SAFETY_MARGIN_PERCENT`, para que la UI no repita la constante). `MemoryBudget::from_hardware(&HardwareInfo)` y `MemoryBudget::unknown()` según las reglas de «Encaje en el hardware». Aritmética `u128` con saturación.
-  - [ ] T16.3 `fit(required: u64, budget: &MemoryBudget) -> Option<Fit>` con los 4 pasos de la regla.
-  - [ ] T16.4 `recommended(candidates: &[(&GgufVariant, Option<Fit>)]) -> Option<usize>`: índice de la mejor variante según la regla «Mejor que cabe» (solo completas; `Gpu` antes que `Ram`; mayor `total_bytes`; empate por `name` menor).
+  - [x] T16.1 `Fit` (`Gpu` | `Ram` | `NoFit`), con `Serialize` por defecto (`"Gpu"`, `"Ram"`, `"NoFit"`).
+  - [x] T16.2 `SAFETY_MARGIN_PERCENT: u64 = 20` y `MemoryBudget { gpu_bytes: Option<u64>, ram_bytes: Option<u64>, unified: bool, usable_percent: u8 }` (`Clone`, `Copy`, `Serialize`; `usable_percent = 100 − SAFETY_MARGIN_PERCENT`, para que la UI no repita la constante). `MemoryBudget::from_hardware(&HardwareInfo)` y `MemoryBudget::unknown()` según las reglas de «Encaje en el hardware». Aritmética `u128` con saturación.
+  - [x] T16.3 `fit(required: u64, budget: &MemoryBudget) -> Option<Fit>` con los 4 pasos de la regla.
+  - [x] T16.4 `recommended(candidates: &[(&GgufVariant, Option<Fit>)]) -> Option<usize>`: índice de la mejor variante según la regla «Mejor que cabe» (solo completas; `Gpu` antes que `Ram`; mayor `total_bytes`; empate por `name` menor).
 - **Tests unitarios** (`HardwareInfo` construido como literal, sin sonda ni hardware real):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use sysinfo::System;
+use sysinfo::{MemoryRefreshKind, System};
 
 use crate::runtime::process::hide_console;
 use crate::runtime::{Arch, Os};
@@ -181,7 +181,7 @@ impl SystemProbe for NativeProbe {
 
     fn total_memory_bytes(&self) -> Option<u64> {
         let mut system = System::new().ok()?;
-        system.refresh_memory();
+        system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
         Some(system.total_memory()).filter(|&bytes| bytes > 0)
     }
 }
