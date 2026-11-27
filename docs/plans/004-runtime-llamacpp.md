@@ -1,7 +1,7 @@
 # 004 — Runtime de llama.cpp: detección de hardware, instalación y actualización
 
 - **Tipo:** feature
-- **Estado:** en curso
+- **Estado:** hecho
 - **Rama:** feat/004-runtime-llamacpp
 - **Fase del roadmap:** Fase 1 (Runtime) de [docs/MVP.md](../MVP.md), funcionalidad A
 
@@ -611,7 +611,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Cubre:** CA14
 - **Subtareas:**
   - [x] T15.1 Reviewer con el diff completo y `última tarea: sí` → `flush` y, con `APPROVED`, `close`.
-  - [ ] T15.2 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde, y CI verde en Windows y macOS → `Estado: hecho`.
+  - [x] T15.2 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde, y CI verde en Windows y macOS → `Estado: hecho`.
 - **Tests unitarios:** no aplica.
 
 ## Fuera de alcance
