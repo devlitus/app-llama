@@ -121,6 +121,29 @@ estado: abierto
 
 - **literal-duplicado** — minor: tree_url fija "main" a mano mientras files.rs tiene DEFAULT_REVISION (C1)
 
+## T6
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a6791ed68333e994f | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T6 cliente HfClient (search, search_next, mapeo de errores, bearer solo a origen de confianza) y 2 minor de T5 en url.rs
+- C1 · reviewer · T6 HfClient (search, search_next, mapeo de estados, bearer solo a origen de confianza) y minors de T5; 14 filas del plan cubiertas, gate verde, solo minors
+
+### Decisiones
+
+- **limitacion-documentada** — T8.1 (HfToken minimo) adelantada a T6 aceptable; el plan debe anotarlo para que T8 no duplique los 8 tests (C1)
+- **origen-estricto-link** — is_trusted_target compartido por parse_next_link y HfClient::get; reqwest 0.13 quita Authorization en redirecciones a otro origen (C1)
+
+### Errores
+
+- **aserto-debil** — search_sends_expected_query solo exige 2 de los 6 expand[] de CA1 y no comprueba que haya una unica peticion (minor) (C1)
+- **fixture-distinto-del-plan** — el token de los tests tiene hf_ + 36 caracteres y el plan dice 34 (minor) (C1)
+
 ## T15
 
 ### Ciclos

@@ -396,10 +396,10 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T1, T5
 - **Cubre:** CA1, CA3, CA9, CA10
 - **Subtareas:**
-  - [ ] T6.1 `HfClient::new(http: reqwest::Client, base_url: Url, token: Option<HfToken>)`, `Clone` (el `reqwest::Client` se clona barato). El `reqwest::Client` lo construye quien llama (en producción, T10, con `User-Agent` `app-llama/<versión del crate>`, `connect_timeout` de 15 s y `timeout` de 30 s), igual que `GitHubReleaseSource::new(client, base)` en `runtime`. En los tests no se espera a que venza ningún timeout.
-  - [ ] T6.2 `search(&SearchParams) -> SearchPage { items, next: Option<Url> }` y `search_next(&Url) -> SearchPage`. `search_next` devuelve la nueva variante `HfError::ForeignUrl` si la URL no comparte esquema, host y puerto con la URL base (defensa en profundidad, además de T5.4).
-  - [ ] T6.3 Mapeo de estados: 401 → `Unauthorized`, 403 → `Forbidden`, 404 → `NotFound`, 429 → `RateLimited` (lee `Retry-After` en segundos; si falta o no es numérico, `None`), otro no-2xx → `Status(code)`, JSON inválido → `Parse`, error de conexión → `Network`. Ningún mensaje incluye la cabecera `Authorization`.
-  - [ ] T6.4 `Authorization: Bearer` solo si hay token y solo hacia la URL base.
+  - [x] T6.1 `HfClient::new(http: reqwest::Client, base_url: Url, token: Option<HfToken>)`, `Clone` (el `reqwest::Client` se clona barato). El `reqwest::Client` lo construye quien llama (en producción, T10, con `User-Agent` `app-llama/<versión del crate>`, `connect_timeout` de 15 s y `timeout` de 30 s), igual que `GitHubReleaseSource::new(client, base)` en `runtime`. En los tests no se espera a que venza ningún timeout.
+  - [x] T6.2 `search(&SearchParams) -> SearchPage { items, next: Option<Url> }` y `search_next(&Url) -> SearchPage`. `search_next` devuelve la nueva variante `HfError::ForeignUrl` si la URL no comparte esquema, host y puerto con la URL base (defensa en profundidad, además de T5.4).
+  - [x] T6.3 Mapeo de estados: 401 → `Unauthorized`, 403 → `Forbidden`, 404 → `NotFound`, 429 → `RateLimited` (lee `Retry-After` en segundos; si falta o no es numérico, `None`), otro no-2xx → `Status(code)`, JSON inválido → `Parse`, error de conexión → `Network`. Ningún mensaje incluye la cabecera `Authorization`.
+  - [x] T6.4 `Authorization: Bearer` solo si hay token y solo hacia la URL base.
 - **Tests unitarios** (con un servidor mock local; sin red real):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -449,7 +449,7 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T1
 - **Cubre:** CA7, CA8, CA9
 - **Subtareas:**
-  - [ ] T8.1 `HfToken::parse(&str) -> Result<HfToken, HfError::InvalidToken>`: recorta y exige `^hf_[A-Za-z0-9]{30,}$`. `Debug` y `Display` muestran `hf_***`. `expose()` es solo `pub(crate)`.
+  - [x] T8.1 `HfToken::parse(&str) -> Result<HfToken, HfError::InvalidToken>`: recorta y exige `^hf_[A-Za-z0-9]{30,}$`. `Debug` y `Display` muestran `hf_***`. `expose()` es solo `pub(crate)`.
   - [ ] T8.2 `trait SecretStore { fn get(&self) -> Result<Option<HfToken>, HfError>; fn set(&self, &HfToken) -> Result<(), HfError>; fn delete(&self) -> Result<(), HfError>; }`. `delete` sin entrada es `Ok(())`.
   - [ ] T8.3 `KeyringStore` (servicio `app-llama`, cuenta `huggingface-token`). Los errores del llavero se convierten en `HfError::Secret(msg)` sin el valor del token. **No lleva test unitario** porque toca el llavero real; se cubre con la verificación manual (CA7/CA8).
   - [ ] T8.4 `MemoryStore` (fake con `Mutex<Option<HfToken>>`) para los tests, y un `FailingStore` que siempre devuelve `Secret`.

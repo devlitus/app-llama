@@ -7,7 +7,7 @@ use super::model::{TreeEntry, TreeEntryKind};
 use super::quant::{
     GGUF_EXTENSION, SplitSuffix, extract_quant, parse_split_suffix, strip_gguf_extension,
 };
-use super::url::RepoId;
+use super::url::{DEFAULT_REVISION, RepoId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GgufPart {
@@ -31,8 +31,6 @@ pub struct DownloadRequest {
     pub revision: String,
     pub parts: Vec<GgufPart>,
 }
-
-const DEFAULT_REVISION: &str = "main";
 
 impl GgufVariant {
     pub fn download_request(&self, repo: &RepoId) -> DownloadRequest {

@@ -4,6 +4,8 @@ use serde::Deserialize;
 
 use super::error::HfError;
 
+/// Revisión por defecto de los repositorios, usada en el árbol y en las descargas.
+pub(super) const DEFAULT_REVISION: &str = "main";
 const MAX_SEGMENT_LEN: usize = 96;
 const SEARCH_EXPANDS: [&str; 6] = [
     "downloads",
@@ -96,19 +98,20 @@ pub fn model_info_url(base: &Url, repo: &RepoId) -> Url {
 pub fn tree_url(base: &Url, repo: &RepoId) -> Url {
     endpoint(
         base,
-        &["api", "models", repo.as_str(), "tree", "main"],
+        &["api", "models", repo.as_str(), "tree", DEFAULT_REVISION],
         "recursive=true",
     )
 }
 
 /// Extrae la URL con `rel="next"` y la descarta si no comparte esquema, host y
-/// puerto con `base`, para no enviar nunca el token a otro destino.
+/// puerto con `base` o si lleva credenciales, para no enviar nunca el token a
+/// otro destino.
 pub fn parse_next_link(header: &str, base: &Url) -> Option<Url> {
     header
         .split(',')
         .filter_map(next_target)
         .filter_map(|target| Url::parse(target).ok())
-        .find(|url| same_origin(url, base))
+        .find(|url| is_trusted_target(url, base))
 }
 
 fn next_target(link: &str) -> Option<&str> {
@@ -118,6 +121,12 @@ fn next_target(link: &str) -> Option<&str> {
         .map(|param| param.trim().replace('"', ""))
         .any(|param| param.eq_ignore_ascii_case("rel=next"))
         .then_some(target)
+}
+
+/// Un destino es de confianza si comparte origen con `base` y no lleva
+/// credenciales incrustadas.
+pub(super) fn is_trusted_target(url: &Url, base: &Url) -> bool {
+    same_origin(url, base) && url.username().is_empty() && url.password().is_none()
 }
 
 fn same_origin(a: &Url, b: &Url) -> bool {
@@ -302,6 +311,12 @@ mod tests {
     }
 
     #[test]
+    fn tree_url_uses_default_revision() {
+        let url = tree_url(&base(), &repo("a/b"));
+        assert!(url.path().ends_with(&format!("/tree/{DEFAULT_REVISION}")));
+    }
+
+    #[test]
     fn model_info_url_expands() {
         let url = model_info_url(&base(), &repo("a/b"));
         let text = url.as_str();
@@ -351,6 +366,14 @@ mod tests {
     #[test]
     fn parse_next_link_other_port_ignored() {
         let header = r#"<https://huggingface.co:8443/api?cursor=abc>; rel="next""#;
+        assert_eq!(parse_next_link(header, &base()), None);
+    }
+
+    #[test]
+    fn parse_next_link_with_credentials_ignored() {
+        let header = r#"<https://user:pass@huggingface.co/api/models?cursor=abc>; rel="next""#;
+        assert_eq!(parse_next_link(header, &base()), None);
+        let header = r#"<https://user@huggingface.co/api/models?cursor=abc>; rel="next""#;
         assert_eq!(parse_next_link(header, &base()), None);
     }
 
