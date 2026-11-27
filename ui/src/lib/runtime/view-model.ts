@@ -119,6 +119,12 @@ export function backendOptions(update: UpdateInfo | null): BackendOption[] {
   return options;
 }
 
+export function backendHint(update: UpdateInfo | null): string | null {
+  return update === null
+    ? 'Pulsa "Buscar actualizaciones" para ver los backends disponibles.'
+    : null;
+}
+
 export function progressPercent(event: ProgressEvent): number | null {
   if (event.total <= 0) return null;
   return Math.floor((event.done * 100) / event.total);

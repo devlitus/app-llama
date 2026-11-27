@@ -342,6 +342,7 @@ estado: abierto
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | a7d69c8e7e19f946f | verde | APPROVED |
 | 2 | 2026-11-27 | 1 | a03de7d42f04eeba9 | verde | APPROVED |
+| 3 | 2026-11-27 | 1 | a2aea020c5ccc0b77 | verde | APPROVED |
 
 ### Resúmenes
 
@@ -349,13 +350,17 @@ estado: abierto
 - C1 · reviewer · parser de --version acepta formato antiguo y semver de b12816; coincide con el plan; gate verde; solo minors
 - C2 · developer · parse_nvidia_smi_cuda acepta CUDA UMD Version (driver 621.x) con CRLF; fixture UMD y test CRLF real en verify
 - C2 · reviewer · C2 aprobado; parse_nvidia_smi_cuda admite CUDA UMD Version con fixture real y CRLF; gate verde
+- C3 · developer · aviso bajo el selector de backend (backendHint) mientras no se haya consultado GitHub; sin peticiones extra
+- C3 · reviewer · C3 de T14 (hallazgo 3, usabilidad): aviso backendHint bajo el selector sin llamadas extra a GitHub; gate verde, CA12 ampliado cubierto por 3 tests; solo minors
 
 ### Decisiones
 
 - **formato-version-dual** — la cabecera de nvidia-smi se acepta en formato antiguo (CUDA Version) y nuevo (CUDA UMD Version) en la misma linea (C1, C2)
-- **limitacion-documentada** — commit hex minusculas segun regex del plan; builds sin git ("unknown") quedan fuera, aceptado como minor (C1)
+- **limitacion-documentada** — T14.2 parcial a propósito (CUDA a CPU sin repetir la descarga de ~600 MB) aceptado; resultados T14.5 coherentes con CA13 (C1, C3)
 
 ### Errores
 
-- **aserto-debil** — minor: find_map se queda con la primera linea que contiene CUDA (no la primera coincidencia valida de T3.2) y CUDA sin limite de palabra (NVCUDA Version: 1.2 casaria); sin test que lo fije (C1, C2)
+- **aserto-debil** — escapes de ruta Windows rotos al generar tests con script; el lint los detectó (C1, C2, C3)
+- **condicion-sin-test** — la condición extra !installing que oculta el aviso durante la instalación está en el .svelte, duplicada, sin test ni reflejo en T13.5 (minor) (C3)
 - **dato-inventado** — el parser solo conocia la etiqueta antigua; el formato de nvidia-smi cambia entre drivers, validar con fixtures reales (C1, C2)
+- **fixture-distinto-del-plan** — runtime_settings_aviso_backends usa Ready External b12000 en lugar de Managed b12816 Cpu como dice la tabla del plan (minor) (C3)

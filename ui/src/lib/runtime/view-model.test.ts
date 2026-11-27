@@ -8,6 +8,7 @@ import type {
   UpdateInfo,
 } from "./types";
 import {
+  backendHint,
   backendOptions,
   describeHardware,
   describeStatus,
@@ -239,6 +240,19 @@ describe("backendOptions", () => {
 
   it("opciones_backend_sin_consultar", () => {
     expect(backendOptions(null).map((option) => option.value)).toEqual(["auto"]);
+  });
+});
+
+describe("backendHint", () => {
+  it("backend_hint_sin_consultar", () => {
+    expect(backendHint(null)).toBe('Pulsa "Buscar actualizaciones" para ver los backends disponibles.');
+  });
+
+  it("backend_hint_tras_consultar", () => {
+    expect(backendHint(update({ available_backends: [CUDA_13, "Vulkan", CPU] }))).toBeNull();
+    expect(
+      backendHint(update({ available_backends: [CPU], update_available: true })),
+    ).toBeNull();
   });
 });
 

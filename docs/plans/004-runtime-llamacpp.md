@@ -189,7 +189,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **CA12** — Dada la vista Ajustes (`ui/src/views/Settings.svelte`) con la sección "llama.cpp", cuando se abre, entonces muestra:
   - el hardware detectado;
   - el runtime activo (versión `bN`, backend solo si es gestionado, origen gestionado o externo, y ruta) o "No instalado";
-  - un selector de backend con solo los disponibles;
+  - un selector de backend con solo los disponibles y, mientras no se haya consultado `runtime_check_update` (`update` = `null`, el selector solo ofrece "Automático"), el aviso «Pulsa "Buscar actualizaciones" para ver los backends disponibles.» justo debajo del selector. El aviso desaparece en cuanto hay `UpdateInfo` y no provoca peticiones extra a GitHub (hallazgo 3 de T14);
   - una acción principal según `primaryAction` (D16): "Instalar", "Actualizar a bN", "Instalar <backend>" (habilitada aunque no haya actualización si el backend elegido no es el del runtime gestionado activo, o el activo es externo), "Al día" (deshabilitada, solo si el backend elegido coincide con el activo y no hay versión nueva) o "Buscar actualizaciones"; y el botón "Usar binario existente…";
   - la línea `Versión 0.1.0` de la app, como hasta ahora.
 
@@ -542,6 +542,11 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
     - `errorMessage(payload)` (acepta también un error que no sea `ErrorPayload`, p. ej. sin IPC).
   - [x] T13.3 `RuntimeSettings.svelte` (Svelte 5, runes): sin lógica propia; usa `view-model` y `api`. Al montarse pide `runtime_hardware` y `runtime_status`; todas las promesas tienen manejo de error (muestra `errorMessage`). La acción principal se recalcula con `primaryAction(status, update, selectedBackend)` cada vez que cambia el selector; "Buscar actualizaciones" llama a `runtime_check_update` y las acciones "Instalar…" y "Actualizar…" llaman a `runtime_install(selectedBackend)`. La suscripción a `runtime://progress` se crea al pulsar una acción de instalación y se libera al terminar. El progreso usa `<progress value max>` (sin atributo `style`: la CSP no permite estilos en línea). "Usar binario existente…" abre `open()` de `plugin-dialog`: en Windows con filtro de extensión `exe`; en macOS sin filtro (el nombre lo valida el backend con `InvalidExternalBinary`). "Cancelar" solo se ve durante la instalación.
   - [x] T13.4 `Settings.svelte`: sustituye "Próximamente" por `<RuntimeSettings />` bajo un `<h2>llama.cpp</h2>` y mantiene `Versión …`. `Settings.test.ts`: el `mockIPC` responde según `cmd` (`app_info` y los `runtime_*`).
+  - [x] T13.5 **Aviso de backends sin consultar (hallazgo 3 de T14, decisión del usuario 2026-11-27).** Problema: hasta pulsar "Buscar actualizaciones" el selector solo muestra "Automático" y nada lo explica. Solución:
+    - `view-model.ts`: nueva función pura `backendHint(update: UpdateInfo | null): string | null` → con `update` = `null` devuelve `'Pulsa "Buscar actualizaciones" para ver los backends disponibles.'`; con cualquier `UpdateInfo` devuelve `null`.
+    - `RuntimeSettings.svelte`: si `backendHint(update)` no es `null`, lo muestra en un `<p>` justo debajo del selector, asociado a él con `aria-describedby`. Sin lógica propia en el componente.
+    - **Sin peticiones extra:** no se llama a `runtime_check_update` al montar ni al abrir el selector; la consulta a GitHub sigue ocurriendo solo al pulsar "Buscar actualizaciones" (o dentro de instalar/actualizar, como hasta ahora).
+    - Ficheros: `ui/src/lib/runtime/view-model.ts` + `view-model.test.ts`, `ui/src/lib/runtime/RuntimeSettings.svelte` + `RuntimeSettings.test.ts`.
 - **Tests unitarios** (Vitest, sin Tauri real; `mockIPC` de `@tauri-apps/api/mocks` en los de componente):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -568,6 +573,9 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `mensaje_error_desconocido` | `new Error("ipc")` | texto genérico en español, sin lanzar |
   | `runtime_settings_muestra_estado` | `mockIPC`: `runtime_hardware` → HW de CA1, `runtime_status` → `NotInstalled` | aparecen `"No instalado"` y el botón `"Instalar"` |
   | `runtime_settings_error_backend` | `mockIPC` que lanza `{ code: "Io", message: "…" }` en `runtime_status` | se ve el mensaje; sin rechazos sin capturar |
+  | `backend_hint_sin_consultar` (T13.5) | `backendHint(null)` | `'Pulsa "Buscar actualizaciones" para ver los backends disponibles.'` |
+  | `backend_hint_tras_consultar` (T13.5) | `backendHint(update)` con (a) `available_backends: [Cuda 13.5, Vulkan, Cpu]`, `update_available: false`; (b) `available_backends: [Cpu]`, `update_available: true` | `null` en ambos casos |
+  | `runtime_settings_aviso_backends` (T13.5) | `mockIPC`: `runtime_hardware` → HW de CA1, `runtime_status` → `Ready(Managed b12816, Cpu)`, `runtime_check_update` → `available_backends: [Cuda 13.5, Vulkan, Cpu]`, `update_available: false`; se registra cada `cmd` recibido | (1) al montar se ve el aviso y el selector solo tiene "Automático"; `runtime_check_update` **no** se ha llamado; (2) tras pulsar "Buscar actualizaciones" el aviso desaparece, el selector ofrece CUDA, Vulkan y CPU, y `runtime_check_update` se ha llamado exactamente una vez |
   | `ajustes_muestra_version` (existente, adaptado) | `mockIPC` por comando | `Versión 0.1.0` |
   | `ajustes_version_no_disponible` (existente, adaptado) | `app_info` lanza; `runtime_*` responden | `Versión no disponible` |
   | `ajustes_incluye_seccion_llama_cpp` | `render(Settings)` con `mockIPC` por comando | existe el `heading` de nivel 2 `"llama.cpp"` |
@@ -577,13 +585,25 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T1–T13 integradas
 - **Cubre:** CA13
 - **Subtareas:**
-  - [ ] T14.1 Windows x64 (con GPU NVIDIA si la hay): `npm --prefix ui run tauri -- dev` → Ajustes → Instalar (`Auto`) → versión visible. Ejecutar a mano `%APPDATA%\io.github.devlitus.appllama\runtime\bNNNNN-<backend>\…\llama-server.exe --version` (p. ej. `b12780-cuda-13.5`) y comparar.
-  - [ ] T14.2 Tras "Buscar actualizaciones", elegir `CPU` en el selector: la acción principal pasa a "Instalar CPU" (habilitada, D16); pulsarla. Después elegir `Vulkan` → "Instalar Vulkan" y pulsarla (mismo tag, otro backend). Comprobar que tras cada instalación solo queda un directorio gestionado, el del backend recién instalado (`bNNNNN-cpu`, `bNNNNN-vulkan`…), y ningún `.staging-*`. Con el backend elegido igual al activo y sin versión nueva, la acción muestra "Al día" deshabilitada (la reinstalación sin descarga del mismo tag y backend la cubre el test de core `reinstalar_mismo_tag_y_backend_no_descarga`).
-  - [ ] T14.3 "Usar binario existente…" con el binario instalado de T14.1 → `externo`.
+  - [x] T14.1 Windows x64 (con GPU NVIDIA si la hay): `npm --prefix ui run tauri -- dev` → Ajustes → Instalar (`Auto`) → versión visible. Ejecutar a mano `%APPDATA%\io.github.devlitus.appllama\runtime\bNNNNN-<backend>\…\llama-server.exe --version` (p. ej. `b12780-cuda-13.5`) y comparar.
+  - [x] T14.2 Tras "Buscar actualizaciones", elegir `CPU` en el selector: la acción principal pasa a "Instalar CPU" (habilitada, D16); pulsarla. Después elegir `Vulkan` → "Instalar Vulkan" y pulsarla (mismo tag, otro backend). Comprobar que tras cada instalación solo queda un directorio gestionado, el del backend recién instalado (`bNNNNN-cpu`, `bNNNNN-vulkan`…), y ningún `.staging-*`. Con el backend elegido igual al activo y sin versión nueva, la acción muestra "Al día" deshabilitada (la reinstalación sin descarga del mismo tag y backend la cubre el test de core `reinstalar_mismo_tag_y_backend_no_descarga`).
+  - [x] T14.3 "Usar binario existente…" con el binario instalado de T14.1 → `externo`.
   - [ ] T14.4 **Diferida (D6):** prueba manual en macOS Apple Silicon. No se ejecuta en este plan; queda para la checklist de Mac del plan 010 (`docs/checklist-prueba-mac.md`, paso "Fase 1"). En este plan macOS se valida solo por la CI (CA8, CA14).
-  - [ ] T14.5 Anotar los resultados (tag, backend, tiempos aproximados) en este plan.
+  - [x] T14.5 Anotar los resultados (tag, backend, tiempos aproximados) en este plan.
 - **Nota (primer intento de T14.1, 2026-11-27, Windows x64, RTX 4070):** la instalación de `b12816` falló con `VerificationFailed` porque `llama-server --version` ya usa el formato nuevo `version: 1.1.0-dev (build 12816, commit 7b74cb92d)`, que el parser no reconocía. El rollback fue correcto (CA7: sin `.staging-*`, runtime anterior intacto). Corrección: ampliación de T7.1 (parser tolerante a ambos formatos, fixture `version_semver.txt`). Hay que repetir T14.1 tras la corrección; T14.5 debe recoger este intento fallido junto con el resultado definitivo.
 - **Nota (segundo intento de T14.1, 2026-11-27, Windows x64, RTX 4070, driver 621.24):** con la corrección de `--version`, `Auto` instaló `b12816` **Vulkan** y la verificación fue correcta. Pero `Auto` no eligió CUDA porque `driver_cuda` salió `None`: el driver 621 escribe en la cabecera de `nvidia-smi` `CUDA UMD Version: 13.5` (junto a `KMD Version: 621.24`) en lugar de `CUDA Version: X.Y`, y el parser solo buscaba esta última. Corrección: ampliación de T3.2 (etiqueta tolerante `CUDA … Version:`, fixture `nvidia_smi_header_umd.txt`). Hay que repetir T14.1 esperando que `Auto` elija CUDA con `driver_cuda = 13.5` (directorio `b12816-cuda-…`); T14.5 debe recoger los dos intentos anteriores junto con el resultado definitivo.
+- **Resultados (T14.5), 2026-11-27.** Equipo: Windows 11 x64, NVIDIA RTX 4070 12 GB, driver 621.24 (`CUDA UMD Version: 13.5`), CPU con AVX2, Vulkan disponible. Release probada: `b12816`.
+  - **Intento 1 (fallido):** verificación fallida por el formato nuevo de `--version` (`version: 1.1.0-dev (build 12816, commit 7b74cb92d)`). Rollback correcto (CA7). Corregido en el commit `e22043e` (ampliación de T7.1).
+  - **Intento 2 (parcial):** instaló `b12816` **Vulkan** y verificó, pero `Auto` no eligió CUDA por la cabecera nueva de `nvidia-smi` (`CUDA UMD Version:`). Corregido en el commit `ecce1e9` (ampliación de T3.2).
+  - **T14.1 (intento 3, correcto):** el hardware muestra "CUDA 13.5"; la acción principal es "Instalar CUDA 13.5". Progreso visible ("Descargando DLL de CUDA… 42 %", barra, "Cancelar", resto de botones deshabilitados). Resultado: `b12816 · CUDA 13.5 · gestionado` y "Al día". Comprobado por terminal:
+    - en `runtime/` solo queda `b12816-cuda-13.5/` (con `llama-server.exe` y `cudart64_13.dll`), sin `.staging-*`; el directorio Vulkan del intento 2 se borró;
+    - `runtime.json`: `Managed`, `b12816`, `Cuda 13.5`, build `12816`, commit `7b74cb92d`, `pending_cleanup: []`;
+    - `llama-server.exe --version` a mano: `version: 1.1.0-dev (build 12816, commit 7b74cb92d)`, coincide con lo mostrado (**CA13 cumplido**).
+  - **T14.2 (correcto, parcial a propósito):** tras "Buscar actualizaciones", `CPU` en el selector → "Instalar CPU" → `b12816 · CPU · gestionado`. Solo queda `runtime/b12816-cpu/`, sin `.staging-*`; `--version` coincide. No se volvió a CUDA (ni se probó Vulkan como segundo cambio) para no repetir la descarga de ~600 MB: el cambio de backend con el mismo tag queda verificado con CUDA → CPU.
+  - **T14.3 (correcto):** "Usar binario existente…" con `runtime/b12816-cpu/llama-server.exe` → `b12816 · externo · <ruta>`; `runtime.json` con `source: External`, `backend: null`, build `12816`.
+  - **Tiempos (aproximados, sin medición precisa):** descarga e instalación CUDA (~600 MB) del orden de un minuto; CPU, segundos.
+  - **Hallazgo 3 (usabilidad):** el selector solo muestra "Automático" hasta pulsar "Buscar actualizaciones" y nada lo indica. Decisión del usuario: aviso bajo el selector, sin peticiones extra a GitHub → T13.5 y CA12.
+  - **Consola visible (#28):** no apareció ninguna consola en toda la prueba (instalaciones, detección de hardware, binario externo); confirmado por el usuario el 2026-11-27.
 - **Tests unitarios:** no aplica.
 
 ### T15 — Revisión final y cierre (O + reviewer)

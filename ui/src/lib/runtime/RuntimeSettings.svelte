@@ -3,6 +3,7 @@
   import * as api from "./api";
   import type { BackendChoice, HardwareInfo, ProgressEvent, RuntimeStatus, UpdateInfo } from "./types";
   import {
+    backendHint,
     backendOptions,
     describeHardware,
     describeStatus,
@@ -24,6 +25,7 @@
 
   const action = $derived(status ? primaryAction(status, update, selected) : null);
   const options = $derived(backendOptions(update));
+  const hint = $derived(backendHint(update));
 
   async function guarded(task: () => Promise<void>): Promise<void> {
     error = null;
@@ -111,12 +113,16 @@
 
 <label>
   Backend
-  <select bind:value={selected} disabled={busy}>
+  <select bind:value={selected} disabled={busy} aria-describedby={hint && !installing ? "backend-hint" : undefined}>
     {#each options as option (option.value)}
       <option value={option.value}>{option.label}</option>
     {/each}
   </select>
 </label>
+
+{#if hint && !installing}
+  <p id="backend-hint">{hint}</p>
+{/if}
 
 {#if action}
   <button type="button" onclick={runAction} disabled={!action.enabled || busy}>

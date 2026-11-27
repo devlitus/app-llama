@@ -139,4 +139,43 @@ describe("RuntimeSettings", () => {
     await expectEnabled("Actualizar a b12780");
     await expectEnabled("Usar binario existente…");
   });
+
+  it("runtime_settings_aviso_backends", async () => {
+    const hint = 'Pulsa "Buscar actualizaciones" para ver los backends disponibles.';
+    const calls: string[] = [];
+    mockIPC((cmd) => {
+      calls.push(cmd);
+      if (cmd === "runtime_hardware") return HARDWARE;
+      if (cmd === "runtime_check_update") {
+        return {
+          installed: null,
+          latest: 12000,
+          latest_tag: "b12000",
+          available_backends: [{ Cuda: { major: 13, minor: 5 } }, "Vulkan", { Cpu: { isa: "Avx2" } }],
+          update_available: false,
+        } satisfies UpdateInfo;
+      }
+      return {
+        Ready: {
+          source: "External",
+          backend: null,
+          server_path: "D:\\bin\\llama-server.exe",
+          version: { build: 12000, commit: "def" },
+        },
+      };
+    });
+    const optionNames = () => screen.getAllByRole("option").map((option) => option.textContent);
+
+    render(RuntimeSettings);
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+    expect(optionNames()).toEqual(["Automático"]);
+    expect(screen.getByRole("combobox")).toHaveAccessibleDescription(hint);
+    expect(calls).not.toContain("runtime_check_update");
+
+    await fireEvent.click(await screen.findByRole("button", { name: "Buscar actualizaciones" }));
+
+    await waitFor(() => expect(screen.queryByText(hint)).not.toBeInTheDocument());
+    expect(optionNames()).toEqual(["Automático", "CUDA 13.5", "Vulkan", "CPU"]);
+    expect(calls.filter((cmd) => cmd === "runtime_check_update")).toHaveLength(1);
+  });
 });
