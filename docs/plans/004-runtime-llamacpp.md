@@ -227,20 +227,20 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T2 (`Os`, `Arch`)
 - **Cubre:** CA1
 - **Subtareas:**
-  - [ ] T3.1 `GpuInfo { name, vram_mib: Option<u64> }`, `CudaVersion { major, minor }` y `HardwareInfo { os, arch, avx2, avx512, gpus, driver_cuda: Option<CudaVersion>, vulkan_available, metal }` (`Serialize`).
-  - [ ] T3.2 Parsers puros:
+  - [x] T3.1 `GpuInfo { name, vram_mib: Option<u64> }`, `CudaVersion { major, minor }` y `HardwareInfo { os, arch, avx2, avx512, gpus, driver_cuda: Option<CudaVersion>, vulkan_available, metal }` (`Serialize`).
+  - [x] T3.2 Parsers puros:
     - `parse_nvidia_smi_gpus(csv: &str) -> Vec<GpuInfo>` (salida de `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`).
     - `parse_nvidia_smi_cuda(header: &str) -> Option<CudaVersion>` (busca `CUDA Version: X.Y` en la salida de `nvidia-smi` sin argumentos).
-  - [ ] T3.3 Trait `SystemProbe`:
+  - [x] T3.3 Trait `SystemProbe`:
     - `os()`, `arch()`, `cpu_has(feature: &str) -> bool`;
     - `run(program, args) -> Option<String>` (stdout si el código de salida es 0);
     - `file_exists(&Path)`, `system_root() -> Option<PathBuf>`.
-  - [ ] T3.4 `detect(probe: &dyn SystemProbe) -> HardwareInfo`:
+  - [x] T3.4 `detect(probe: &dyn SystemProbe) -> HardwareInfo`:
     - `avx2`/`avx512` (`avx512f`) solo en x86_64.
     - `nvidia-smi` solo en Windows.
     - Vulkan: en Windows, existe `<system_root>/System32/vulkan-1.dll`. En macOS siempre `vulkan_available = false` (no hay build Vulkan para macOS).
     - `metal = os == MacOs && arch == Aarch64`.
-  - [ ] T3.5 `NativeProbe`: implementación real con `std::env::consts`, `is_x86_feature_detected!` (bajo `cfg(target_arch = "x86_64")`), `std::process::Command` y `%SystemRoot%`.
+  - [x] T3.5 `NativeProbe`: implementación real con `std::env::consts`, `is_x86_feature_detected!` (bajo `cfg(target_arch = "x86_64")`), `std::process::Command` y `%SystemRoot%`.
 - **Tests unitarios** (con `FakeProbe` configurable):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

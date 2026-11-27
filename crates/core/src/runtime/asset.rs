@@ -1,13 +1,14 @@
 //! Clasificación de los assets de una release de llama.cpp a partir de los tokens de su nombre.
 use crate::runtime::build_number;
+use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Os {
     Windows,
     MacOs,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Arch {
     X86_64,
     Aarch64,
@@ -126,15 +127,15 @@ fn parse_backend(tokens: &[&str], os: Os, arch: Arch) -> Option<Backend> {
             isa: CpuIsa::Avx512,
         }),
         ["vulkan"] => Some(Backend::Vulkan),
-        ["cuda", version] => parse_cuda_version(version),
+        ["cuda", version] => parse_cuda_version(version.strip_prefix("cu").unwrap_or(version)),
         [version] => parse_cuda_version(version.strip_prefix("cu")?),
         _ => None,
     }
 }
 
-/// `12.4` o `cu12.4`; exige exactamente `major.minor` numéricos.
+/// `12.4`, sin prefijo; exige exactamente `major.minor` numéricos.
 fn parse_cuda_version(token: &str) -> Option<Backend> {
-    let (major, minor) = token.strip_prefix("cu").unwrap_or(token).split_once('.')?;
+    let (major, minor) = token.split_once('.')?;
     Some(Backend::Cuda {
         major: parse_digits(major)?,
         minor: parse_digits(minor)?,
@@ -351,11 +352,18 @@ mod tests {
             "llama-bin-win.zip",
             "llama-b1-bin-win-cuda-x64.zip",
             "llama-b1-bin-win-cuda-12-x64.zip",
+            "llama-b1-bin-win-cucu12.4-x64.zip",
         ]);
     }
 
     #[test]
     fn clasificacion_sensible_a_mayusculas() {
-        assert_all_none(&["LLAMA-B1-BIN-WIN-CPU-X64.ZIP"]);
+        assert_all_none(&[
+            "LLAMA-B1-BIN-WIN-CPU-X64.ZIP",
+            "LLAMA-b1-BIN-win-cpu-x64.zip",
+            "llama-b1-bin-WIN-cpu-x64.zip",
+            "llama-b1-bin-win-CPU-x64.zip",
+            "llama-b1-bin-win-cpu-X64.zip",
+        ]);
     }
 }

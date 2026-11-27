@@ -50,3 +50,28 @@ estado: abierto
 - **aserto-debil** — clasificacion_sensible_a_mayusculas falla por la extensión .ZIP antes de mirar los tokens; no prueba lo que dice (C1)
 - **reserva-sin-test** — Escribí tests y código a la vez, sin comprobar antes el rojo del TDD (C1)
 - **validacion-hex-laxa** — el brazo [version] quita "cu" dos veces: "win-cucu12.4-x64.zip" se clasifica como Cuda{12,4} (C1)
+
+## T3
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | af1acb609ece412c4 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-27 | 0 | a8395a4fa2e892007 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T3 detección de hardware (SystemProbe, detect, parsers nvidia-smi, FakeProbe) y correcciones de T2 en asset.rs
+- C1 · reviewer · deteccion de hardware correcta y CA1 cubierto; NativeProbe::run lanza nvidia-smi sin CREATE_NO_WINDOW en una app GUI
+- C2 · reviewer · ciclo 2 de T3 correcto; hide_console, run_with_timeout de 10 s, supertrait Send+Sync y run_count tolerante a envenenamiento resuelven #28 y los minors
+
+### Decisiones
+
+- **limitacion-documentada** — nieto que herede stdout y aserto elapsed<20 s aceptados como minor por el orchestrator (C1, C2)
+- **refactor-equivalente** — prefijo cu de CUDA se quita solo en el brazo de parse_backend, parse_cuda_version recibe la versión limpia (C1)
+
+### Errores
+
+- **aserto-debil** — FakeProbe::run descarta el registro si el mutex está envenenado mientras run_count lo recupera; incoherencia menor (C1, C2)
+- **consola-visible-windows** — NativeProbe::run sin CREATE_NO_WINDOW hace parpadear consolas en la release de Windows #28 (C1 · #28)

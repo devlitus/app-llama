@@ -1,10 +1,15 @@
 //! Detección de hardware e instalación o selección de llama.cpp (fase 1).
 mod asset;
+mod hardware;
+mod process;
 mod release;
+#[cfg(test)]
+mod test_support;
 
 pub use asset::{
     Arch, ArchiveFormat, AssetDescriptor, AssetKind, Backend, CpuIsa, Os, classify_asset,
 };
+pub use hardware::{CudaVersion, GpuInfo, HardwareInfo, NativeProbe, SystemProbe, detect};
 pub use release::{Asset, Release, build_number, latest_build_release, parse_releases};
 
 #[derive(Debug, thiserror::Error)]
