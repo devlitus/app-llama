@@ -3,7 +3,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
-use crate::runtime::{Arch, CommandOutput, CommandRunner, Os, RuntimeError, SystemProbe};
+use crate::runtime::{
+    Arch, ArtifactFetcher, CancelToken, CommandOutput, CommandRunner, DirRemover, FetchRequest, Os,
+    Release, ReleaseSource, RuntimeError, SystemProbe,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordedCall {
@@ -164,5 +167,83 @@ impl SystemProbe for FakeProbe {
 
     fn system_root(&self) -> Option<PathBuf> {
         self.system_root.clone()
+    }
+}
+
+enum SourceReply {
+    Releases(Vec<Release>),
+    RateLimited,
+}
+
+/// `ReleaseSource` que responde siempre lo mismo, sin red.
+pub struct FakeSource {
+    reply: SourceReply,
+}
+
+impl FakeSource {
+    pub fn with_releases(releases: Vec<Release>) -> Self {
+        Self {
+            reply: SourceReply::Releases(releases),
+        }
+    }
+
+    pub fn rate_limited() -> Self {
+        Self {
+            reply: SourceReply::RateLimited,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ReleaseSource for FakeSource {
+    async fn list_releases(&self) -> Result<Vec<Release>, RuntimeError> {
+        match &self.reply {
+            SourceReply::Releases(releases) => Ok(releases.clone()),
+            SourceReply::RateLimited => Err(RuntimeError::RateLimited { reset_epoch: None }),
+        }
+    }
+}
+
+/// `ArtifactFetcher` que no descarga nada: falla si alguien lo usa.
+pub struct FakeFetcher;
+
+#[async_trait::async_trait]
+impl ArtifactFetcher for FakeFetcher {
+    async fn fetch(
+        &self,
+        _req: FetchRequest,
+        _progress: &(dyn Fn(u64, u64) + Send + Sync),
+        _cancel: &CancelToken,
+    ) -> Result<(), RuntimeError> {
+        Err(RuntimeError::Io(std::io::Error::other(
+            "no se esperaba ninguna descarga",
+        )))
+    }
+}
+
+/// `DirRemover` que o bien borra de verdad o bien falla siempre.
+pub struct FakeRemover {
+    fails: bool,
+}
+
+impl FakeRemover {
+    pub fn deleting() -> Self {
+        Self { fails: false }
+    }
+
+    pub fn failing() -> Self {
+        Self { fails: true }
+    }
+}
+
+impl DirRemover for FakeRemover {
+    fn remove_dir_all(&self, path: &Path) -> std::io::Result<()> {
+        if self.fails {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "fichero bloqueado",
+            ));
+        }
+        std::fs::remove_dir_all(path)
     }
 }

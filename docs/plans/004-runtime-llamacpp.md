@@ -21,7 +21,7 @@ Que el usuario tenga un `llama-server` funcional sin compilar nada. La app detec
 - **CI** (`.github/workflows/ci.yml`): `windows-latest` y `macos-latest` (Apple Silicon), gate completo y `npm --prefix ui run tauri -- build --debug --no-bundle`.
 - **Comando de desarrollo:** `npm --prefix ui run tauri -- dev` (`docs/DESARROLLO.md`).
 - El gestor de descargas completo (cola, reanudación, pausa) es el **plan 006**. Aquí solo hay un descargador simple detrás del trait `ArtifactFetcher`, que es el punto de integración: 006 aportará otra implementación y `RuntimeManager` no cambiará.
-- El plan 008 (servidor) consume la ruta del binario como `Option<PathBuf>`: aquí es `RuntimeManager::active_server_path()`.
+- El plan 008 (servidor) consume la ruta del binario con `RuntimeManager::active_server_path().await`, que devuelve `Result<Option<PathBuf>, RuntimeError>`: `Ok(Some(ruta))` solo con un runtime `Ready`, `Ok(None)` si no hay runtime o está roto, y `Err` si falla la lectura de `runtime.json` (error de E/S distinto de "no existe"). Como pasa por `status()`, también reintenta los borrados pendientes.
 
 ### Decisiones
 
@@ -102,7 +102,7 @@ crates/core/src/runtime/
 ├─ verify.rs        # CommandRunner (trait), parse_version, verify_server, remove_quarantine
 ├─ state.rs         # RuntimeState persistido en <runtime_dir>/runtime.json
 ├─ github.rs        # ReleaseSource (trait) + GitHubReleaseSource (reqwest)
-├─ manager.rs       # RuntimeManager: status, hardware, check_update, use_external
+├─ manager.rs       # RuntimeManager: status, hardware, active_server_path, check_update, use_external
 ├─ install.rs       # RuntimeManager::install (pasos 1-9) y limpieza de versiones
 └─ test_support.rs  # #[cfg(test)] FakeProbe, FakeRunner, FakeSource, FakeFetcher, FakeRemover
 crates/core/tests/fixtures/runtime/   # releases_*.json, nvidia_smi_header.txt, version_*.txt
@@ -116,6 +116,8 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   - `Os { Windows, MacOs }` y `Arch { X86_64, Aarch64 }`.
   - `Backend { Cpu { isa: CpuIsa }, Cuda { major: u32, minor: u32 }, Vulkan, Metal }`, con `CpuIsa { Generic, Avx, Avx2, Avx512 }`. `Generic` es la build CPU actual, que lleva todas las variantes dentro.
   - `BackendPreference { Auto, Cpu, Cuda, Vulkan, Metal }`.
+  - `ActiveRuntime { source, backend: Option<Backend>, server_path, version }`: `backend` es `Some(..)` en los runtimes gestionados (el del `InstallPlan`) y `None` en los externos, porque no se conoce el backend de un binario ajeno.
+- **API asíncrona de `RuntimeManager`:** `status()`, `hardware()`, `active_server_path()`, `check_update()`, `use_external()` e `install()` son `async` y devuelven `Result<_, RuntimeError>`. `hardware()` ejecuta `detect` (que lanza `nvidia-smi`) con `tokio::task::spawn_blocking`. `StateStore::load()` devuelve `Result<RuntimeState, RuntimeError>`: si no existe → `Default`; si está corrupto → `.bak` + `Default`; cualquier otro error de E/S → `Err(Io)`, que se propaga por `status()` y `active_server_path()`.
 - **Clasificación por tokens** (`classify_asset`):
   - Asset principal: `llama-[bN-]bin-<os>-<resto>.<zip|tar.gz>`. Cudart: `cudart-llama-[bN-]bin-<os>-<resto>.<ext>`.
   - `<resto>` se parte por `-`. El token de arquitectura (`x64` | `arm64`) es el último.
@@ -144,7 +146,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   9. Borrar **todos los demás** directorios `<runtime_dir>/b<N>/` (versiones gestionadas anteriores, estuvieran activas o no; D5). Si un borrado falla (por ejemplo, Windows tiene un fichero bloqueado), la ruta se apunta en `pending_cleanup` y se reintenta en el siguiente `status()`.
 
   Con cualquier error o cancelación se borra `.staging-<tag>` y el estado no cambia.
-- **Binario externo** (`use_external(path)`): el nombre debe ser `llama-server` o `llama-server.exe` y debe pasar `verify_server`. No se modifica (sin `xattr`, D10). Se guarda como `source: external`. No borra las versiones gestionadas que haya en disco: las limpia la siguiente instalación gestionada (paso 9).
+- **Binario externo** (`use_external(path)`): si hay una instalación en curso falla con `AlreadyInstalling` (comparte el mismo `Mutex` que `install`). El nombre debe ser `llama-server` o `llama-server.exe` y debe pasar `verify_server`. No se modifica (sin `xattr`, D10). Se guarda como `source: external` y `backend: None`. No borra las versiones gestionadas que haya en disco: las limpia la siguiente instalación gestionada (paso 9).
 - **Progreso:** `ProgressEvent { phase: Fetching{artifact} | Extracting | Verifying | Done, done: u64, total: u64 }`. Se emite solo cuando cambia la fase o el porcentaje entero (sin reloj, determinista). Se cancela con un `CancelToken` (`Arc<AtomicBool>`) que se comprueba en cada bloque descargado y en cada entrada extraída.
 
 ## Criterios de aceptación
@@ -164,12 +166,12 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **CA6** — Dado un zip o tar.gz con una entrada `../evil` o una ruta absoluta, cuando se extrae, entonces se devuelve `UnsafeArchivePath` y no se escribe nada fuera del directorio de destino. En Unix (CI macOS), un tar.gz con `llama-server` en modo `0755` conserva el bit de ejecución.
 - **CA7** — Dado un `llama-server` cuyo `--version` falla o no muestra `version: N (hash)`, cuando se instala, entonces `install` devuelve `VerificationFailed`, `.staging-<tag>` se borra y el runtime activo anterior sigue intacto (mismo `runtime.json`).
 - **CA8** — Dada una instalación gestionada en macOS, cuando se instala, entonces se ejecuta `/usr/bin/xattr -cr <directorio de instalación>` antes de `--version`. En Windows no se ejecuta. Para un binario externo no se ejecuta nunca. Además, en la CI de macOS, `remove_quarantine` con el runner real elimina un atributo `com.apple.quarantine` puesto en un fichero de un `tempdir`.
-- **CA9** — Dada la ruta de un `llama-server[.exe]` válido, cuando se llama a `use_external`, entonces queda activo con `source: external` y su versión. Si el nombre no es `llama-server[.exe]` o la verificación falla, el error es `InvalidExternalBinary` o `VerificationFailed` y el estado no cambia.
+- **CA9** — Dada la ruta de un `llama-server[.exe]` válido, cuando se llama a `use_external`, entonces queda activo con `source: external`, su versión y `backend: None`. Si hay una instalación en curso, el error es `AlreadyInstalling`. Si el nombre no es `llama-server[.exe]` o la verificación falla, el error es `InvalidExternalBinary` o `VerificationFailed` y el estado no cambia.
 - **CA10** — Dado `b12779` gestionado y activo con `b12780` publicada, cuando se llama a `check_update`, entonces `{ installed: 12779, latest: 12780, update_available: true }`. Tras `install`, queda activo `b12780` y el directorio `runtime/b12779/` ya no existe. Con `b12780` instalado, `update_available: false`.
 - **CA11** — Dado `runtime.json` escrito por una instalación, cuando se crea un `RuntimeManager` nuevo sobre el mismo directorio, entonces `status` devuelve el mismo runtime activo. Si el binario ya no existe, devuelve `Broken { path }`. Si `runtime.json` está corrupto, devuelve `NotInstalled` y conserva una copia `runtime.json.bak`.
 - **CA12** — Dada la vista Ajustes (`ui/src/views/Settings.svelte`) con la sección "llama.cpp", cuando se abre, entonces muestra:
   - el hardware detectado;
-  - el runtime activo (versión `bN`, backend, origen gestionado o externo, y ruta) o "No instalado";
+  - el runtime activo (versión `bN`, backend solo si es gestionado, origen gestionado o externo, y ruta) o "No instalado";
   - un selector de backend con solo los disponibles;
   - los botones "Instalar" o "Actualizar a bN", "Buscar actualizaciones" y "Usar binario existente…";
   - la línea `Versión 0.1.0` de la app, como hasta ahora.
@@ -369,16 +371,18 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T2, T7
 - **Cubre:** CA11
 - **Subtareas:**
-  - [x] T8.1 `RuntimeState { schema: 1, active: Option<ActiveRuntime>, pending_cleanup: Vec<PathBuf> }` y `ActiveRuntime { source: Managed { tag } | External, backend, server_path, version: RuntimeVersion }` (`serde`, JSON legible).
+  - [x] T8.1 `RuntimeState { schema: 1, active: Option<ActiveRuntime>, pending_cleanup: Vec<PathBuf> }` y `ActiveRuntime { source: Managed { tag } | External, backend: Option<Backend>, server_path, version: RuntimeVersion }` (`serde`, JSON legible). `backend` es `Some(..)` en los gestionados y `None` en los externos; al leer, un `runtime.json` sin el campo o con `null` da `None` y uno con backend da `Some` (compatibilidad con ficheros ya escritos).
   - [x] T8.2 `StateStore::new(runtime_dir)`:
-    - `load()`: si no existe → `Default`; si está corrupto → copia a `runtime.json.bak` y devuelve `Default`.
+    - `load() -> Result<RuntimeState, RuntimeError>`: si no existe (`NotFound`) → `Ok(Default)`; si está corrupto → copia a `runtime.json.bak` y devuelve `Ok(Default)`; cualquier otro error de E/S → `Err(Io)`.
     - `save()`: atómico (`runtime.json.tmp` + `rename`); crea `runtime_dir` si no existe.
   - [x] T8.3 `RuntimeStatus { NotInstalled, Ready(ActiveRuntime), Broken { path } }` (`Serialize`) y `status_of(state, exists: impl Fn(&Path) -> bool)`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
-  | `estado_roundtrip_gestionado` | `Managed { tag: "b12780" }`, `Cuda{13,5}` | `save` + `load` → igual |
-  | `estado_roundtrip_externo` | `External` con ruta con espacios y no ASCII (`Él dir`) | igual |
+  | `estado_roundtrip_gestionado` | `Managed { tag: "b12780" }`, `backend: Some(Cuda{13,5})` | `save` + `load` → igual |
+  | `estado_roundtrip_externo` | `External`, `backend: None`, ruta con espacios y no ASCII (`Él dir`) | igual |
+  | `estado_con_backend_existente_se_lee_como_some` | JSON con `"backend":"Vulkan"` | `backend: Some(Vulkan)` |
+  | `estado_sin_backend_o_null_se_lee_como_none` | JSON sin `backend` y con `"backend":null` | `backend: None` en ambos |
   | `estado_inexistente` | directorio vacío | `Default` (`active: None`) |
   | `estado_corrupto_hace_copia` | `runtime.json` = `"{"` | `Default` y existe `runtime.json.bak` con `"{"` |
   | `estado_schema_desconocido` | `schema: 99` | `Default` + `.bak` |
@@ -413,14 +417,20 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T3, T4, T7, T8, T9
 - **Cubre:** CA9, CA10 (`check_update`), CA11
 - **Subtareas:**
-  - [ ] T10.1 `RuntimeManager::new(runtime_dir, deps: RuntimeDeps { source, fetcher, runner, probe, remover })`, con dependencias `Arc<dyn …>` inyectadas. `remover: Arc<dyn DirRemover>` (`fn remove_dir_all(&self, &Path) -> io::Result<()>`) con `StdDirRemover` en producción. Un `tokio::sync::Mutex` (`try_lock`) impide dos instalaciones a la vez (`AlreadyInstalling`).
-  - [ ] T10.2 `status()`: reintenta borrar `pending_cleanup` (quita de la lista las que se borren y guarda) y devuelve `status_of`. `hardware()` → `detect`. `active_server_path() -> Option<PathBuf>` (solo con `Ready`): punto de integración con el plan 008.
-  - [ ] T10.3 `check_update() -> UpdateInfo { installed: Option<u32>, latest: u32, latest_tag, available_backends, update_available }`. `installed` es la `build` del runtime activo (gestionado o externo); `update_available` es cierto si no hay runtime activo o si `latest > installed`.
-  - [ ] T10.4 `use_external(path) -> Result<ActiveRuntime, RuntimeError>`. No borra las versiones gestionadas en disco (las limpia la siguiente instalación gestionada).
+  - [x] T10.1 `RuntimeManager::new(runtime_dir, deps: RuntimeDeps { source, fetcher, runner, probe, remover })`, con dependencias `Arc<dyn …>` inyectadas. `remover: Arc<dyn DirRemover>` (`fn remove_dir_all(&self, &Path) -> io::Result<()>`) con `StdDirRemover` en producción. Un `tokio::sync::Mutex` (`try_lock`) impide dos instalaciones a la vez (`AlreadyInstalling`).
+  - [x] T10.2 Consultas `async`:
+    - `status() -> Result<RuntimeStatus, RuntimeError>`: carga el estado (propaga el `Err(Io)` de `load()`), reintenta borrar `pending_cleanup` (quita de la lista las que se borren y guarda) y devuelve `status_of`. Un borrado pendiente que vuelve a fallar no es un error.
+    - `hardware() -> Result<HardwareInfo, RuntimeError>`: ejecuta `detect` con `tokio::task::spawn_blocking` (lanza `nvidia-smi`, bloqueante); un fallo del `JoinHandle` se convierte en `RuntimeError`.
+    - `active_server_path() -> Result<Option<PathBuf>, RuntimeError>`: llama a `status()` (y por tanto reintenta los borrados pendientes y propaga su error); `Ok(Some(ruta))` solo con `Ready`, `Ok(None)` con `NotInstalled` o `Broken`. Punto de integración con el plan 008.
+  - [x] T10.3 `check_update() -> UpdateInfo { installed: Option<u32>, latest: u32, latest_tag, available_backends, update_available }`. `installed` es la `build` del runtime activo (gestionado o externo); `update_available` es cierto si no hay runtime activo o si `latest > installed`.
+  - [x] T10.4 `use_external(path) -> Result<ActiveRuntime, RuntimeError>`. Si hay una instalación en curso (el `Mutex` de T10.1 está tomado), falla con `AlreadyInstalling` sin tocar el estado ni llamar al runner. Guarda `backend: None`. No borra las versiones gestionadas en disco (las limpia la siguiente instalación gestionada).
 - **Tests unitarios** (con `FakeSource`, `FakeRunner`, `FakeProbe`, `FakeRemover`; `tempdir` como `runtime_dir`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
-  | `status_sin_estado` | `runtime_dir` vacío | `NotInstalled`; `active_server_path()` → `None` |
+  | `status_sin_estado` | `runtime_dir` vacío | `Ok(NotInstalled)`; `active_server_path().await` → `Ok(None)` |
+  | `status_error_io_se_propaga` | `runtime.json` creado como **directorio** (la lectura falla con un error distinto de `NotFound`) | `status()` y `active_server_path()` → `Err(Io)`; no se crea `runtime.json.bak` |
+  | `active_server_path_roto` | activo con `server_path` inexistente | `Ok(None)` |
+  | `hardware_usa_probe` | `FakeProbe` de CA1 | `Ok(HardwareInfo)` igual al de CA1 |
   | `status_reintenta_pendientes` | `pending_cleanup: [dir existente]`, `FakeRemover` que borra | el directorio ya no existe y `runtime.json` tiene `pending_cleanup: []` |
   | `status_pendiente_sigue_fallando` | `FakeRemover` que siempre falla | `pending_cleanup` conserva la ruta; `status()` no devuelve error |
   | `check_update_disponible` | activo `12779`, latest `b12780` | `update_available: true`, `latest: 12780`, `latest_tag: "b12780"` |
@@ -428,7 +438,8 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `check_update_sin_instalar` | `active: None` | `installed: None`, `update_available: true` |
   | `check_update_backends` | Win x64, driver 13.0, Vulkan | `available_backends: [Cuda{13,5}, Vulkan, Cpu{Generic}]` |
   | `check_update_rate_limit` | source → `RateLimited` | error propagado sin tocar el estado |
-  | `external_valido` | `tempdir/llama-server.exe` + versión 12000 | `Ready(External, 12000)`; el runner no recibe `xattr`; `active_server_path()` → esa ruta |
+  | `external_valido` | `tempdir/llama-server.exe` + versión 12000 | `Ready(External, 12000)` con `backend: None`; el runner no recibe `xattr`; `active_server_path().await` → `Ok(Some(esa ruta))` |
+  | `external_durante_instalacion_rechazado` | `Mutex` de instalación tomado (p. ej. con el guard de `begin_install()`) | `Err(AlreadyInstalling)`, estado sin cambios, 0 llamadas al runner |
   | `external_nombre_invalido` | `tempdir/llama-cli.exe` | `Err(InvalidExternalBinary)`, estado sin cambios, 0 llamadas al runner |
   | `external_verificacion_falla` | `--version` con salida 1 | `Err(VerificationFailed)`, estado sin cambios |
   | `external_no_borra_gestionado` | activo `Managed b12780` con `runtime/b12780/` en disco | tras `use_external`, `runtime/b12780/` sigue existiendo |
@@ -444,7 +455,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Tests unitarios** (con `FakeSource`, `FakeFetcher`, `FakeRunner`, `FakeProbe`, `FakeRemover`; `tempdir` como `runtime_dir`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
-  | `install_cpu_windows_ok` | Win x64 sin GPU, `Auto` | `runtime/b12780/llama-server.exe` existe, `runtime.json` es `Managed{b12780}` `Cpu{Generic}`, no queda `.staging-*` |
+  | `install_cpu_windows_ok` | Win x64 sin GPU, `Auto` | `runtime/b12780/llama-server.exe` existe, `runtime.json` es `Managed{b12780}` con `backend: Some(Cpu{Generic})`, no queda `.staging-*` |
   | `install_cuda_extrae_cudart_junto_al_server` | driver 13.0; el zip principal tiene `bin/llama-server.exe`; el cudart, `cudart64_13.dll` | `runtime/b12780/bin/cudart64_13.dll` existe; 2 `fetch` |
   | `install_macos_quita_cuarentena_antes_de_verificar` | macOS arm64 | orden de llamadas al runner: `/usr/bin/xattr -cr <staging/install>` y después `--version` |
   | `install_windows_no_llama_xattr` | Win x64 | ninguna llamada a `xattr` |
@@ -465,7 +476,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Cubre:** CA12 (backend)
 - **Subtareas:**
   - [ ] T12.1 Estado gestionado `RuntimeAppState { manager: Arc<RuntimeManager>, cancel: Mutex<Option<CancelToken>> }`, creado en el `setup` de `run()` con `app.path().app_data_dir()?.join("runtime")` (D9) y las implementaciones reales (`GitHubReleaseSource`, `SimpleHttpFetcher`, `TokioCommandRunner`, `NativeProbe`, `StdDirRemover`). Sin `unwrap()`: los errores de `setup` se propagan.
-  - [ ] T12.2 Comandos `async`: `runtime_hardware`, `runtime_status`, `runtime_check_update`, `runtime_install(preference)`, `runtime_cancel_install` y `runtime_use_external(path)`, añadidos al `generate_handler!` de `register()` junto a `app_info`. Los errores se serializan como `{ code, message }` (`code` = nombre de la variante de `RuntimeError`, `message` en español).
+  - [ ] T12.2 Comandos `async`: `runtime_hardware`, `runtime_status`, `runtime_check_update`, `runtime_install(preference)`, `runtime_cancel_install` y `runtime_use_external(path)`, añadidos al `generate_handler!` de `register()` junto a `app_info`. Cada comando hace `.await` del método `async` correspondiente de `RuntimeManager` (todos devuelven `Result`, incluidos `hardware()` y `status()`) y no bloquea el hilo del runtime. Los errores se serializan como `{ code, message }` (`code` = nombre de la variante de `RuntimeError`, `message` en español).
   - [ ] T12.3 `runtime_install` emite `runtime://progress` con `ProgressEvent` serializado (`camelCase`).
   - [ ] T12.4 Función pura `error_to_payload(&RuntimeError) -> ErrorPayload`, testeable sin Tauri.
 - **Tests unitarios:**
@@ -483,10 +494,10 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T12
 - **Cubre:** CA12
 - **Subtareas:**
-  - [ ] T13.1 Tipos TS espejo de `HardwareInfo`, `RuntimeStatus`, `UpdateInfo`, `ProgressEvent` y `ErrorPayload`.
+  - [ ] T13.1 Tipos TS espejo de `HardwareInfo`, `RuntimeStatus`, `UpdateInfo`, `ProgressEvent` y `ErrorPayload`. En `ActiveRuntime`, `backend: Backend | null` (`null` en los externos).
   - [ ] T13.2 `view-model.ts` (funciones puras):
     - `describeHardware(hw)`;
-    - `describeStatus(status)`;
+    - `describeStatus(status)` (el backend solo aparece si no es `null`);
     - `primaryAction(status, update)` → `{ label: "Instalar" | "Actualizar a bN" | "Al día" | "Buscar actualizaciones", enabled }`;
     - `backendOptions(update)`;
     - `progressLabel(event)` → `"Descargando llama.cpp… 42 %"`, etc.;
@@ -499,8 +510,8 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `describe_hardware_nvidia` | `HardwareInfo` de CA1 | contiene `"AVX2"`, `"NVIDIA GeForce RTX 4070 (12 GB)"`, `"Vulkan"`; no contiene `"AVX512"` |
   | `describe_hardware_mac` | macOS arm64 | contiene `"Apple Silicon (Metal)"` |
   | `describe_status_no_instalado` | `NotInstalled` | `"No instalado"` |
-  | `describe_status_listo_gestionado` | `Ready(Managed b12780, Cuda 13.5)` | `"b12780 · CUDA 13.5 · gestionado"` |
-  | `describe_status_externo` | `Ready(External, 12000)` | contiene `"externo"` y la ruta |
+  | `describe_status_listo_gestionado` | `Ready(Managed b12780, backend: Cuda 13.5)` | `"b12780 · CUDA 13.5 · gestionado"` (el gestionado sigue mostrando el backend) |
+  | `describe_status_externo` | `Ready(External, 12000, backend: null)` | contiene `"b12000"`, `"externo"` y la ruta; no contiene ningún nombre de backend (`"CPU"`, `"CUDA"`, `"Vulkan"`, `"Metal"`) |
   | `describe_status_roto` | `Broken { path }` | contiene `"no se encuentra"` y la ruta |
   | `accion_instalar` | `NotInstalled` | `{ label: "Instalar", enabled: true }` |
   | `accion_actualizar` | `installed: 12779`, `latest: 12780` | `"Actualizar a b12780"` |
@@ -539,7 +550,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 ## Fuera de alcance
 
 - Gestor de descargas completo (cola, reanudación con `Range`, pausa, varias descargas a la vez, comprobación de espacio en disco): **plan 006**. Aquí solo `SimpleHttpFetcher` detrás de `ArtifactFetcher`.
-- Lanzar y parar `llama-server`, perfiles, logs y health check: plan 008. Este plan solo expone `active_server_path()`.
+- Lanzar y parar `llama-server`, perfiles, logs y health check: plan 008. Este plan solo expone `async fn active_server_path(&self) -> Result<Option<PathBuf>, RuntimeError>`.
 - Backends SYCL, ROCm/HIP, OpenVINO, OpenCL/Adreno y KleidiAI. Linux y Android.
 - Verificación en Windows ARM64 (D11): la selección lo soporta, pero sin máquina ni CI.
 - Prueba manual en macOS (D6): solo CI; la prueba en un Mac real queda para la checklist del plan 010.

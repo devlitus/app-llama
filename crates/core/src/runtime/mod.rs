@@ -4,6 +4,7 @@ mod extract;
 mod fetch;
 mod github;
 mod hardware;
+mod manager;
 mod process;
 mod release;
 mod select;
@@ -19,6 +20,7 @@ pub use extract::{extract_archive, find_server_binary};
 pub use fetch::{ArtifactFetcher, CancelToken, FetchRequest, SimpleHttpFetcher};
 pub use github::{GitHubReleaseSource, ReleaseSource};
 pub use hardware::{CudaVersion, GpuInfo, HardwareInfo, NativeProbe, SystemProbe, detect};
+pub use manager::{DirRemover, RuntimeDeps, RuntimeManager, StdDirRemover, UpdateInfo};
 pub use release::{Asset, Release, build_number, latest_build_release, parse_releases};
 pub use select::{
     BackendPreference, InstallPlan, available_backends, is_compatible, select_install,
@@ -64,4 +66,8 @@ pub enum RuntimeError {
     VerificationFailed { stderr_tail: String },
     #[error("no se pudo quitar la cuarentena de macOS: {0}")]
     QuarantineFailed(String),
+    #[error("ya hay una instalación en curso")]
+    AlreadyInstalling,
+    #[error("el binario debe llamarse llama-server o llama-server.exe")]
+    InvalidExternalBinary,
 }

@@ -21,7 +21,9 @@ pub enum RuntimeSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActiveRuntime {
     pub source: RuntimeSource,
-    pub backend: Backend,
+    /// `None` en binarios externos: no se sabe con qué backend se compilaron.
+    #[serde(default)]
+    pub backend: Option<Backend>,
     pub server_path: PathBuf,
     pub version: RuntimeVersion,
 }
@@ -112,7 +114,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
-    use crate::runtime::{Backend, CpuIsa, RuntimeVersion};
+    use crate::runtime::{Backend, RuntimeVersion};
 
     fn version() -> RuntimeVersion {
         RuntimeVersion {
@@ -126,10 +128,10 @@ mod tests {
             source: RuntimeSource::Managed {
                 tag: "b12780".to_string(),
             },
-            backend: Backend::Cuda {
+            backend: Some(Backend::Cuda {
                 major: 13,
                 minor: 5,
-            },
+            }),
             server_path: PathBuf::from("runtime")
                 .join("b12780")
                 .join("llama-server.exe"),
@@ -162,13 +164,39 @@ mod tests {
         let store = StateStore::new(dir.path());
         let active = ActiveRuntime {
             source: RuntimeSource::External,
-            backend: Backend::Cpu { isa: CpuIsa::Avx2 },
+            backend: None,
             server_path: dir.path().join("Él dir").join("llama server"),
             version: version(),
         };
         let state = state_with(Some(active));
         store.save(&state).unwrap();
         assert_eq!(store.load().unwrap(), state);
+    }
+
+    #[test]
+    fn estado_con_backend_existente_se_lee_como_some() {
+        let dir = tempfile::tempdir().unwrap();
+        let json = r#"{"schema":1,"active":{"source":{"Managed":{"tag":"b12780"}},
+            "backend":"Vulkan","server_path":"llama-server.exe",
+            "version":{"build":12780,"commit":"abc1234"}},"pending_cleanup":[]}"#;
+        std::fs::write(dir.path().join("runtime.json"), json).unwrap();
+        let state = StateStore::new(dir.path()).load().unwrap();
+        assert_eq!(state.active.unwrap().backend, Some(Backend::Vulkan));
+    }
+
+    #[test]
+    fn estado_sin_backend_o_null_se_lee_como_none() {
+        for backend in ["", r#""backend":null,"#] {
+            let dir = tempfile::tempdir().unwrap();
+            let json = format!(
+                r#"{{"schema":1,"active":{{"source":"External",{backend}
+                "server_path":"llama-server.exe",
+                "version":{{"build":1,"commit":"abc"}}}},"pending_cleanup":[]}}"#
+            );
+            std::fs::write(dir.path().join("runtime.json"), json).unwrap();
+            let state = StateStore::new(dir.path()).load().unwrap();
+            assert_eq!(state.active.unwrap().backend, None);
+        }
     }
 
     #[test]

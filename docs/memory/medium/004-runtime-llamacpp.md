@@ -220,3 +220,31 @@ estado: abierto
 ### Errores
 
 - **reserva-sin-test** — rama de x-ratelimit-reset no numérico sin test que fije el None (minor) (C1)
+
+## T10
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a71e1a65cc61af1b2 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-27 | 1 | a78564bc4f0f6876f | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · RuntimeManager (status, hardware, check_update, use_external) con cerrojo de estado y bloqueo de instalacion; minors de github.rs
+- C1 · reviewer · T10 C1, gate verde y CA9/CA10/CA11 con tests; 2 major: backend inventado para externo y pending_cleanup con NotFound
+- C2 · developer · T10 ciclo 2: backend Option, NotFound como exito, borrado en spawn_blocking, nombre por Os, external rechazado si instalando
+- C2 · reviewer · T10 C2 gate verde; #31 y #32 resueltos con tests; CA9/CA10/CA11 cubiertos; solo minors de nomenclatura y cobertura de active_server_path
+
+### Decisiones
+
+- **backend-externo-opcional** — Option<Backend> con serde(default) lee runtime.json previos como Some y externos/null como None; verificado con tests (C1, C2)
+- **limitacion-documentada** — active_server_path async con Result aceptado (status puede fallar por E/S); hay que actualizar el plan para 008 (C1)
+- **refactor-equivalente** — remove_dirs async con spawn_blocking y NotFound como borrado, reutilizable por T11 (C1, C2)
+
+### Errores
+
+- **dato-inventado** — use_external persistia Cpu Generic para binarios externos; ahora None (#31) (C1, C2 · #31)
+- **notfound-no-es-exito** — retry_pending_cleanup dejaba rutas inexistentes pendientes para siempre; ahora NotFound cuenta como borrado (#32) (C1, C2 · #32)
+- **reserva-sin-test** — active_server_path sin test con Broken -> Ok(None) ni con error de E/S -> Err; nombres de test del plan distintos del código (minor) (C2)

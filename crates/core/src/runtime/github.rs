@@ -27,7 +27,7 @@ impl GitHubReleaseSource {
     pub fn new(client: reqwest::Client, base_url: impl Into<String>) -> Self {
         Self {
             client,
-            base_url: base_url.into(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
         }
     }
 }
@@ -138,6 +138,31 @@ mod tests {
             source.list_releases().await,
             Err(RuntimeError::RateLimited { reset_epoch: None })
         ));
+    }
+
+    #[tokio::test]
+    async fn lista_releases_rate_limit_reset_no_numerico() {
+        let server = MockServer::start().await;
+        let response = ResponseTemplate::new(403)
+            .insert_header("x-ratelimit-remaining", "0")
+            .insert_header("x-ratelimit-reset", "abc");
+        let source = source_with(&server, response).await;
+        assert!(matches!(
+            source.list_releases().await,
+            Err(RuntimeError::RateLimited { reset_epoch: None })
+        ));
+    }
+
+    #[tokio::test]
+    async fn lista_releases_base_url_con_barra_final() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(RELEASES_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string(FIXTURE))
+            .mount(&server)
+            .await;
+        let source = GitHubReleaseSource::new(reqwest::Client::new(), format!("{}/", server.uri()));
+        assert_eq!(source.list_releases().await.unwrap().len(), 3);
     }
 
     #[tokio::test]
