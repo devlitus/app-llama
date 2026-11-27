@@ -17,10 +17,11 @@ describe("getAppInfo", () => {
   });
 
   it("get_app_info_propaga_error", async () => {
+    const ipcError = new Error("ipc");
     mockIPC(() => {
-      throw new Error("ipc");
+      throw ipcError;
     });
 
-    await expect(getAppInfo()).rejects.toBeDefined();
+    await expect(getAppInfo()).rejects.toBe(ipcError);
   });
 });
