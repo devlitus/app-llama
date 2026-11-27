@@ -100,21 +100,25 @@ estado: abierto
 | Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
 |---|---|---|---|---|---|
 | 1 | 2026-11-26 | 1 | a733b59b2801228ea | rojo | APPROVED |
+| 2 | 2026-11-27 | 1 | a8c30b05b39999d63 | verde | APPROVED |
 
 ### Resúmenes
 
 - C1 · developer · T5 hecha: app Tauri 2.12.7 con comando app_info, 3 tests IPC en verde, gate verde y tauri build --debug --no-bundle verificado en local
 - C1 · reviewer · T5 app Tauri y comando app_info correctos; gate verde, CA1/CA3/CA9 verificados y manifiesto incrustado en el exe
+- C2 · developer · El test IPC usa el origen local por plataforma y el test de comando desconocido comprueba el mensaje exacto.
+- C2 · reviewer · corrección del origen IPC por plataforma en los tests de lib.rs verificada contra tauri 2.12.7; gate verde
 
 ### Decisiones
 
 - **limitacion-documentada** — csp null aceptado en el esqueleto como minor; la CSP estricta queda para el plan 009 (C1)
 - **manifiesto-cargo-manifest-dir** — build.rs usa CARGO_MANIFEST_DIR para /MANIFESTINPUT y try_build sin unwrap; la ruta es absoluta y robusta (C1)
+- **origen-local-por-plataforma** — el origen local de los tests IPC replica protocol::origin de tauri (http://tauri.localhost en Windows/Android, tauri://localhost en el resto) (C2)
 - **refactor-equivalente** — build.rs usa manifiesto propio (Common Controls v6) con rustc-link-arg y new_without_app_manifest para que arranquen los tests de la lib en Windows (C1)
 
 ### Errores
 
-- (ninguno)
+- **test-origen-no-portable** — El helper de test fijaba http://tauri.localhost, remoto en macOS/Linux, y la ACL rechazaba app_info (CI PR #26). (C2 · #26)
 
 ## T6
 

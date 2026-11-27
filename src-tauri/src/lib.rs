@@ -18,6 +18,13 @@ mod tests {
         ipc::{CallbackFn, InvokeBody},
     };
 
+    // Tauri sirve la app desde `http://tauri.localhost` solo en Windows y Android;
+    // en el resto de plataformas el origen local es `tauri://localhost`.
+    #[cfg(any(windows, target_os = "android"))]
+    const LOCAL_ORIGIN: &str = "http://tauri.localhost";
+    #[cfg(not(any(windows, target_os = "android")))]
+    const LOCAL_ORIGIN: &str = "tauri://localhost";
+
     fn invoke(cmd: &str) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
         let app = register(mock_builder())
             .build(mock_context(noop_assets()))
@@ -31,7 +38,7 @@ mod tests {
                 cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "http://tauri.localhost".parse().expect("url válida"),
+                url: LOCAL_ORIGIN.parse().expect("url válida"),
                 body: InvokeBody::default(),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),
@@ -51,6 +58,7 @@ mod tests {
 
     #[test]
     fn ipc_comando_desconocido_falla() {
-        assert!(invoke("no_existe").is_err());
+        let error = invoke("no_existe").expect_err("el comando no existe");
+        assert_eq!(error, serde_json::json!("Command no_existe not found"));
     }
 }
