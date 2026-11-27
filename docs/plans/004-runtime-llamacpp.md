@@ -208,8 +208,8 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T1
 - **Cubre:** CA2, CA3 (base)
 - **Subtareas:**
-  - [ ] T2.1 Tipos `Os`, `Arch`, `Backend`, `CpuIsa`, `ArchiveFormat { Zip, TarGz }`, `AssetKind { Main, Cudart }` y `AssetDescriptor { kind, os, arch, backend, format }`.
-  - [ ] T2.2 `classify_asset(name: &str) -> Option<AssetDescriptor>`, según el Diseño. Para `Cudart`, `backend` es `Cuda{..}`.
+  - [x] T2.1 Tipos `Os`, `Arch`, `Backend`, `CpuIsa`, `ArchiveFormat { Zip, TarGz }`, `AssetKind { Main, Cudart }` y `AssetDescriptor { kind, os, arch, backend, format }`.
+  - [x] T2.2 `classify_asset(name: &str) -> Option<AssetDescriptor>`, según el Diseño. Para `Cudart`, `backend` es `Cuda{..}`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
