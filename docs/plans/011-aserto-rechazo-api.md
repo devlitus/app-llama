@@ -1,7 +1,7 @@
 # 011 — Aserto exacto del rechazo en `api.test.ts`
 
 - **Tipo:** chore
-- **Estado:** en curso
+- **Estado:** hecho
 - **Rama:** chore/011-aserto-rechazo-api
 - **Fase del roadmap:** 0 (Esqueleto), mantenimiento de [docs/MVP.md](../MVP.md)
 
@@ -58,15 +58,19 @@ Búsqueda de `rejects|resolves|toBeDefined|toBeTruthy|toThrow|catch` en `ui/src`
 
 > **(O)** = orchestrator. Commit sugerido para T1: `test(ui): aserto exacto del error en get_app_info_propaga_error`.
 
-### T1 — Aserto por identidad en `get_app_info_propaga_error` (developer)
+### T1 — Aserto por identidad en `get_app_info_propaga_error` (developer) ✅ hecha
 - **Ficheros/módulos:** `ui/src/lib/api.test.ts`
 - **Depende de:** —
 - **Cubre:** CA1, CA2, CA3, CA4
 - **Subtareas:**
-  - [ ] T1.1 (rojo) Antes de tocar el test, comprobar que hoy es débil: aplicar M1 sobre el test **actual** y ver que `rejects.toBeDefined()` **pasa**. Revertir.
-  - [ ] T1.2 (verde) En `get_app_info_propaga_error`: `const ipcError = new Error("ipc");`, `mockIPC(() => { throw ipcError; });` y `await expect(getAppInfo()).rejects.toBe(ipcError);`. Sin cambiar el nombre (D2) ni `api.ts`.
-  - [ ] T1.3 Ejecutar M1, M2 y M3 (CA2) de una en una, comprobar que el test falla en las tres y revertir. Anotar el resultado en este plan, debajo de esta subtarea, con una línea por mutación, y en la entrada de sesión de memoria del developer.
-  - [ ] T1.4 Ejecutar la búsqueda de CA3 y `node scripts/quality-gate.mjs` en verde.
+  - [x] T1.1 (rojo) Antes de tocar el test, comprobar que hoy es débil: aplicar M1 sobre el test **actual** y ver que `rejects.toBeDefined()` **pasa**. Revertir.
+  - [x] T1.2 (verde) En `get_app_info_propaga_error`: `const ipcError = new Error("ipc");`, `mockIPC(() => { throw ipcError; });` y `await expect(getAppInfo()).rejects.toBe(ipcError);`. Sin cambiar el nombre (D2) ni `api.ts`.
+  - [x] T1.3 Ejecutar M1, M2 y M3 (CA2) de una en una, comprobar que el test falla en las tres y revertir. Anotar el resultado en este plan, debajo de esta subtarea, con una línea por mutación, y en la entrada de sesión de memoria del developer.
+    - T1.1: M1 sobre el test anterior (`toBeDefined`) pasa (salida 0): el aserto era débil.
+    - M1 (`new Error("otro")`): el test falla (salida 1).
+    - M2 (`new Error("ipc")`, otra instancia): el test falla (salida 1).
+    - M3 (sin `mockIPC`, `TypeError`): el test falla (salida 1).
+  - [x] T1.4 Ejecutar la búsqueda de CA3 y `node scripts/quality-gate.mjs` en verde.
 - **Tests unitarios** (`ui/src/lib/api.test.ts`, Vitest, sin red: solo `mockIPC`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -76,12 +80,13 @@ Búsqueda de `rejects|resolves|toBeDefined|toBeTruthy|toThrow|catch` en `ui/src`
   | M2 (mutación temporal, no se versiona) | el mock lanza otra instancia `new Error("ipc")` | `get_app_info_propaga_error` falla |
   | M3 (mutación temporal, no se versiona) | sin `mockIPC` en el test (rechazo `TypeError`) | `get_app_info_propaga_error` falla |
 
-### T2 — Revisión final y cierre (O + reviewer)
+### T2 — Revisión final y cierre (O + reviewer) ✅ hecha
 - **Depende de:** T1
 - **Cubre:** CA4, CA5, y todos en la revisión
 - **Subtareas:**
-  - [ ] T2.1 El orchestrator lanza el `reviewer` con este plan, el diff completo de la rama contra `main` y `última tarea: sí`. El reviewer repite al menos M1 para comprobar CA2 y hace `session`, `flush` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
+  - [x] T2.1 El orchestrator lanza el `reviewer` con este plan, el diff completo de la rama contra `main` y `última tarea: sí`. El reviewer repite al menos M1 para comprobar CA2 y hace `session`, `flush` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
   - [ ] T2.2 (O) `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`. Se anota el resultado en este plan.
+    - **Resultado (2026-11-27):** reviewer `APPROVED` en el ciclo 1, sin hallazgos ni issues; repitió M1 y M2 (ambas fallan). Memoria `011-aserto-rechazo-api` cerrada; check de memoria (4 planes, 4 cerrados) y quality gate en verde.
 - **Tests unitarios:** no aplica (los automatizados son los de T1).
 
 ## Fuera de alcance
