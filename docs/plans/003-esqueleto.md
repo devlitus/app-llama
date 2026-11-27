@@ -263,9 +263,9 @@ docs/DESARROLLO.md
 - **Depende de:** T2, T5, T6
 - **Cubre:** CA7, CA9
 - **Subtareas:**
-  - [ ] T7.1 `ci.yml`: añadir tras "Quality gate" el paso `Build app` → `npm --prefix ui run tauri -- build --debug --no-bundle`. Los pasos de toolchain, cache y `npm ci` actuales no cambian: ya se activan solos al existir los ficheros. `Swatinem/rust-cache@v2` se mantiene en la raíz del workspace.
-  - [ ] T7.2 Comprobar en local (Windows) que el paso de R10 de la CI acepta `chore/003-esqueleto`.
-  - [ ] T7.3 `docs/DESARROLLO.md`:
+  - [x] T7.1 `ci.yml`: añadir tras "Quality gate" el paso `Build app` → `npm --prefix ui run tauri -- build --debug --no-bundle`. Los pasos de toolchain, cache y `npm ci` actuales no cambian: ya se activan solos al existir los ficheros. `Swatinem/rust-cache@v2` se mantiene en la raíz del workspace.
+  - [x] T7.2 Comprobar en local (Windows) que el paso de R10 de la CI acepta `chore/003-esqueleto`.
+  - [x] T7.3 `docs/DESARROLLO.md`:
     - prerrequisitos por SO (enlace a la página oficial de Tauri), Node ≥ 22.12 y Rust gestionado por `rust-toolchain.toml`;
     - comandos: `npm ci --prefix ui`, `npm --prefix ui run tauri -- dev`, `node scripts/quality-gate.mjs` y `npm --prefix ui run tauri -- build --debug --no-bundle`;
     - una nota: el gate compila la UI antes de Rust (D9).

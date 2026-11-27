@@ -136,3 +136,28 @@ estado: abierto
 ### Errores
 
 - **csp-permisiva** — img-src data: y unsafe-inline añadidos sin necesidad verificada; queda "json valido" sin tilde en lib.rs:75; rojo de TDD no ejecutado (proceso) (C1)
+
+## T7
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 2 | ac4ec17a4c69c0d86 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T7 CI con paso Build app, DESARROLLO.md y correcciones menores de T6 (CSP estricta, onMount, tilde).
+- C1 · developer · T7 cerrada: paso Build app en CI, DESARROLLO.md completo, CSP estricta verificada en prod y dev, build de Tauri con exit 0
+- C1 · reviewer · T7 aprobada; paso Build app en CI, DESARROLLO.md completo, gate verde, build debug exit 0 sin tocar lockfiles, minors de T6 corregidos
+
+### Decisiones
+
+- **csp-estricta** — Se quita unsafe-inline y data: de la CSP; build debug compila y el gate está en verde. (C1)
+- **csp-estricta-sin-devcsp** — La CSP solo se aplica a assets incrustados (protocolo tauri); con devUrl la sirve Vite y no se aplica, asi que no hace falta devCsp (C1)
+- **limitacion-documentada** — CA7 en macOS solo verificable en el PR; CSP sin efecto en tauri dev desktop confirmado en tauri 2.12.7 (proxy solo en mobile), T8.1 lo valida en vivo (C1)
+- **refactor-equivalente** — CSP estricta, onMount y tilde aceptados como correccion de minors de T6; se recomienda commit separado (C1)
+
+### Errores
+
+- (ninguno)
