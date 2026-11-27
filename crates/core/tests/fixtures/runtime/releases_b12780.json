@@ -92,6 +92,60 @@
         "size": 10011000,
         "digest": "sha256:4da19f6a1f8b33988b0805f4f655ab5c58b847f75b77b3ac4c19db44d1ee3453",
         "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-macos-x64.tar.gz"
+      },
+      {
+        "name": "llama-b12780-bin-win-sycl-x64.zip",
+        "size": 10012000,
+        "digest": "sha256:8e9478838d742003a8de9f8e1c0539d110bf3cfb8d706dc5bf2abaff04a5e335",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-sycl-x64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-rocm-10.0-x64.zip",
+        "size": 10013000,
+        "digest": "sha256:9d3e072d3dc3855a3b7767a10ad50ce7eee10279f4d3471431b0c67dd2bb992e",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-rocm-10.0-x64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-openvino-2026.4.1-x64.zip",
+        "size": 10014000,
+        "digest": "sha256:d0b0fb34f82f8a80ba846ab93da29d17844749872fb493f334df1f776047eeb8",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-openvino-2026.4.1-x64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-win-opencl-adreno-arm64.zip",
+        "size": 10015000,
+        "digest": "sha256:ee213676125c06b361c72432222fa4261c45df8401e5cfcc8937989e65b379ae",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-win-opencl-adreno-arm64.zip"
+      },
+      {
+        "name": "llama-b12780-bin-ubuntu-x64.tar.gz",
+        "size": 10016000,
+        "digest": "sha256:f26808c62070d147b4cd71cb638a8cc6d98d5fecccc1422bc5f848b7f31cd80f",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-ubuntu-x64.tar.gz"
+      },
+      {
+        "name": "llama-b12780-bin-ubuntu-vulkan-x64.tar.gz",
+        "size": 10017000,
+        "digest": "sha256:3501c1e04360cd5e9de4f8720a8d14c569712b459576ea084af47d5680947a84",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-ubuntu-vulkan-x64.tar.gz"
+      },
+      {
+        "name": "llama-b12780-bin-android-arm64.tar.gz",
+        "size": 10018000,
+        "digest": "sha256:f10194718bc0c4c6c17531ed4a9d9e62ec88540aa5ae5140203129fecb25b669",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-bin-android-arm64.tar.gz"
+      },
+      {
+        "name": "llama-b12780-xcframework.zip",
+        "size": 10019000,
+        "digest": "sha256:c6e2b85d793d6524743910474f39955ec28de4c05cfb13cf5758347c79752e9c",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-xcframework.zip"
+      },
+      {
+        "name": "llama-b12780-ui.tar.gz",
+        "size": 10020000,
+        "digest": "sha256:cbe796f15783336d9e1d7dc835062ca61db038d085b75981fe31efac2c48f627",
+        "browser_download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b12780/llama-b12780-ui.tar.gz"
       }
     ]
   },

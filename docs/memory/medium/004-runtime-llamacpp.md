@@ -75,3 +75,27 @@ estado: abierto
 
 - **aserto-debil** — FakeProbe::run descarta el registro si el mutex está envenenado mientras run_count lo recupera; incoherencia menor (C1, C2)
 - **consola-visible-windows** — NativeProbe::run sin CREATE_NO_WINDOW hace parpadear consolas en la release de Windows #28 (C1 · #28)
+
+## T4
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | abb1afe09c37e59fd | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T4 select.rs (BackendPreference, InstallPlan, available_backends, select_install, is_compatible) con 16 tests; fixture b12780 ampliado y FakeProbe::run sin perder llamadas con mutex envenenado.
+- C1 · reviewer · select.rs cubre CA2/CA3 con los 16 tests de la tabla; gate verde; solo minors
+
+### Decisiones
+
+- **cpu-mayor-isa** — CPU elige la mayor ISA soportada con Generic como minimo: el Diseño contradice su propia tabla de tests y prevalecen los tests (C1)
+- **cuda-por-driver** — CUDA basta con driver_cuda (solo lo produce nvidia-smi) y compara solo major, segun el Diseño (C1)
+- **limitacion-documentada** — CPU elige la mayor ISA soportada con Generic como mínimo (el plan decía preferir Generic, que contradice legacy_cpu_mejor_isa); CpuIsa deriva Ord. (C1)
+
+### Errores
+
+- **rama-inalcanzable** — cuda_version tiene un brazo _ => (0,0) inalcanzable; mejor llevar (major, minor) en el filter_map (minor) (C1)
+- **reserva-sin-test** — BackendPreference deriva Deserialize con rename_all lowercase sin test que lo fije (minor) (C1)

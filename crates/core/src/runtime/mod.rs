@@ -3,6 +3,7 @@ mod asset;
 mod hardware;
 mod process;
 mod release;
+mod select;
 #[cfg(test)]
 mod test_support;
 
@@ -11,6 +12,9 @@ pub use asset::{
 };
 pub use hardware::{CudaVersion, GpuInfo, HardwareInfo, NativeProbe, SystemProbe, detect};
 pub use release::{Asset, Release, build_number, latest_build_release, parse_releases};
+pub use select::{
+    BackendPreference, InstallPlan, available_backends, is_compatible, select_install,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
@@ -19,4 +23,8 @@ pub enum RuntimeError {
     ReleaseParse(#[source] serde_json::Error),
     #[error("ninguna release de llama.cpp tiene un asset compatible con esta máquina")]
     NoCompatibleRelease,
+    #[error("ningún asset de esta release es compatible con esta máquina")]
+    NoCompatibleAsset,
+    #[error("el backend elegido no está disponible en esta máquina")]
+    BackendUnavailable,
 }

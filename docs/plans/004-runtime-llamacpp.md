@@ -263,9 +263,9 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T1, T2, T3
 - **Cubre:** CA2, CA3
 - **Subtareas:**
-  - [ ] T4.1 `BackendPreference` (`Deserialize`, `rename_all = "lowercase"`) e `InstallPlan { tag, backend, main: Asset, cudart: Option<Asset> }`.
-  - [ ] T4.2 `available_backends(release, hw) -> Vec<Backend>`, en el orden CUDA > Metal > Vulkan > CPU, con las reglas del Diseño.
-  - [ ] T4.3 `select_install(release, hw, preference) -> Result<InstallPlan, RuntimeError>` (`NoCompatibleAsset` o `BackendUnavailable`) e `is_compatible(release, hw) -> bool` (predicado para T1.3).
+  - [x] T4.1 `BackendPreference` (`Deserialize`, `rename_all = "lowercase"`) e `InstallPlan { tag, backend, main: Asset, cudart: Option<Asset> }`.
+  - [x] T4.2 `available_backends(release, hw) -> Vec<Backend>`, en el orden CUDA > Metal > Vulkan > CPU, con las reglas del Diseño.
+  - [x] T4.3 `select_install(release, hw, preference) -> Result<InstallPlan, RuntimeError>` (`NoCompatibleAsset` o `BackendUnavailable`) e `is_compatible(release, hw) -> bool` (predicado para T1.3).
 - **Tests unitarios** (fixtures de T1):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

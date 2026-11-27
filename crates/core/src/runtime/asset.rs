@@ -14,7 +14,8 @@ pub enum Arch {
     Aarch64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Las variantes van de menos a más capacidad: el orden derivado las compara.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CpuIsa {
     Generic,
     Avx,

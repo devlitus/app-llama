@@ -79,9 +79,10 @@ impl SystemProbe for FakeProbe {
 
     fn run(&self, program: &str, args: &[&str]) -> Option<String> {
         let line = command_line(program, args);
-        if let Ok(mut runs) = self.runs.lock() {
-            runs.push(line.clone());
-        }
+        self.runs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(line.clone());
         self.outputs.get(&line).cloned()
     }
 
