@@ -139,3 +139,25 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T17
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a16cf4f93b41a009c | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T17 hint.rs (typical_quant_bytes, fit_hint) y budget_cache.rs (BudgetCache) con los 15 tests de la tabla
+- C1 · reviewer · T17 revisada; cifras de CA17/CA15 recalculadas a mano y coinciden, gate verde, sin hallazgos blocker/major
+
+### Decisiones
+
+- **aritmetica-u128-sin-desborde** — typical_quant_bytes en u128; como 606 < 1000 el resultado siempre cabe en u64 y la saturacion es defensiva (C1)
+- **refactor-equivalente** — BudgetCache con OnceCell::get_or_try_init: el Err deja la celda vacia y el test concurrente es determinista en el runtime current_thread (C1)
+
+### Errores
+
+- (ninguno)

@@ -336,9 +336,9 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T1 (`GgufInfo`), T4, T16
 - **Cubre:** CA15 (caché), CA17
 - **Subtareas:**
-  - [ ] T17.1 `TYPICAL_QUANT_MILLIBYTES_PER_PARAM: u64 = 606` y `typical_quant_bytes(params_total: u64) -> u64` (`u128`, división truncada).
-  - [ ] T17.2 `FitHint { estimate: MemoryEstimate, fit: Option<Fit> }` (`Serialize`) y `fit_hint(gguf: Option<&GgufInfo>, budget: &MemoryBudget) -> Option<FitHint>` según la sección «Insignia orientativa de la búsqueda». Reutiliza `estimation_ctx`, `estimate_memory` y `fit`, sin fórmulas propias.
-  - [ ] T17.3 `BudgetCache` (envuelve `tokio::sync::OnceCell<MemoryBudget>`) con `async fn get_or_detect<F, Fut, E>(&self, detect: F) -> MemoryBudget` donde `F: FnOnce() -> Fut` y `Fut: Future<Output = Result<HardwareInfo, E>>`. Con `Ok` calcula `MemoryBudget::from_hardware` y lo guarda; con `Err` devuelve `MemoryBudget::unknown()` **sin** guardarlo, para reintentar en la siguiente petición. Las llamadas concurrentes detectan una sola vez.
+  - [x] T17.1 `TYPICAL_QUANT_MILLIBYTES_PER_PARAM: u64 = 606` y `typical_quant_bytes(params_total: u64) -> u64` (`u128`, división truncada).
+  - [x] T17.2 `FitHint { estimate: MemoryEstimate, fit: Option<Fit> }` (`Serialize`) y `fit_hint(gguf: Option<&GgufInfo>, budget: &MemoryBudget) -> Option<FitHint>` según la sección «Insignia orientativa de la búsqueda». Reutiliza `estimation_ctx`, `estimate_memory` y `fit`, sin fórmulas propias.
+  - [x] T17.3 `BudgetCache` (envuelve `tokio::sync::OnceCell<MemoryBudget>`) con `async fn get_or_detect<F, Fut, E>(&self, detect: F) -> MemoryBudget` donde `F: FnOnce() -> Fut` y `Fut: Future<Output = Result<HardwareInfo, E>>`. Con `Ok` calcula `MemoryBudget::from_hardware` y lo guarda; con `Err` devuelve `MemoryBudget::unknown()` **sin** guardarlo, para reintentar en la siguiente petición. Las llamadas concurrentes detectan una sola vez.
 - **Tests unitarios** (sin hardware real; la detección es un cierre que cuenta sus llamadas con un `AtomicUsize`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
