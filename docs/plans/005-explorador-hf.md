@@ -194,8 +194,8 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T1 (solo por el módulo `hf`)
 - **Cubre:** CA4
 - **Subtareas:**
-  - [ ] T2.1 Se quita la extensión `.gguf` y el sufijo de split `-NNNNN-of-NNNNN`. El nombre se trocea por `-` y `.` y se recorren los trozos **de derecha a izquierda**. El primero que encaja (sin distinguir mayúsculas) con `^(?:I?Q[1-8](?:_[0-9A-Z]{1,3}){0,3}|TQ[12]_0|BF16|F16|F32|MXFP4(?:_MOE)?)$` es la cuantización, normalizada a mayúsculas.
-  - [ ] T2.2 Si el nombre del archivo no tiene ninguna, se prueban los componentes de la carpeta de derecha a izquierda (con `/` como separador lógico de las rutas de HF, que no son rutas del sistema).
+  - [x] T2.1 Se quita la extensión `.gguf` y el sufijo de split `-NNNNN-of-NNNNN`. El nombre se trocea por `-` y `.` y se recorren los trozos **de derecha a izquierda**. El primero que encaja (sin distinguir mayúsculas) con `^(?:I?Q[1-8](?:_[0-9A-Z]{1,3}){0,3}|TQ[12]_0|BF16|F16|F32|MXFP4(?:_MOE)?)$` es la cuantización, normalizada a mayúsculas.
+  - [x] T2.2 Si el nombre del archivo no tiene ninguna, se prueban los componentes de la carpeta de derecha a izquierda (con `/` como separador lógico de las rutas de HF, que no son rutas del sistema).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
