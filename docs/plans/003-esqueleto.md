@@ -1,7 +1,7 @@
 # 003 — Esqueleto: workspace Rust, app Tauri 2 + Svelte 5 y CI
 
 - **Tipo:** chore
-- **Estado:** en curso
+- **Estado:** hecho
 - **Rama:** chore/003-esqueleto
 - **Fase del roadmap:** 0 (Esqueleto) de [docs/MVP.md](../MVP.md)
 
@@ -225,6 +225,7 @@ docs/DESARROLLO.md
     - `productName: "app-llama"`, sin `version` (se toma de Cargo);
     - `identifier: "io.github.devlitus.appllama"` (P1, decidido por el usuario);
     - `build.frontendDist: "../ui/dist"`, `build.devUrl: "http://localhost:5173"`, `beforeDevCommand: "npm --prefix ui run dev"` y `beforeBuildCommand: "npm --prefix ui run build"` (si la CLI no los ejecuta desde la raíz, se usa la forma `{ script, cwd }`; ver Riesgos);
+      - **Implementado:** se usa la forma `{ script, cwd: "../ui" }` en `beforeDevCommand` y `beforeBuildCommand` (desviación prevista en Riesgos).
     - una ventana `main` con `title: "app-llama"` y 1200×800;
     - `bundle.active: false` (el empaquetado es la fase 7).
   - [x] T5.4 `capabilities/default.json` con `windows: ["main"]` y `permissions: ["core:default"]`. Los comandos propios de la app no necesitan permiso.
@@ -258,7 +259,7 @@ docs/DESARROLLO.md
   | `ajustes_muestra_version` | `render(Settings)` con el mock OK | `findByText("Versión 0.1.0")` |
   | `ajustes_version_no_disponible` | `render(Settings)` con el mock que lanza | `findByText("Versión no disponible")`, sin rechazos sin capturar |
 
-### T7 — CI con build de la app y guía de desarrollo (developer)
+### T7 — CI con build de la app y guía de desarrollo (developer) ✅ hecha
 - **Ficheros/módulos:** `.github/workflows/ci.yml`, `docs/DESARROLLO.md` (nuevo)
 - **Depende de:** T2, T5, T6
 - **Cubre:** CA7, CA9
@@ -271,14 +272,17 @@ docs/DESARROLLO.md
     - una nota: el gate compila la UI antes de Rust (D9).
 - **Tests unitarios:** no aplica (configuración de CI y documentación). La verificación es CA7, en el PR.
 
-### T8 — Verificación en vivo, revisión final y cierre (O + reviewer)
+### T8 — Verificación en vivo, revisión final y cierre (O + reviewer) ✅ hecha
 - **Depende de:** T1–T7
 - **Cubre:** CA7, CA8, y todos en la revisión
 - **Subtareas:**
-  - [ ] T8.1 (O) En Windows: `npm ci --prefix ui`, `npm --prefix ui run tauri -- dev`. Se comprueba la ventana, la navegación por las 5 secciones y `Versión 0.1.0` en Ajustes. Después, `git status --porcelain` vacío (CA9). Los resultados se anotan en este plan.
-  - [ ] T8.2 (O) macOS: solo la CI (CA7), mientras no haya un Mac (MVP §7.4). Se anota en el plan.
-  - [ ] T8.3 El orchestrator lanza el `reviewer` con el plan, el diff completo y `última tarea: sí`. El reviewer hace `session`, `flush` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
-  - [ ] T8.4 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`.
+  - [x] T8.1 (O) En Windows: `npm ci --prefix ui`, `npm --prefix ui run tauri -- dev`. Se comprueba la ventana, la navegación por las 5 secciones y `Versión 0.1.0` en Ajustes. Después, `git status --porcelain` vacío (CA9). Los resultados se anotan en este plan.
+    - **Resultado (2026-11-27):** `npm ci --prefix ui` sin cambios en `git status --porcelain`. `tauri dev` levanta Vite en 5173, compila en 7,7 s y abre la ventana `app-llama`. El usuario confirma las 5 secciones navegables, `Versión 0.1.0` en Ajustes y los estilos correctos (la CSP estricta no afecta al modo dev).
+  - [x] T8.2 (O) macOS: solo la CI (CA7), mientras no haya un Mac (MVP §7.4). Se anota en el plan.
+    - **Resultado (2026-11-27):** run 45953175348 (PR #26, commit `600f8f4`) en verde en `windows-latest` y `macos-latest`: `Quality gate` y `Build app` correctos en ambos.
+  - [x] T8.3 El orchestrator lanza el `reviewer` con el plan, el diff completo y `última tarea: sí`. El reviewer hace `session`, `flush` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
+  - [x] T8.4 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`.
+    - **Resultado (2026-11-27):** reviewer `APPROVED` en el ciclo 1, sin issues; memoria `003-esqueleto` cerrada; check de memoria y quality gate en verde.
 - **Tests unitarios:** no aplica (los automatizados son T1–T6).
 
 ## Fuera de alcance
