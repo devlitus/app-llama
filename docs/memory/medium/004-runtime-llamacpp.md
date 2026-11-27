@@ -197,3 +197,26 @@ estado: abierto
 
 - **corrupto-sin-copia** — load() con bytes no UTF-8 devolvía Default sin .bak (#30). (C1, C2 · #30)
 - **reserva-sin-test** — save sobre un runtime.json existente (reemplazo en Windows) sin test (C1)
+
+## T9
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a554b9563c55efccf | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T9 cliente de releases de GitHub (ReleaseSource, GitHubReleaseSource) con 7 tests wiremock.
+- C1 · reviewer · T9 C1 cliente de releases de GitHub con wiremock; 7 tests del plan presentes, gate verde, solo hallazgos minor
+
+### Decisiones
+
+- **analizador-null-ante-duda** — x-ratelimit-reset no numérico, negativo o decimal se degrada a reset_epoch None sin error; correcto, sin test propio (C1)
+- **limitacion-documentada** — base_url con barra final produce //repos; se acepta porque producción inyecta https://api.github.com sin barra, recomendado normalizar en new() (C1)
+- **refactor-equivalente** — per_page literal en la URL en vez de .query() por la feature de reqwest 0.13; equivalente y cubierto por query_param en el mock (C1)
+
+### Errores
+
+- **reserva-sin-test** — rama de x-ratelimit-reset no numérico sin test que fije el None (minor) (C1)

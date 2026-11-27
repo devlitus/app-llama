@@ -393,8 +393,8 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T1, T5 (`reqwest`, `wiremock`)
 - **Cubre:** CA4 (red), base de CA10
 - **Subtareas:**
-  - [ ] T9.1 `#[async_trait] trait ReleaseSource { async fn list_releases(&self) -> Result<Vec<Release>, RuntimeError>; }`.
-  - [ ] T9.2 `GitHubReleaseSource { client, base_url }`: `GET {base_url}/repos/ggml-org/llama.cpp/releases?per_page=10` con las cabeceras del Contexto. `base_url` se inyecta (en producción, `https://api.github.com`).
+  - [x] T9.1 `#[async_trait] trait ReleaseSource { async fn list_releases(&self) -> Result<Vec<Release>, RuntimeError>; }`.
+  - [x] T9.2 `GitHubReleaseSource { client, base_url }`: `GET {base_url}/repos/ggml-org/llama.cpp/releases?per_page=10` con las cabeceras del Contexto. `base_url` se inyecta (en producción, `https://api.github.com`).
     - 403 o 429 con `x-ratelimit-remaining: 0` → `RateLimited { reset_epoch: Option<u64> }` (de `x-ratelimit-reset`).
     - Otro estado distinto de 2xx → `HttpStatus(code)`.
 - **Tests unitarios** (`wiremock`):
