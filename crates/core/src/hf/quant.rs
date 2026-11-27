@@ -3,7 +3,7 @@
 //! Las gramáticas son cortas y cerradas, así que se reconocen a mano sobre
 //! bytes ASCII en lugar de compilar expresiones regulares.
 
-const GGUF_EXTENSION: &str = ".gguf";
+pub(super) const GGUF_EXTENSION: &str = ".gguf";
 const SPLIT_DIGITS: usize = 5;
 const MAX_QUANT_VARIANT_PARTS: usize = 3;
 const MAX_QUANT_VARIANT_PART_LEN: usize = 3;
@@ -14,35 +14,56 @@ const MAX_QUANT_VARIANT_PART_LEN: usize = 3;
 pub fn extract_quant(path: &str) -> Option<String> {
     let mut components = path.rsplit('/');
     let file_name = components.next()?;
-    quant_in_name(&strip_split_suffix(strip_extension(file_name)))
-        .or_else(|| components.find_map(quant_in_name))
+    quant_in_name(strip_split_suffix(
+        strip_gguf_extension(file_name).unwrap_or(file_name),
+    ))
+    .or_else(|| components.find_map(quant_in_name))
 }
 
-fn strip_extension(file_name: &str) -> &str {
-    let split_at = file_name.len().checked_sub(GGUF_EXTENSION.len());
-    match split_at.and_then(|at| file_name.split_at_checked(at)) {
-        Some((stem, ext)) if ext.eq_ignore_ascii_case(GGUF_EXTENSION) => stem,
-        _ => file_name,
+/// Quita la extensión `.gguf` (sin distinguir mayúsculas); `None` si no la tiene.
+pub(super) fn strip_gguf_extension(file_name: &str) -> Option<&str> {
+    let split_at = file_name.len().checked_sub(GGUF_EXTENSION.len())?;
+    let (stem, ext) = file_name.split_at_checked(split_at)?;
+    ext.eq_ignore_ascii_case(GGUF_EXTENSION).then_some(stem)
+}
+
+/// Sufijo `-NNNNN-of-NNNNN` de los archivos divididos.
+pub(super) struct SplitSuffix {
+    pub prefix_len: usize,
+    pub index: u32,
+    pub total: u32,
+}
+
+pub(super) fn parse_split_suffix(stem: &str) -> Option<SplitSuffix> {
+    let bytes = stem.as_bytes();
+    let suffix_len = 1 + SPLIT_DIGITS + "-of-".len() + SPLIT_DIGITS;
+    let start = bytes.len().checked_sub(suffix_len)?;
+    let suffix = &bytes[start..];
+    let index_range = 1..1 + SPLIT_DIGITS;
+    let total_range = suffix_len - SPLIT_DIGITS..suffix_len;
+    let digits =
+        |range: &std::ops::Range<usize>| suffix[range.clone()].iter().all(u8::is_ascii_digit);
+    let is_split = suffix[0] == b'-'
+        && digits(&index_range)
+        && suffix[1 + SPLIT_DIGITS..].starts_with(b"-of-")
+        && digits(&total_range);
+    if !is_split {
+        return None;
     }
+    let number =
+        |range: std::ops::Range<usize>| stem[start + range.start..start + range.end].parse().ok();
+    Some(SplitSuffix {
+        prefix_len: start,
+        index: number(index_range)?,
+        total: number(total_range)?,
+    })
 }
 
 /// Quita el sufijo `-NNNNN-of-NNNNN` de los archivos divididos.
-fn strip_split_suffix(stem: &str) -> String {
-    let bytes = stem.as_bytes();
-    let suffix_len = 1 + SPLIT_DIGITS + "-of-".len() + SPLIT_DIGITS;
-    let Some(start) = bytes.len().checked_sub(suffix_len) else {
-        return stem.to_owned();
-    };
-    let suffix = &bytes[start..];
-    let digits = |range: std::ops::Range<usize>| suffix[range].iter().all(u8::is_ascii_digit);
-    let is_split = suffix[0] == b'-'
-        && digits(1..1 + SPLIT_DIGITS)
-        && suffix[1 + SPLIT_DIGITS..].starts_with(b"-of-")
-        && digits(suffix_len - SPLIT_DIGITS..suffix_len);
-    if is_split {
-        stem[..start].to_owned()
-    } else {
-        stem.to_owned()
+fn strip_split_suffix(stem: &str) -> &str {
+    match parse_split_suffix(stem) {
+        Some(split) => &stem[..split.prefix_len],
+        None => stem,
     }
 }
 

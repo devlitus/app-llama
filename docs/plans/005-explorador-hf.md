@@ -220,11 +220,11 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T1, T2
 - **Cubre:** CA4, CA5, CA11
 - **Subtareas:**
-  - [ ] T3.1 Filtro: `kind == File`, extensión `.gguf` sin distinguir mayúsculas y nombre base (el último componente de la ruta, tras el último `/`) que no empiece por `mmproj` ni por `mtp` ni contenga `imatrix` (las tres comprobaciones sin distinguir mayúsculas). `mtp` excluye los borradores para decodificación especulativa (decisión del usuario del 2026-11-27).
-  - [ ] T3.2 Split: `^(?P<prefix>.+)-(?P<idx>\d{5})-of-(?P<total>\d{5})\.gguf$` (sin distinguir mayúsculas en la extensión). Clave de grupo: `(prefix con carpeta, total)`. Un `idx == 0`, `idx > total` o `total == 0` se trata como archivo suelto.
-  - [ ] T3.3 `GgufVariant { name, quant: Option<String>, parts: Vec<GgufPart { path, size, sha256: Option<String> }>, total_bytes, complete }`. `size` es `lfs.size` si existe y, si no, `size`. Las partes van ordenadas por índice. `complete` es `true` si están todas de `1..=total` sin duplicados. Un archivo suelto es una variante de 1 parte con `complete = true`. `name` es la ruta sin el sufijo de split ni la extensión.
-  - [ ] T3.4 Orden de las variantes: `total_bytes` ascendente y, si empatan, `name`.
-  - [ ] T3.5 `GgufVariant::download_request(&RepoId) -> DownloadRequest` (con `revision = "main"`). El tipo `DownloadRequest` se define aquí para que lo consuma el plan 006.
+  - [x] T3.1 Filtro: `kind == File`, extensión `.gguf` sin distinguir mayúsculas y nombre base (el último componente de la ruta, tras el último `/`) que no empiece por `mmproj` ni por `mtp` ni contenga `imatrix` (las tres comprobaciones sin distinguir mayúsculas). `mtp` excluye los borradores para decodificación especulativa (decisión del usuario del 2026-11-27).
+  - [x] T3.2 Split: `^(?P<prefix>.+)-(?P<idx>\d{5})-of-(?P<total>\d{5})\.gguf$` (sin distinguir mayúsculas en la extensión). Clave de grupo: `(prefix con carpeta, total)`. Un `idx == 0`, `idx > total` o `total == 0` se trata como archivo suelto.
+  - [x] T3.3 `GgufVariant { name, quant: Option<String>, parts: Vec<GgufPart { path, size, sha256: Option<String> }>, total_bytes, complete }`. `size` es `lfs.size` si existe y, si no, `size`. Las partes van ordenadas por índice. `complete` es `true` si están todas de `1..=total` sin duplicados. Un archivo suelto es una variante de 1 parte con `complete = true`. `name` es la ruta sin el sufijo de split ni la extensión.
+  - [x] T3.4 Orden de las variantes: `total_bytes` ascendente y, si empatan, `name`.
+  - [x] T3.5 `GgufVariant::download_request(&RepoId) -> DownloadRequest` (con `revision = "main"`). El tipo `DownloadRequest` se define aquí para que lo consuma el plan 006.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

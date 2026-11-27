@@ -52,3 +52,26 @@ estado: abierto
 
 - **fixture-distinto-del-plan** — Tests con nombre o entrada distintos de la tabla del plan y dos filas ausentes (corregido en ciclo 2). (C1, C2)
 - **reserva-sin-test** — faltan quant_model_name_digits_not_matched (Qwen2.5-7B-Instruct.gguf) y quant_empty_path ("") de la tabla de T2 (C1)
+
+## T3
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | ab5c9c64fe663e5c0 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T3 filtrado de GGUF, agrupación de splits y DownloadRequest en hf/files.rs
+- C1 · reviewer · T3 aprobada; filtro, agrupación de splits y DownloadRequest correctos, 17 filas del plan con test exacto, gate verde
+
+### Decisiones
+
+- **etiqueta-vs-quant** — UD-IQ2_XXS/UD-Q4_K_XL del plan son etiquetas; name conserva UD- y quant sigue T2; conviene aclararlo en el plan (T3, T7, CA16) (C1)
+- **limitacion-documentada** — download_request recibe &str hasta que T5 defina RepoId; el planner debe anotar el cambio de firma en T5 (C1)
+- **refactor-equivalente** — parse_split_suffix/strip_gguf_extension compartidos desde quant.rs sin cambiar el comportamiento ni los tests de T2 (C1)
+
+### Errores
+
+- (ninguno)
