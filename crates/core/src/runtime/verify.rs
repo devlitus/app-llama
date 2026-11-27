@@ -18,6 +18,8 @@ const STDERR_TAIL_CHARS: usize = 2000;
 const XATTR: &str = "/usr/bin/xattr";
 
 const VERSION_PREFIX: &str = "version: ";
+const BUILD_PREFIX: &str = "build ";
+const COMMIT_SEPARATOR: &str = ", commit ";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeVersion {
@@ -78,8 +80,9 @@ impl CommandRunner for TokioCommandRunner {
     }
 }
 
-/// Busca la línea `version: <build> (<commit>)` en `stdout` y, si no, en `stderr`.
-/// llama.cpp la imprime por `stderr`, detrás de las líneas de inicio de CUDA.
+/// Busca la línea de versión en `stdout` y, si no, en `stderr`. llama.cpp la imprime
+/// por `stderr`, detrás de las líneas de inicio de CUDA. Dos formatos:
+/// `version: <build> (<commit>)` y `version: <semver> (build <build>, commit <commit>)`.
 pub fn parse_version(stdout: &str, stderr: &str) -> Option<RuntimeVersion> {
     stdout
         .lines()
@@ -88,15 +91,23 @@ pub fn parse_version(stdout: &str, stderr: &str) -> Option<RuntimeVersion> {
 }
 
 fn parse_version_line(line: &str) -> Option<RuntimeVersion> {
-    let (build, rest) = line.strip_prefix(VERSION_PREFIX)?.split_once(" (")?;
-    let commit = rest.strip_suffix(')')?;
-    if commit.is_empty() {
+    let (head, rest) = line.strip_prefix(VERSION_PREFIX)?.split_once(" (")?;
+    let details = rest.strip_suffix(')')?;
+    let (build, commit) = match details.strip_prefix(BUILD_PREFIX) {
+        Some(labeled) => labeled.split_once(COMMIT_SEPARATOR)?,
+        None => (head, details),
+    };
+    if head.contains(' ') || !is_lower_hex(commit) {
         return None;
     }
     Some(RuntimeVersion {
         build: build.parse().ok()?,
         commit: commit.to_string(),
     })
+}
+
+fn is_lower_hex(text: &str) -> bool {
+    !text.is_empty() && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// Ejecuta `server --version` desde su propio directorio, donde se resuelven los DLL.
@@ -174,6 +185,11 @@ mod tests {
         "/tests/fixtures/runtime/version_cuda_stderr.txt"
     ));
 
+    const VERSION_SEMVER: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/runtime/version_semver.txt"
+    ));
+
     fn version(build: u32, commit: &str) -> RuntimeVersion {
         RuntimeVersion {
             build,
@@ -214,12 +230,39 @@ mod tests {
     }
 
     #[test]
+    fn version_formato_semver() {
+        assert_eq!(
+            parse_version("", VERSION_SEMVER),
+            Some(version(12816, "7b74cb92d"))
+        );
+    }
+
+    #[test]
+    fn version_formato_semver_tras_lineas_cuda() {
+        let stderr = format!(
+            "ggml_cuda_init: found 1 CUDA devices:
+  Device 0: RTX 4070
+{VERSION_SEMVER}"
+        );
+        assert_eq!(
+            parse_version("", &stderr),
+            Some(version(12816, "7b74cb92d"))
+        );
+    }
+
+    #[test]
     fn version_no_parseable() {
         for text in [
             "",
             "version: x (abc)",
             "version 12 (abc)",
             "version: 12 abc",
+            "version: 1.1.0-dev",
+            "version: 1.1.0-dev (build x, commit abc)",
+            "version: 1.1.0-dev (build 12816)",
+            "version: 1.1.0-dev (commit 7b74cb92d)",
+            "version: 1.1.0-dev (build 12816, commit XYZ)",
+            "version: (build 12816, commit abc)",
         ] {
             assert_eq!(parse_version(text, ""), None, "{text:?}");
             assert_eq!(parse_version("", text), None, "{text:?}");

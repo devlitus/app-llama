@@ -81,14 +81,28 @@ En `.github/workflows/release.yml` de llama.cpp, el job `macos-cpu` compila `arm
 
 ### `llama-server --version`
 
-Escribe en stderr (a veces en stdout), detrás de posibles líneas de inicialización de backends (`ggml_cuda_init: …`), algo como:
+Escribe en stderr (a veces en stdout), detrás de posibles líneas de inicialización de backends (`ggml_cuda_init: …`). Hay **dos formatos**, y el parser acepta ambos:
 
-```
-version: 12780 (a1b2c3d)
-built with MSVC 19.44.35211.0 for Windows AMD64
-```
+- **Antiguo** (builds anteriores):
 
-Se busca la primera línea que cumpla `^version: (\d+) \(([0-9a-f]+)\)` en stdout y stderr. El número coincide con el del tag (`b12780` → `12780`), y así se comparan versiones.
+  ```
+  version: 12780 (a1b2c3d)
+  built with MSVC 19.44.35211.0 for Windows AMD64
+  ```
+
+- **Nuevo** (semver + build y commit; visto en `b12816` durante T14.1, 2026-11-27):
+
+  ```
+  version: 1.1.0-dev (build 12816, commit 7b74cb92d)
+  built with Clang 22.1.8 for Windows x86_64
+  ```
+
+Se busca, en stdout y después en stderr, la primera línea (sin `\r` final) que cumpla una de estas dos expresiones:
+
+- antiguo: `^version: (\d+) \(([0-9a-f]+)\)`
+- nuevo: `^version: \S+ \(build (\d+), commit ([0-9a-f]+)\)`
+
+En ambos casos el grupo 1 es el número de build y el grupo 2 el commit. La parte semver (`1.1.0-dev`) se ignora: no se usa para comparar. El número de build sigue coincidiendo con el del tag (`b12780` → `12780`, `b12816` → `12816`), y así se comparan versiones.
 
 ### Diseño
 
@@ -167,7 +181,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **CA4** — Dada una lista de releases con `v1.1.0` primero, después un `draft` y después `b12780`, cuando se llama a `latest_build_release`, entonces devuelve `b12780`. Si ninguna release tiene un asset compatible, el error es `NoCompatibleRelease`.
 - **CA5** — Dado un servidor HTTP local (`wiremock`) que sirve un artefacto, cuando el `digest` o el tamaño no coinciden, entonces `fetch` devuelve `IntegrityMismatch` o `SizeMismatch`, no queda ningún fichero en el destino y el estado del runtime no cambia.
 - **CA6** — Dado un zip o tar.gz con una entrada `../evil` o una ruta absoluta, cuando se extrae, entonces se devuelve `UnsafeArchivePath` y no se escribe nada fuera del directorio de destino. En Unix (CI macOS), un tar.gz con `llama-server` en modo `0755` conserva el bit de ejecución.
-- **CA7** — Dado un `llama-server` cuyo `--version` falla o no muestra `version: N (hash)`, cuando se instala, entonces `install` devuelve `VerificationFailed`, `.staging-<tag>` se borra y el runtime activo anterior sigue intacto (mismo `runtime.json`).
+- **CA7** — Dado un `llama-server` cuyo `--version` falla o no muestra una línea de versión reconocible (`version: N (hash)` o `version: <semver> (build N, commit hash)`, ver Contexto), cuando se instala, entonces `install` devuelve `VerificationFailed`, `.staging-<tag>` se borra y el runtime activo anterior sigue intacto (mismo `runtime.json`).
 - **CA8** — Dada una instalación gestionada en macOS, cuando se instala, entonces se ejecuta `/usr/bin/xattr -cr <directorio de instalación>` antes de `--version`. En Windows no se ejecuta. Para un binario externo no se ejecuta nunca. Además, en la CI de macOS, `remove_quarantine` con el runner real elimina un atributo `com.apple.quarantine` puesto en un fichero de un `tempdir`.
 - **CA9** — Dada la ruta de un `llama-server[.exe]` válido, cuando se llama a `use_external`, entonces queda activo con `source: external`, su versión y `backend: None`. Si hay una instalación en curso, el error es `AlreadyInstalling`. Si el nombre no es `llama-server[.exe]` o la verificación falla, el error es `InvalidExternalBinary` o `VerificationFailed` y el estado no cambia.
 - **CA10** — Dado `b12779` gestionado y activo con `b12780` publicada, cuando se llama a `check_update`, entonces `{ installed: 12779, latest: 12780, update_available: true }`. Tras `install` con el mismo backend (p. ej. `Cpu{Generic}`), queda activo `b12780` en `runtime/b12780-cpu/` y el directorio `runtime/b12779-cpu/` ya no existe. Con `b12780` instalado, `update_available: false`.
@@ -343,11 +357,12 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `busca_server_ignora_nombre_parecido` | `llama-server-old`, `llama-server.exe.bak` | `Err(ServerBinaryNotFound)` |
 
 ### T7 — Verificación con `--version` y cuarentena de macOS
-- **Ficheros/módulos:** `crates/core/src/runtime/verify.rs`, `crates/core/src/runtime/test_support.rs` (`FakeRunner`), fixtures `version_cpu.txt`, `version_cuda_stderr.txt`
+- **Ficheros/módulos:** `crates/core/src/runtime/verify.rs`, `crates/core/src/runtime/test_support.rs` (`FakeRunner`), fixtures `version_cpu.txt`, `version_cuda_stderr.txt`, `version_semver.txt`
 - **Depende de:** T2, T5 (`tokio`, `async-trait`)
 - **Cubre:** CA7, CA8
 - **Subtareas:**
   - [x] T7.1 `RuntimeVersion { build: u32, commit: String }` y `parse_version(stdout, stderr) -> Option<RuntimeVersion>`.
+    - **Ampliación (hallazgo de T14.1, 2026-11-27):** `parse_version` acepta los **dos formatos** del Contexto (antiguo `version: N (hash)` y nuevo `version: <semver> (build N, commit hash)`), con la primera línea que cumpla cualquiera de ellos. La parte semver se ignora. Nuevo fixture `version_semver.txt` con la salida real de `b12816` (las dos líneas del Contexto, formato nuevo). Los tests existentes del formato antiguo no cambian.
   - [x] T7.2 `#[async_trait] trait CommandRunner { async fn run(&self, program: &Path, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput, RuntimeError>; }` y `TokioCommandRunner` (`tokio::process`, `kill_on_drop`, timeout de 15 s y, en Windows, `CREATE_NO_WINDOW`).
   - [x] T7.3 `verify_server(runner, server: &Path) -> Result<RuntimeVersion, RuntimeError>`: ejecuta `--version` con `cwd` = el directorio del binario (los DLL se resuelven allí). Si el código de salida es distinto de 0, no se puede lanzar o no se puede parsear, `VerificationFailed { stderr_tail }` (últimos 2000 caracteres).
   - [x] T7.4 `remove_quarantine(runner, os, dir)`: en macOS ejecuta `/usr/bin/xattr -cr <dir>`; en Windows no hace nada. Si `xattr` falla, `QuarantineFailed`.
@@ -358,7 +373,9 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `version_tras_lineas_cuda` | `version_cuda_stderr.txt` (líneas `ggml_cuda_init: …` antes) | `12780` |
   | `version_en_stdout` | la línea en stdout y stderr vacío | `12780` |
   | `version_con_crlf` | `version: 5 (abc)\r\n` | `{ 5, "abc" }` |
-  | `version_no_parseable` | `""`, `version: x (abc)`, `version 12 (abc)`, `version: 12 abc` | `None` |
+  | `version_formato_semver` | `version_semver.txt` en stderr (`version: 1.1.0-dev (build 12816, commit 7b74cb92d)` + `built with Clang 22.1.8 for Windows x86_64`) | `{ build: 12816, commit: "7b74cb92d" }` |
+  | `version_formato_semver_tras_lineas_cuda` | stderr con líneas `ggml_cuda_init: …` y `Device 0: NVIDIA GeForce RTX 4070, …` antes de la línea de `version_semver.txt`, terminado en `\r\n` | `{ build: 12816, commit: "7b74cb92d" }` |
+  | `version_no_parseable` | Formato antiguo: `""`, `version: x (abc)`, `version 12 (abc)`, `version: 12 abc`. Formato nuevo: `version: 1.1.0-dev`, `version: 1.1.0-dev (build x, commit abc)`, `version: 1.1.0-dev (build 12816)`, `version: 1.1.0-dev (commit 7b74cb92d)`, `version: 1.1.0-dev (build 12816, commit XYZ)`, `version: (build 12816, commit abc)` | `None` |
   | `verify_ok_usa_cwd_del_binario` | fake con salida 0 + versión | `Ok`; la llamada es `[server, ["--version"], Some(dir)]` |
   | `verify_codigo_no_cero` | salida 1, stderr `"missing cudart64_12.dll"` | `Err(VerificationFailed)` con ese texto |
   | `verify_sin_version` | salida 0, sin línea de versión | `Err(VerificationFailed)` |
@@ -562,6 +579,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   - [ ] T14.3 "Usar binario existente…" con el binario instalado de T14.1 → `externo`.
   - [ ] T14.4 **Diferida (D6):** prueba manual en macOS Apple Silicon. No se ejecuta en este plan; queda para la checklist de Mac del plan 010 (`docs/checklist-prueba-mac.md`, paso "Fase 1"). En este plan macOS se valida solo por la CI (CA8, CA14).
   - [ ] T14.5 Anotar los resultados (tag, backend, tiempos aproximados) en este plan.
+- **Nota (primer intento de T14.1, 2026-11-27, Windows x64, RTX 4070):** la instalación de `b12816` falló con `VerificationFailed` porque `llama-server --version` ya usa el formato nuevo `version: 1.1.0-dev (build 12816, commit 7b74cb92d)`, que el parser no reconocía. El rollback fue correcto (CA7: sin `.staging-*`, runtime anterior intacto). Corrección: ampliación de T7.1 (parser tolerante a ambos formatos, fixture `version_semver.txt`). Hay que repetir T14.1 tras la corrección; T14.5 debe recoger este intento fallido junto con el resultado definitivo.
 - **Tests unitarios:** no aplica.
 
 ### T15 — Revisión final y cierre (O + reviewer)
@@ -595,6 +613,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 | Límite de 60 peticiones/hora sin token | Solo se consulta bajo demanda (1 petición por consulta). `RateLimited` con la hora de reinicio y un mensaje en español |
 | Compatibilidad de versión menor de CUDA (asset 13.5 con driver 13.0) falla en algún driver | Verificación con `--version` antes de activar. Si falla, se conserva la versión anterior y el usuario puede forzar `Vulkan` o `Cpu` |
 | Descargas grandes (CUDA + cudart ≈ 600 MB, D4) sin reanudación | Progreso y cancelación. La reanudación llega con el plan 006 por `ArtifactFetcher` |
+| El formato de `llama-server --version` cambia entre versiones (ya pasó: `b12816` pasó de `version: N (hash)` a `version: 1.1.0-dev (build N, commit hash)` y la instalación falló en T14.1) | Parser tolerante a ambos formatos, cubierto con fixtures de cada uno (`version_cpu.txt`, `version_semver.txt`). Si aparece un tercero, la verificación falla de forma segura: `VerificationFailed` con el stderr visible, rollback (sin `.staging-*`) y runtime anterior intacto (CA7); queda "Usar binario existente…" |
 | `--version` de un build CUDA tarda o se cuelga al inicializar la GPU | Timeout de 15 s en `TokioCommandRunner` y `kill_on_drop` |
 | Los binarios de llama.cpp exigen macOS 13.3 y la app declara 11.0 (D8) | En macOS < 13.3 la instalación termina en `VerificationFailed` con el error de `dyld` visible y el runtime anterior intacto; queda "Usar binario existente…". La decisión de fondo está en Preguntas abiertas |
 | Gatekeeper bloquea `llama-server` en Apple Silicon aunque se quite la cuarentena, y no hay Mac para probarlo (D6) ni firma (D7) | `xattr -cr` cubierto por tests con `FakeRunner` y por un test real en la CI de macOS (CA8). Si en la práctica falla, `VerificationFailed` muestra el stderr y no se activa nada. La primera prueba real va en la checklist de Mac del plan 010; si falla, la firma ad hoc se plantea en un plan aparte |

@@ -333,3 +333,26 @@ estado: abierto
 - **acoplamiento-por-etiqueta** — El componente comparaba action.label con una constante; corregido con kind. (C1, C2)
 - **aserto-debil** — minor: el aserto del 77 % tras terminar no prueba el unlisten, porque el bloque de progreso ya se oculta con installing=false (C2)
 - **reserva-sin-test** — CA12 Cancelar y reseteo de installing/unlisten sin test de componente; se dio por difícil pero mockIPC(..., { shouldMockEvents: true }) de @tauri-apps/api 2.12.5 lo permite (C1)
+
+## T14
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a7d69c8e7e19f946f | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · parse_version acepta también el formato `version: <semver> (build N, commit hex)` de b12816; fixture y tests nuevos.
+- C1 · reviewer · parser de --version acepta formato antiguo y semver de b12816; coincide con el plan; gate verde; solo minors
+
+### Decisiones
+
+- **formato-version-dual** — Ambos formatos validan commit hex en minúsculas y semver sin espacios; sin dependencia regex. (C1)
+- **limitacion-documentada** — commit hex minusculas segun regex del plan; builds sin git ("unknown") quedan fuera, aceptado como minor (C1)
+
+### Errores
+
+- **aserto-debil** — version_formato_semver_tras_lineas_cuda no fuerza \r\n como pide el plan; depende de autocrlf al hacer checkout del fixture (C1)
+- **dato-inventado** — El parser solo conocía el formato antiguo; la salida real de la build actual no se había contrastado. (C1)
