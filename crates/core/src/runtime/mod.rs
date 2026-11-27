@@ -8,6 +8,7 @@ mod release;
 mod select;
 #[cfg(test)]
 mod test_support;
+mod verify;
 
 pub use asset::{
     Arch, ArchiveFormat, AssetDescriptor, AssetKind, Backend, CpuIsa, Os, classify_asset,
@@ -18,6 +19,10 @@ pub use hardware::{CudaVersion, GpuInfo, HardwareInfo, NativeProbe, SystemProbe,
 pub use release::{Asset, Release, build_number, latest_build_release, parse_releases};
 pub use select::{
     BackendPreference, InstallPlan, available_backends, is_compatible, select_install,
+};
+pub use verify::{
+    CommandOutput, CommandRunner, RuntimeVersion, TokioCommandRunner, parse_version,
+    remove_quarantine, verify_server,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -49,4 +54,8 @@ pub enum RuntimeError {
     Extract(String),
     #[error("no se encontró llama-server en el archivo extraído")]
     ServerBinaryNotFound,
+    #[error("llama-server no se pudo verificar: {stderr_tail}")]
+    VerificationFailed { stderr_tail: String },
+    #[error("no se pudo quitar la cuarentena de macOS: {0}")]
+    QuarantineFailed(String),
 }

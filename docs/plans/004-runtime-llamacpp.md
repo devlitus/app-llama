@@ -342,10 +342,10 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T2, T5 (`tokio`, `async-trait`)
 - **Cubre:** CA7, CA8
 - **Subtareas:**
-  - [ ] T7.1 `RuntimeVersion { build: u32, commit: String }` y `parse_version(stdout, stderr) -> Option<RuntimeVersion>`.
-  - [ ] T7.2 `#[async_trait] trait CommandRunner { async fn run(&self, program: &Path, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput, RuntimeError>; }` y `TokioCommandRunner` (`tokio::process`, `kill_on_drop`, timeout de 15 s y, en Windows, `CREATE_NO_WINDOW`).
-  - [ ] T7.3 `verify_server(runner, server: &Path) -> Result<RuntimeVersion, RuntimeError>`: ejecuta `--version` con `cwd` = el directorio del binario (los DLL se resuelven allí). Si el código de salida es distinto de 0, no se puede lanzar o no se puede parsear, `VerificationFailed { stderr_tail }` (últimos 2000 caracteres).
-  - [ ] T7.4 `remove_quarantine(runner, os, dir)`: en macOS ejecuta `/usr/bin/xattr -cr <dir>`; en Windows no hace nada. Si `xattr` falla, `QuarantineFailed`.
+  - [x] T7.1 `RuntimeVersion { build: u32, commit: String }` y `parse_version(stdout, stderr) -> Option<RuntimeVersion>`.
+  - [x] T7.2 `#[async_trait] trait CommandRunner { async fn run(&self, program: &Path, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput, RuntimeError>; }` y `TokioCommandRunner` (`tokio::process`, `kill_on_drop`, timeout de 15 s y, en Windows, `CREATE_NO_WINDOW`).
+  - [x] T7.3 `verify_server(runner, server: &Path) -> Result<RuntimeVersion, RuntimeError>`: ejecuta `--version` con `cwd` = el directorio del binario (los DLL se resuelven allí). Si el código de salida es distinto de 0, no se puede lanzar o no se puede parsear, `VerificationFailed { stderr_tail }` (últimos 2000 caracteres).
+  - [x] T7.4 `remove_quarantine(runner, os, dir)`: en macOS ejecuta `/usr/bin/xattr -cr <dir>`; en Windows no hace nada. Si `xattr` falla, `QuarantineFailed`.
 - **Tests unitarios** (con `FakeRunner`, que registra las llamadas):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

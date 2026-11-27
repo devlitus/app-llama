@@ -3,7 +3,79 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
-use crate::runtime::{Arch, Os, SystemProbe};
+use crate::runtime::{Arch, CommandOutput, CommandRunner, Os, RuntimeError, SystemProbe};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedCall {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+}
+
+enum Reply {
+    Output(CommandOutput),
+    LaunchError,
+}
+
+/// `CommandRunner` que no lanza procesos: registra las llamadas y responde siempre igual.
+pub struct FakeRunner {
+    reply: Reply,
+    calls: Mutex<Vec<RecordedCall>>,
+}
+
+impl FakeRunner {
+    fn with_reply(reply: Reply) -> Self {
+        Self {
+            reply,
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn exits(code: i32, stdout: &str, stderr: &str) -> Self {
+        Self::with_reply(Reply::Output(CommandOutput {
+            exit_code: Some(code),
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+        }))
+    }
+
+    pub fn fails_to_launch() -> Self {
+        Self::with_reply(Reply::LaunchError)
+    }
+
+    pub fn calls(&self) -> Vec<RecordedCall> {
+        self.calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl CommandRunner for FakeRunner {
+    async fn run(
+        &self,
+        program: &Path,
+        args: &[&str],
+        cwd: Option<&Path>,
+    ) -> Result<CommandOutput, RuntimeError> {
+        self.calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(RecordedCall {
+                program: program.to_path_buf(),
+                args: args.iter().map(ToString::to_string).collect(),
+                cwd: cwd.map(Path::to_path_buf),
+            });
+        match &self.reply {
+            Reply::Output(output) => Ok(output.clone()),
+            Reply::LaunchError => Err(RuntimeError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no se pudo lanzar",
+            ))),
+        }
+    }
+}
 
 pub struct FakeProbe {
     os: Os,

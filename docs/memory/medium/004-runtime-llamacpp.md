@@ -148,3 +148,26 @@ estado: abierto
 
 - **reserva-sin-test** — los tests de ./l y encadenado fallan por el destino '..' y no ejercitan has_symlink_ancestor ni normal_components (extract.rs:109-111, 137-148) (C2)
 - **symlink-forma-eludible** — validar symlinks por la forma de la ruta se eludía con ./ y encadenado; ahora se rechaza el destino con .. y se rastrean symlinks (#29). (C1, C2 · #29)
+
+## T7
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a514f403df71c417f | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T7 verify.rs (parse_version, CommandRunner, TokioCommandRunner, verify_server, remove_quarantine), FakeRunner y tests de extract del hallazgo de T6
+- C1 · reviewer · T7 C1 aprobada; verify_server, remove_quarantine, TokioCommandRunner y FakeRunner cubren los 14 tests del plan, gate verde
+
+### Decisiones
+
+- **consola-oculta-compartida** — hide_console_async en process.rs reutiliza CREATE_NO_WINDOW; CommandOutput lleva exit_code Option<i32> (C1)
+- **limitacion-documentada** — remove_quarantine rechaza rutas no UTF-8 con QuarantineFailed; aceptable porque APFS exige nombres UTF-8 (C1)
+- **refactor-equivalente** — CommandRunner Send+Sync y &dyn CommandRunner aceptados: necesarios para Arc<dyn> en T10 (C1)
+
+### Errores
+
+- **ruta-relativa-con-cwd** — verify_server usa cwd=parent del binario; con ruta relativa en Unix el programa se resuelve tras chdir y falla (minor, produccion usa rutas absolutas) (C1)

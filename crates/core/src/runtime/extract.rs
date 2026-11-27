@@ -446,6 +446,44 @@ mod tests {
         assert_eq!(fs::read(dest.join("libllama.dylib")).unwrap(), b"lib");
     }
 
+    // Un enlace válido (`a/l -> sub`) seguido de una entrada que cuelga de él: solo
+    // `has_symlink_ancestor` puede rechazarla, porque el destino del enlace no tiene `..`.
+    #[cfg(unix)]
+    #[test]
+    fn targz_entrada_bajo_symlink_valido_rechazada() {
+        for colgada in ["a/l/x", "./a/l/x"] {
+            let dir = tempfile::tempdir().unwrap();
+            let archive = dir.path().join("a.tar.gz");
+            let dest = dir.path().join("out");
+            let mut builder = targz_builder(&archive);
+            let mut link = tar::Header::new_gnu();
+            link.set_entry_type(tar::EntryType::Symlink);
+            link.set_size(0);
+            link.set_mode(0o777);
+            builder.append_link(&mut link, "a/l", "sub").unwrap();
+            let mut header = tar::Header::new_gnu();
+            header.as_old_mut().name[..colgada.len()].copy_from_slice(colgada.as_bytes());
+            header.set_size(1);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append(&header, &b"x"[..]).unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+
+            let result = extract(&archive, ArchiveFormat::TarGz, &dest);
+
+            assert!(matches!(result, Err(RuntimeError::UnsafeArchivePath(_))));
+        }
+    }
+
+    #[test]
+    fn normal_components_ignora_punto_inicial() {
+        assert_eq!(
+            normal_components(Path::new("./a/./x")),
+            normal_components(Path::new("a/x"))
+        );
+        assert_eq!(normal_components(Path::new("./x")), PathBuf::from("x"));
+    }
+
     #[test]
     fn archivo_corrupto() {
         let dir = tempfile::tempdir().unwrap();
