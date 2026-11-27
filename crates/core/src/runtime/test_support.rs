@@ -105,6 +105,7 @@ pub struct FakeProbe {
     outputs: HashMap<String, String>,
     existing_files: HashSet<PathBuf>,
     system_root: Option<PathBuf>,
+    ram_bytes: Option<u64>,
     runs: Mutex<Vec<String>>,
 }
 
@@ -117,6 +118,7 @@ impl FakeProbe {
             outputs: HashMap::new(),
             existing_files: HashSet::new(),
             system_root: None,
+            ram_bytes: None,
             runs: Mutex::new(Vec::new()),
         }
     }
@@ -139,6 +141,11 @@ impl FakeProbe {
 
     pub fn with_system_root(mut self, root: PathBuf) -> Self {
         self.system_root = Some(root);
+        self
+    }
+
+    pub fn with_ram(mut self, bytes: u64) -> Self {
+        self.ram_bytes = Some(bytes);
         self
     }
 
@@ -185,6 +192,10 @@ impl SystemProbe for FakeProbe {
 
     fn system_root(&self) -> Option<PathBuf> {
         self.system_root.clone()
+    }
+
+    fn total_memory_bytes(&self) -> Option<u64> {
+        self.ram_bytes
     }
 }
 

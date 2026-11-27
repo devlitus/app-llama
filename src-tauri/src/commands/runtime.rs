@@ -368,13 +368,15 @@ mod tests {
             }),
             vulkan_available: true,
             metal: false,
+            ram_bytes: Some(34_359_738_368),
         };
         assert_eq!(
             serde_json::to_string(&hardware).expect("serializa"),
             concat!(
                 r#"{"os":"MacOs","arch":"Aarch64","avx2":true,"avx512":false,"#,
                 r#""gpus":[{"name":"RTX","vram_mib":12282}],"#,
-                r#""driver_cuda":{"major":13,"minor":5},"vulkan_available":true,"metal":false}"#
+                r#""driver_cuda":{"major":13,"minor":5},"vulkan_available":true,"metal":false,"#,
+                r#""ram_bytes":34359738368}"#
             )
         );
 

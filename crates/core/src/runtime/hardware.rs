@@ -6,6 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use sysinfo::System;
 
 use crate::runtime::process::hide_console;
 use crate::runtime::{Arch, Os};
@@ -41,6 +42,8 @@ pub struct HardwareInfo {
     pub driver_cuda: Option<CudaVersion>,
     pub vulkan_available: bool,
     pub metal: bool,
+    /// RAM física total en bytes; `None` si el sistema no la informa.
+    pub ram_bytes: Option<u64>,
 }
 
 /// Acceso al sistema detrás de un trait para poder simularlo en los tests.
@@ -52,6 +55,7 @@ pub trait SystemProbe: Send + Sync {
     fn run(&self, program: &str, args: &[&str]) -> Option<String>;
     fn file_exists(&self, path: &Path) -> bool;
     fn system_root(&self) -> Option<PathBuf>;
+    fn total_memory_bytes(&self) -> Option<u64>;
 }
 
 /// Salida de `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`.
@@ -109,6 +113,7 @@ pub fn detect(probe: &dyn SystemProbe) -> HardwareInfo {
         driver_cuda,
         vulkan_available: os == Os::Windows && has_windows_vulkan(probe),
         metal: os == Os::MacOs && arch == Arch::Aarch64,
+        ram_bytes: probe.total_memory_bytes(),
     }
 }
 
@@ -173,6 +178,12 @@ impl SystemProbe for NativeProbe {
     fn system_root(&self) -> Option<PathBuf> {
         std::env::var_os("SystemRoot").map(PathBuf::from)
     }
+
+    fn total_memory_bytes(&self) -> Option<u64> {
+        let mut system = System::new().ok()?;
+        system.refresh_memory();
+        Some(system.total_memory()).filter(|&bytes| bytes > 0)
+    }
 }
 
 /// Ejecuta el programa y devuelve su salida si termina con código 0 antes del límite;
@@ -233,6 +244,9 @@ mod tests {
         "--query-gpu=name,memory.total",
         "--format=csv,noheader,nounits",
     ];
+
+    const WINDOWS_RAM: u64 = 34_359_738_368;
+    const MACOS_RAM: u64 = 17_179_869_184;
 
     fn gpu(name: &str, vram_mib: Option<u64>) -> GpuInfo {
         GpuInfo {
@@ -345,7 +359,7 @@ mod tests {
 
     #[test]
     fn detect_windows_nvidia_vulkan() {
-        let probe = nvidia_probe().with_file(vulkan_dll());
+        let probe = nvidia_probe().with_file(vulkan_dll()).with_ram(WINDOWS_RAM);
         assert_eq!(
             detect(&probe),
             HardwareInfo {
@@ -360,6 +374,7 @@ mod tests {
                 }),
                 vulkan_available: true,
                 metal: false,
+                ram_bytes: Some(WINDOWS_RAM),
             }
         );
     }
@@ -387,12 +402,25 @@ mod tests {
         let probe = FakeProbe::new(Os::MacOs, Arch::Aarch64)
             .with_cpu(&["avx2"])
             .with_system_root(system_root())
-            .with_file(vulkan_dll());
+            .with_file(vulkan_dll())
+            .with_ram(MACOS_RAM);
         let hw = detect(&probe);
         assert!(hw.metal);
+        assert_eq!(hw.ram_bytes, Some(MACOS_RAM));
         assert!(!hw.avx2);
         assert!(!hw.vulkan_available);
         assert_eq!(probe.run_count(), 0);
+    }
+
+    #[test]
+    fn detect_reports_ram_from_probe() {
+        let hw = detect(&windows_probe().with_ram(WINDOWS_RAM));
+        assert_eq!(hw.ram_bytes, Some(WINDOWS_RAM));
+    }
+
+    #[test]
+    fn detect_ram_unknown() {
+        assert_eq!(detect(&windows_probe()).ram_bytes, None);
     }
 
     #[test]

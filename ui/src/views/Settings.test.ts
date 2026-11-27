@@ -20,6 +20,7 @@ function mockCommands(appInfo: () => unknown): void {
           driver_cuda: null,
           vulkan_available: false,
           metal: false,
+          ram_bytes: null,
         };
       default:
         return "NotInstalled";

@@ -278,10 +278,10 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** — (plan 004 hecho)
 - **Cubre:** CA14, CA13
 - **Subtareas:**
-  - [ ] T15.1 `SystemProbe::total_memory_bytes(&self) -> Option<u64>` (RAM física total en bytes). `detect` la copia en `HardwareInfo.ram_bytes: Option<u64>`, el último campo del struct (así el JSON solo crece por el final). No usa `run`: en `detect_macos_arm64` sigue habiendo 0 ejecuciones.
-  - [ ] T15.2 `NativeProbe` la lee con el crate `sysinfo` (solo memoria, sin refrescar procesos ni discos; en Windows equivale a `GlobalMemoryStatusEx`, en macOS a `hw.memsize`). Cualquier fallo da `None`, sin pánico. Se descarta lanzar un programa: en Windows no hay uno rápido y fiable (`wmic` ya no viene de serie y PowerShell tarda en arrancar). La dependencia `sysinfo` está **aprobada** por el usuario (2026-11-27), sin features por defecto y solo con la de memoria. El developer fija la versión tras consultar docs.rs (0.40.x el 2026-11-27) y no usa `unsafe`. **Sin test unitario propio** (toca el hardware real); `native_probe_no_falla` ya ejecuta `detect(&NativeProbe)` y sigue sin comprobar valores.
-  - [ ] T15.3 `FakeProbe::with_ram(bytes)`; por defecto `None`.
-  - [ ] T15.4 Espejo TS: `HardwareInfo.ram_bytes: number | null` en `ui/src/lib/runtime/types.ts`. `describeHardware` no cambia (mostrar la RAM en Ajustes queda fuera de alcance).
+  - [x] T15.1 `SystemProbe::total_memory_bytes(&self) -> Option<u64>` (RAM física total en bytes). `detect` la copia en `HardwareInfo.ram_bytes: Option<u64>`, el último campo del struct (así el JSON solo crece por el final). No usa `run`: en `detect_macos_arm64` sigue habiendo 0 ejecuciones.
+  - [x] T15.2 `NativeProbe` la lee con el crate `sysinfo` (solo memoria, sin refrescar procesos ni discos; en Windows equivale a `GlobalMemoryStatusEx`, en macOS a `hw.memsize`). Cualquier fallo da `None`, sin pánico. Se descarta lanzar un programa: en Windows no hay uno rápido y fiable (`wmic` ya no viene de serie y PowerShell tarda en arrancar). La dependencia `sysinfo` está **aprobada** por el usuario (2026-11-27), sin features por defecto y solo con la de memoria. El developer fija la versión tras consultar docs.rs (0.40.x el 2026-11-27) y no usa `unsafe`. **Sin test unitario propio** (toca el hardware real); `native_probe_no_falla` ya ejecuta `detect(&NativeProbe)` y sigue sin comprobar valores.
+  - [x] T15.3 `FakeProbe::with_ram(bytes)`; por defecto `None`.
+  - [x] T15.4 Espejo TS: `HardwareInfo.ram_bytes: number | null` en `ui/src/lib/runtime/types.ts`. `describeHardware` no cambia (mostrar la RAM en Ajustes queda fuera de alcance).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

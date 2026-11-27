@@ -97,3 +97,24 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T15
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a3ff501bb439ff293 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T15 RAM total en runtime con sysinfo 0.40 (feature system), ram_bytes al final del JSON y espejo TS.
+- C1 · reviewer · RAM total vía sysinfo 0.40.4 (feature system) verificada contra el fuente del crate; cambio aditivo, tests del 004 en verde, gate verde
+
+### Decisiones
+
+- **limitacion-documentada** — refresh_memory refresca también swap; se acepta como minor (podría usarse MemoryRefreshKind::nothing().with_ram()) (C1)
+
+### Errores
+
+- (ninguno)

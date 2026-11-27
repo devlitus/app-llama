@@ -32,6 +32,7 @@ const NVIDIA: HardwareInfo = {
   driver_cuda: { major: 13, minor: 5 },
   vulkan_available: true,
   metal: false,
+  ram_bytes: 34359738368,
 };
 
 const MAC: HardwareInfo = {
@@ -43,6 +44,7 @@ const MAC: HardwareInfo = {
   driver_cuda: null,
   vulkan_available: false,
   metal: true,
+  ram_bytes: 17179869184,
 };
 
 function managed(build: number, backend: Backend): RuntimeStatus {

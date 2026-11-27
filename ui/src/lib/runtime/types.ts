@@ -27,6 +27,7 @@ export interface HardwareInfo {
   driver_cuda: { major: number; minor: number } | null;
   vulkan_available: boolean;
   metal: boolean;
+  ram_bytes: number | null;
 }
 
 export type RuntimeSource = { Managed: { tag: string } } | "External";

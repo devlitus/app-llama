@@ -17,6 +17,7 @@ hex.workspace = true
 zip.workspace = true
 flate2.workspace = true
 tar.workspace = true
+sysinfo.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
