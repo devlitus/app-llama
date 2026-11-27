@@ -43,7 +43,8 @@ pub struct UpdateInfo {
 }
 
 pub struct RuntimeManager {
-    deps: RuntimeDeps,
+    pub(super) deps: RuntimeDeps,
+    pub(super) runtime_dir: PathBuf,
     /// Serializa todo ciclo leer-modificar-guardar del estado: `StateStore` no es seguro
     /// para escrituras concurrentes.
     state: Mutex<StateStore>,
@@ -53,9 +54,11 @@ pub struct RuntimeManager {
 
 impl RuntimeManager {
     pub fn new(runtime_dir: impl Into<PathBuf>, deps: RuntimeDeps) -> Self {
+        let runtime_dir = runtime_dir.into();
         Self {
             deps,
-            state: Mutex::new(StateStore::new(runtime_dir.into())),
+            state: Mutex::new(StateStore::new(&runtime_dir)),
+            runtime_dir,
             installing: Mutex::new(()),
         }
     }
@@ -71,7 +74,7 @@ impl RuntimeManager {
         let probe = Arc::clone(&self.deps.probe);
         tokio::task::spawn_blocking(move || detect(probe.as_ref()))
             .await
-            .map_err(|error| RuntimeError::Io(io::Error::other(error)))
+            .map_err(join_failure)
     }
 
     /// Punto de integración con el plan 008: solo hay ruta si el runtime está `Ready`.
@@ -122,7 +125,7 @@ impl RuntimeManager {
 
     /// Reserva la instalación; mientras se conserve la guarda, otra llamada falla con
     /// `AlreadyInstalling`.
-    pub fn begin_install(&self) -> Result<MutexGuard<'_, ()>, RuntimeError> {
+    pub(super) fn begin_install(&self) -> Result<MutexGuard<'_, ()>, RuntimeError> {
         self.installing
             .try_lock()
             .map_err(|_| RuntimeError::AlreadyInstalling)
@@ -179,7 +182,12 @@ pub(super) async fn remove_dirs(
             .collect()
     })
     .await
-    .map_err(|error| RuntimeError::Io(io::Error::other(error)))
+    .map_err(join_failure)
+}
+
+/// Una tarea bloqueante que paniquea o se aborta.
+pub(super) fn join_failure(error: tokio::task::JoinError) -> RuntimeError {
+    RuntimeError::Io(io::Error::other(error))
 }
 
 fn ensure_server_name(os: Os, path: &Path) -> Result<(), RuntimeError> {
@@ -209,120 +217,17 @@ mod tests {
 
     use super::*;
     use crate::runtime::test_support::{
-        FakeFetcher, FakeProbe, FakeRemover, FakeRunner, FakeSource,
+        FakeRemover, FakeRunner, FakeSource, Fixture, RELEASES, cuda_vulkan_probe, default_fixture,
+        fixture, managed, state_with, windows_probe,
     };
-    use crate::runtime::{Arch, CpuIsa, RuntimeVersion, parse_releases};
-
-    const RELEASES: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/runtime/releases_b12780.json"
-    ));
-    const SMI_HEADER: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/runtime/nvidia_smi_header.txt"
-    ));
-    const GPU_ARGS: [&str; 2] = [
-        "--query-gpu=name,memory.total",
-        "--format=csv,noheader,nounits",
-    ];
-
-    fn windows_probe() -> FakeProbe {
-        FakeProbe::new(Os::Windows, Arch::X86_64).with_cpu(&["avx2"])
-    }
-
-    fn cuda_vulkan_probe() -> FakeProbe {
-        let root = PathBuf::from("sysroot");
-        let vulkan_dll = root.join("System32").join("vulkan-1.dll");
-        windows_probe()
-            .with_output("nvidia-smi", &GPU_ARGS, "NVIDIA GeForce RTX 4070, 12282\n")
-            .with_output("nvidia-smi", &[], SMI_HEADER)
-            .with_system_root(root)
-            .with_file(vulkan_dll)
-    }
-
-    struct Fixture {
-        _temp: tempfile::TempDir,
-        runtime_dir: PathBuf,
-        runner: Arc<FakeRunner>,
-        manager: RuntimeManager,
-    }
-
-    fn fixture(
-        source: FakeSource,
-        probe: FakeProbe,
-        runner: FakeRunner,
-        remover: FakeRemover,
-    ) -> Fixture {
-        let temp = tempfile::tempdir().unwrap();
-        let runtime_dir = temp.path().join("runtime");
-        let runner = Arc::new(runner);
-        let manager = RuntimeManager::new(
-            &runtime_dir,
-            RuntimeDeps {
-                source: Arc::new(source),
-                fetcher: Arc::new(FakeFetcher),
-                runner: runner.clone(),
-                probe: Arc::new(probe),
-                remover: Arc::new(remover),
-            },
-        );
-        Fixture {
-            _temp: temp,
-            runtime_dir,
-            runner,
-            manager,
-        }
-    }
-
-    fn default_fixture() -> Fixture {
-        fixture(
-            FakeSource::with_releases(parse_releases(RELEASES).unwrap()),
-            windows_probe(),
-            FakeRunner::exits(0, "", "version: 12000 (abc1234)"),
-            FakeRemover::deleting(),
-        )
-    }
+    use crate::runtime::{Arch, CpuIsa, parse_releases};
 
     impl Fixture {
-        fn store(&self) -> StateStore {
-            StateStore::new(&self.runtime_dir)
-        }
-
-        fn save(&self, state: &RuntimeState) {
-            self.store().save(state).unwrap();
-        }
-
-        fn saved(&self) -> RuntimeState {
-            self.store().load().unwrap()
-        }
-
         fn external_binary(&self, name: &str) -> PathBuf {
             let path = self.runtime_dir.join(name);
             std::fs::create_dir_all(&self.runtime_dir).unwrap();
             std::fs::write(&path, "").unwrap();
             path
-        }
-    }
-
-    fn managed(build: u32) -> ActiveRuntime {
-        let tag = format!("b{build}");
-        ActiveRuntime {
-            source: RuntimeSource::Managed { tag: tag.clone() },
-            backend: Some(Backend::Cpu {
-                isa: CpuIsa::Generic,
-            }),
-            server_path: PathBuf::from("runtime").join(tag).join("llama-server.exe"),
-            version: RuntimeVersion {
-                build,
-                commit: "abc1234".to_string(),
-            },
-        }
-    }
-
-    fn state_with(active: Option<ActiveRuntime>) -> RuntimeState {
-        RuntimeState {
-            active,
-            ..RuntimeState::default()
         }
     }
 
@@ -337,13 +242,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn status_error_de_lectura_se_propaga() {
+    async fn status_error_io_se_propaga() {
         let fx = default_fixture();
         std::fs::create_dir_all(fx.runtime_dir.join("runtime.json")).unwrap();
         assert!(matches!(
             fx.manager.status().await,
             Err(RuntimeError::Io(_))
         ));
+        assert!(matches!(
+            fx.manager.active_server_path().await,
+            Err(RuntimeError::Io(_))
+        ));
+        assert!(!fx.runtime_dir.join("runtime.json.bak").exists());
+    }
+
+    #[tokio::test]
+    async fn active_server_path_roto() {
+        let fx = default_fixture();
+        fx.save(&state_with(Some(managed(12779))));
+        assert_eq!(fx.manager.active_server_path().await.unwrap(), None);
     }
 
     #[tokio::test]
@@ -431,7 +348,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hardware_usa_la_sonda() {
+    async fn hardware_usa_probe() {
         let hw = default_fixture().manager.hardware().await.unwrap();
         assert_eq!((hw.os, hw.arch, hw.avx2), (Os::Windows, Arch::X86_64, true));
     }
@@ -599,7 +516,7 @@ mod tests {
             ..RuntimeState::default()
         });
         let runtime_dir = fx.runtime_dir.clone();
-        let manager = Arc::new(fx.manager);
+        let manager = Arc::clone(&fx.manager);
         let external = {
             let manager = Arc::clone(&manager);
             tokio::spawn(async move { manager.use_external(&binary).await.map(|_| ()) })

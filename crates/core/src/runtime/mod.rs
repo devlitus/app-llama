@@ -4,6 +4,7 @@ mod extract;
 mod fetch;
 mod github;
 mod hardware;
+mod install;
 mod manager;
 mod process;
 mod release;
@@ -20,6 +21,7 @@ pub use extract::{extract_archive, find_server_binary};
 pub use fetch::{ArtifactFetcher, CancelToken, FetchRequest, SimpleHttpFetcher};
 pub use github::{GitHubReleaseSource, ReleaseSource};
 pub use hardware::{CudaVersion, GpuInfo, HardwareInfo, NativeProbe, SystemProbe, detect};
+pub use install::{ProgressEvent, ProgressPhase};
 pub use manager::{DirRemover, RuntimeDeps, RuntimeManager, StdDirRemover, UpdateInfo};
 pub use release::{Asset, Release, build_number, latest_build_release, parse_releases};
 pub use select::{

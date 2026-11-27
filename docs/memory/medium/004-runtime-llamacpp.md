@@ -248,3 +248,35 @@ estado: abierto
 - **dato-inventado** — use_external persistia Cpu Generic para binarios externos; ahora None (#31) (C1, C2 · #31)
 - **notfound-no-es-exito** — retry_pending_cleanup dejaba rutas inexistentes pendientes para siempre; ahora NotFound cuenta como borrado (#32) (C1, C2 · #32)
 - **reserva-sin-test** — active_server_path sin test con Broken -> Ok(None) ni con error de E/S -> Err; nombres de test del plan distintos del código (minor) (C2)
+
+## T11
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a198b00b7220a89af | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-27 | 1 | a981f48ba5fe195a8 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T11 install (pasos 0-9) con emisor de progreso, FakeFetcher real y fixtures compartidos en test_support
+- C1 · reviewer · install con staging, verificación y limpieza correcto y con tests de todos los CA; reinstalar la misma build falla en el rename
+- C2 · developer · T11 ciclo 2: directorio gestionado <tag>-<backend>, reinstalar sin descargar, residuo y pending_cleanup, limpieza best-effort (#33)
+- C2 · reviewer · T11 C2 resuelve #33 (dir <tag>-<backend>, salida temprana, borrado de residuo); gate verde; quedan minors
+
+### Decisiones
+
+- **directorio-por-tag-y-backend** — managed_dir_name + clear_residual antes del rename cierran #33; activo roto = residuo (D15) (C1, C2)
+- **limitacion-documentada** — Reinstalar el mismo tag con el directorio ya existente no está cubierto (rename fallaría); no está en el plan (C1)
+- **limpieza-best-effort** — paso 9 ignora fallos de listar/guardar; se acepta sin test (C1, C2)
+- **refactor-equivalente** — Fixture/helpers de manager.rs movidos a test_support para reutilizarlos en install.rs (C1)
+
+### Errores
+
+- **aserto-debil** — 3 tests de T11 omiten asertos del plan (runner, staging, basura.txt); D15 no se detectaría en POSIX (C2)
+- **carrera-pending-cleanup** — status() concurrente entre rename y paso 8 puede borrar final_dir si estaba pendiente (C2)
+- **exito-reportado-como-error** — si falla el listado del paso 9, install devuelve Err con el runtime nuevo ya activo (C1)
+- **rename-sobre-existente** — rename de staging a runtime/<tag> falla con Io al reinstalar el mismo tag con otro backend #33 (C1 · #33)
+- **reserva-sin-test** — el best-effort del paso 9 sigue sin test; provocable con un DirRemover que rompa runtime.json (C2 · #33)
+- **staging-reutilizado** — si no se pudo borrar .staging-<tag> huérfano, la extracción mezcla contenido viejo y nuevo (C1)

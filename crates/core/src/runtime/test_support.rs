@@ -1,12 +1,29 @@
 //! Dobles de test compartidos por los módulos de `runtime`.
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
+
+use tokio::sync::Notify;
 
 use crate::runtime::{
-    Arch, ArtifactFetcher, CancelToken, CommandOutput, CommandRunner, DirRemover, FetchRequest, Os,
-    Release, ReleaseSource, RuntimeError, SystemProbe,
+    ActiveRuntime, Arch, ArtifactFetcher, Backend, CancelToken, CommandOutput, CommandRunner,
+    CpuIsa, DirRemover, FetchRequest, Os, Release, ReleaseSource, RuntimeDeps, RuntimeError,
+    RuntimeManager, RuntimeSource, RuntimeState, RuntimeVersion, StateStore, SystemProbe,
+    parse_releases,
 };
+
+pub const RELEASES: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/runtime/releases_b12780.json"
+));
+const SMI_HEADER: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/runtime/nvidia_smi_header.txt"
+));
+const GPU_ARGS: [&str; 2] = [
+    "--query-gpu=name,memory.total",
+    "--format=csv,noheader,nounits",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordedCall {
@@ -204,20 +221,144 @@ impl ReleaseSource for FakeSource {
     }
 }
 
-/// `ArtifactFetcher` que no descarga nada: falla si alguien lo usa.
-pub struct FakeFetcher;
+type ArchiveEntries = Vec<(String, Vec<u8>)>;
+
+enum FetchBehavior {
+    Serve,
+    FailIntegrity,
+    Cancel,
+    /// Avisa de que ha entrado y espera a que el test le deje continuar.
+    Gate {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+    },
+}
+
+/// `ArtifactFetcher` sin red: escribe en `dest` un zip o tar.gz generado con las entradas
+/// configuradas para el nombre del fichero (el formato lo decide la extensión).
+pub struct FakeFetcher {
+    archives: HashMap<String, ArchiveEntries>,
+    behavior: FetchBehavior,
+    fetched: Mutex<Vec<String>>,
+}
+
+impl FakeFetcher {
+    pub fn new() -> Self {
+        Self {
+            archives: HashMap::new(),
+            behavior: FetchBehavior::Serve,
+            fetched: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn with_archive(mut self, file_name: &str, entries: &[(&str, &[u8])]) -> Self {
+        let entries = entries
+            .iter()
+            .map(|(path, content)| (path.to_string(), content.to_vec()))
+            .collect();
+        self.archives.insert(file_name.to_string(), entries);
+        self
+    }
+
+    pub fn failing_integrity(mut self) -> Self {
+        self.behavior = FetchBehavior::FailIntegrity;
+        self
+    }
+
+    pub fn cancelling(mut self) -> Self {
+        self.behavior = FetchBehavior::Cancel;
+        self
+    }
+
+    pub fn gated(mut self, entered: Arc<Notify>, release: Arc<Notify>) -> Self {
+        self.behavior = FetchBehavior::Gate { entered, release };
+        self
+    }
+
+    /// Nombres de los ficheros pedidos, en orden.
+    pub fn fetched(&self) -> Vec<String> {
+        self.fetched
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
+fn write_archive(dest: &Path, entries: &ArchiveEntries) -> std::io::Result<()> {
+    let file = std::fs::File::create(dest)?;
+    if dest.extension().is_some_and(|ext| ext == "zip") {
+        write_zip(file, entries)
+    } else {
+        write_targz(file, entries)
+    }
+}
+
+fn write_zip(file: std::fs::File, entries: &ArchiveEntries) -> std::io::Result<()> {
+    let mut writer = zip::ZipWriter::new(file);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (path, content) in entries {
+        writer
+            .start_file(path, options)
+            .map_err(std::io::Error::other)?;
+        std::io::Write::write_all(&mut writer, content)?;
+    }
+    writer.finish().map_err(std::io::Error::other)?;
+    Ok(())
+}
+
+fn write_targz(file: std::fs::File, entries: &ArchiveEntries) -> std::io::Result<()> {
+    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::fast());
+    let mut builder = tar::Builder::new(encoder);
+    for (path, content) in entries {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder.append_data(&mut header, path, content.as_slice())?;
+    }
+    builder.into_inner()?.finish()?;
+    Ok(())
+}
 
 #[async_trait::async_trait]
 impl ArtifactFetcher for FakeFetcher {
     async fn fetch(
         &self,
-        _req: FetchRequest,
-        _progress: &(dyn Fn(u64, u64) + Send + Sync),
-        _cancel: &CancelToken,
+        req: FetchRequest,
+        progress: &(dyn Fn(u64, u64) + Send + Sync),
+        cancel: &CancelToken,
     ) -> Result<(), RuntimeError> {
-        Err(RuntimeError::Io(std::io::Error::other(
-            "no se esperaba ninguna descarga",
-        )))
+        let name = req
+            .dest
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.fetched
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(name.clone());
+        match &self.behavior {
+            FetchBehavior::Serve => {}
+            FetchBehavior::FailIntegrity => return Err(RuntimeError::IntegrityMismatch),
+            FetchBehavior::Cancel => {
+                cancel.cancel();
+                return Err(RuntimeError::Cancelled);
+            }
+            FetchBehavior::Gate { entered, release } => {
+                entered.notify_one();
+                release.notified().await;
+            }
+        }
+        let entries = self.archives.get(&name).ok_or_else(|| {
+            RuntimeError::Io(std::io::Error::other(format!("sin archivo para {name}")))
+        })?;
+        write_archive(&req.dest, entries)?;
+        // La repetición comprueba que el emisor de progreso descarta lo que no cambia.
+        for (done, total) in [(50, 100), (50, 100), (100, 100)] {
+            progress(done, total);
+        }
+        Ok(())
     }
 }
 
@@ -245,5 +386,128 @@ impl DirRemover for FakeRemover {
             ));
         }
         std::fs::remove_dir_all(path)
+    }
+}
+
+pub fn windows_probe() -> FakeProbe {
+    FakeProbe::new(Os::Windows, Arch::X86_64).with_cpu(&["avx2"])
+}
+
+/// Windows x64 con una RTX 4070 (CUDA 13.0) y Vulkan.
+pub fn cuda_vulkan_probe() -> FakeProbe {
+    let root = PathBuf::from("sysroot");
+    let vulkan_dll = root.join("System32").join("vulkan-1.dll");
+    windows_probe()
+        .with_output("nvidia-smi", &GPU_ARGS, "NVIDIA GeForce RTX 4070, 12282\n")
+        .with_output("nvidia-smi", &[], SMI_HEADER)
+        .with_system_root(root)
+        .with_file(vulkan_dll)
+}
+
+pub fn managed(build: u32) -> ActiveRuntime {
+    let tag = format!("b{build}");
+    ActiveRuntime {
+        source: RuntimeSource::Managed { tag: tag.clone() },
+        backend: Some(Backend::Cpu {
+            isa: CpuIsa::Generic,
+        }),
+        server_path: PathBuf::from("runtime").join(tag).join("llama-server.exe"),
+        version: RuntimeVersion {
+            build,
+            commit: "abc1234".to_string(),
+        },
+    }
+}
+
+pub fn state_with(active: Option<ActiveRuntime>) -> RuntimeState {
+    RuntimeState {
+        active,
+        ..RuntimeState::default()
+    }
+}
+
+/// `RuntimeManager` sobre un `tempdir`, con los dobles accesibles para inspeccionarlos.
+pub struct Fixture {
+    _temp: tempfile::TempDir,
+    pub runtime_dir: PathBuf,
+    pub runner: Arc<FakeRunner>,
+    pub fetcher: Arc<FakeFetcher>,
+    pub manager: Arc<RuntimeManager>,
+}
+
+pub fn fixture(
+    source: FakeSource,
+    probe: FakeProbe,
+    runner: FakeRunner,
+    remover: FakeRemover,
+) -> Fixture {
+    fixture_with_fetcher(source, probe, runner, remover, FakeFetcher::new())
+}
+
+pub fn fixture_with_fetcher(
+    source: FakeSource,
+    probe: FakeProbe,
+    runner: FakeRunner,
+    remover: FakeRemover,
+    fetcher: FakeFetcher,
+) -> Fixture {
+    let temp = tempfile::tempdir().unwrap();
+    let runtime_dir = temp.path().join("runtime");
+    let runner = Arc::new(runner);
+    let fetcher = Arc::new(fetcher);
+    let manager = Arc::new(RuntimeManager::new(
+        &runtime_dir,
+        RuntimeDeps {
+            source: Arc::new(source),
+            fetcher: fetcher.clone(),
+            runner: runner.clone(),
+            probe: Arc::new(probe),
+            remover: Arc::new(remover),
+        },
+    ));
+    Fixture {
+        _temp: temp,
+        runtime_dir,
+        runner,
+        fetcher,
+        manager,
+    }
+}
+
+pub fn default_fixture() -> Fixture {
+    fixture(
+        FakeSource::with_releases(parse_releases(RELEASES).unwrap()),
+        windows_probe(),
+        FakeRunner::exits(0, "", "version: 12000 (abc1234)"),
+        FakeRemover::deleting(),
+    )
+}
+
+impl Fixture {
+    pub fn store(&self) -> StateStore {
+        StateStore::new(&self.runtime_dir)
+    }
+
+    pub fn save(&self, state: &RuntimeState) {
+        self.store().save(state).unwrap();
+    }
+
+    pub fn saved(&self) -> RuntimeState {
+        self.store().load().unwrap()
+    }
+
+    /// Otro manager sobre el mismo directorio, como tras reiniciar la app: sin releases, sin
+    /// descargas y con un `DirRemover` que borra de verdad.
+    pub fn restarted_manager(&self) -> RuntimeManager {
+        RuntimeManager::new(
+            &self.runtime_dir,
+            RuntimeDeps {
+                source: Arc::new(FakeSource::with_releases(Vec::new())),
+                fetcher: Arc::new(FakeFetcher::new()),
+                runner: Arc::new(FakeRunner::exits(0, "", "")),
+                probe: Arc::new(windows_probe()),
+                remover: Arc::new(FakeRemover::deleting()),
+            },
+        )
     }
 }

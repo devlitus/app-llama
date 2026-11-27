@@ -44,6 +44,8 @@ Por defecto de este plan (antes preguntas abiertas):
 - **D12, dependencias:** todas las nuevas se declaran en `[workspace.dependencies]` del `Cargo.toml` raíz y se usan con `.workspace = true`, como hace 003. Cada tarea añade solo las que usa y actualiza `Cargo.lock` en el mismo commit (el gate usa `--locked`).
 - **D13, registro en Tauri:** `register()` solo añade comandos (los tests IPC siguen sin tocar el disco real). El plugin de diálogo y el `setup` que crea `RuntimeAppState` van en `run()`.
 - **D14, sección en Ajustes:** la sección "llama.cpp" es un componente `RuntimeSettings.svelte` que se incrusta en `ui/src/views/Settings.svelte`, en lugar del párrafo "Próximamente", y encima de la línea `Versión …`. No se crea una vista nueva ni se toca la navegación.
+- **D15, activo roto con el mismo tag y backend (antes pregunta abierta 2, revisión de T11, #33):** si el destino `<managed_dir_name(tag, backend)>/` ya existe y es el directorio del activo pero el binario del activo (`server_path`) no existe, se trata como residuo y se borra antes del `rename` (paso 7). Es seguro: ese runtime ya está roto y no hay salida temprana en el paso 2.
+- **D16, reinstalar con otro backend desde la UI (antes pregunta abierta 3):** si el backend elegido en el selector no es el del runtime gestionado activo, o el activo es externo, la acción principal es "Instalar <backend>" habilitada aunque no haya actualización. "Al día" solo aparece cuando el backend elegido coincide con el del activo gestionado y no hay versión nueva. Con "auto" se compara con el backend que elegiría Auto, que es el primer elemento de `available_backends`. Es lo que permite ejecutar T14.2.
 
 ### API de GitHub verificada (2026-11-26)
 
@@ -133,20 +135,21 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   - CPU: la mayor `isa` soportada por la CPU, con `Generic` como mínimo. `Avx` y `Avx2` se consideran soportadas si `avx2 || avx512` (no hay detección de AVX a secas) y `Avx512` si `avx512`. En las releases actuales solo existe `Generic`; en las antiguas, `noavx` (= `Generic`) solo se elige si la CPU no soporta ninguna otra.
   - `Auto` = primer candidato disponible en el orden **CUDA > Metal > Vulkan > CPU** (D4). Con una preferencia explícita no disponible → `RuntimeError::BackendUnavailable`.
   - `available_backends(release, hw)` devuelve la lista para el selector de la UI.
+- **Directorio de cada runtime gestionado:** `<runtime_dir>/<tag>-<backend>/`, calculado con la función pura `managed_dir_name(tag, backend) -> String`. El sufijo de backend es: `Cpu{Generic}` → `cpu`, `Cpu{Avx}` → `cpu-avx`, `Cpu{Avx2}` → `cpu-avx2`, `Cpu{Avx512}` → `cpu-avx512`, `Cuda{M,m}` → `cuda-M.m`, `Vulkan` → `vulkan`, `Metal` → `metal`. Ejemplos: `b12780-cpu`, `b12780-cuda-13.5`, `b12780-vulkan`, `b12780-metal`; en releases antiguas con ISA, `b4500-cpu-avx2` (y `noavx`, que es `Cpu{Generic}`, da `b4500-cpu`). Motivo: reinstalar el mismo tag con otro backend (T14.2) escribe en un directorio distinto y nunca renombra sobre el directorio activo, que en Windows puede estar bloqueado. El staging sigue siendo `.staging-<tag>`.
 - **Instalación** (`RuntimeManager::install`), con un solo proceso a la vez (`AlreadyInstalling`):
-  0. Borrar los `.staging-*` huérfanos de una ejecución anterior interrumpida.
+  0. Borrar los `.staging-*` huérfanos de una ejecución anterior interrumpida. Si `.staging-<tag>` sigue existiendo después (el borrado falló), se devuelve `Err` **antes de descargar** y el estado no cambia. (El tag solo se conoce tras el paso 1, así que esta comprobación se hace justo después de `select_install`, pero siempre antes del paso 3.)
   1. Listar releases → `latest_build_release`.
-  2. `select_install`.
+  2. `select_install`. Si el activo es `Managed { tag }` con el mismo tag, el mismo `backend` que el `InstallPlan` y su `server_path` existe → `Ok(activo)` **sin descargar** (0 `fetch`), sin tocar `runtime.json` ni el disco.
   3. Descargar el principal (y el cudart) a `<runtime_dir>/.staging-<tag>/downloads/`, verificando tamaño y SHA256.
   4. Extraer a `<runtime_dir>/.staging-<tag>/install/`; el cudart va al directorio de `llama-server`.
   5. En macOS, `/usr/bin/xattr -cr <install>`.
   6. `verify_server`.
-  7. Borrar `downloads/` y renombrar `install/` → `<runtime_dir>/<tag>/`.
-  8. Guardar el estado (`Managed { tag }`).
-  9. Borrar **todos los demás** directorios `<runtime_dir>/b<N>/` (versiones gestionadas anteriores, estuvieran activas o no; D5). Si un borrado falla (por ejemplo, Windows tiene un fichero bloqueado), la ruta se apunta en `pending_cleanup` y se reintenta en el siguiente `status()`.
+  7. Borrar `downloads/` y renombrar `install/` → `<runtime_dir>/<managed_dir_name(tag, backend)>/`. Si ese destino ya existe y es un residuo, se borra antes del `rename`. Es residuo si no es el directorio del runtime activo (resto de una ejecución anterior) o si lo es pero el binario del activo (`server_path`) no existe (activo roto con el mismo tag y backend, D15). Si ese borrado falla, `Err` y el estado no cambia (el staging se limpia como en cualquier error).
+  8. Guardar el estado (`Managed { tag }`, `backend: Some(..)`) y, en la misma escritura, quitar el directorio final de `pending_cleanup` si estaba (p. ej. un intento de borrado previo que falló).
+  9. **Best-effort:** borrar **todos los demás** directorios de `<runtime_dir>` cuyo nombre sea `b<N>` (forma antigua) o `b<N>-…`, salvo el directorio final (versiones gestionadas anteriores o del mismo tag con otro backend, estuvieran activas o no; D5). No toca `runtime.json` ni `.staging-*`. Si un borrado falla (por ejemplo, Windows tiene un fichero bloqueado), la ruta se apunta en `pending_cleanup` y se reintenta en el siguiente `status()`. Un fallo al listar `<runtime_dir>` o al guardar `pending_cleanup` **no** convierte el éxito en error: `install` devuelve igualmente `Ok(activo)`.
 
-  Con cualquier error o cancelación se borra `.staging-<tag>` y el estado no cambia.
-- **Binario externo** (`use_external(path)`): si hay una instalación en curso falla con `AlreadyInstalling` (comparte el mismo `Mutex` que `install`). El nombre debe ser `llama-server` o `llama-server.exe` y debe pasar `verify_server`. No se modifica (sin `xattr`, D10). Se guarda como `source: external` y `backend: None`. No borra las versiones gestionadas que haya en disco: las limpia la siguiente instalación gestionada (paso 9).
+  Con cualquier error o cancelación en los pasos 0–8 se borra `.staging-<tag>` y el estado no cambia.
+- **Binario externo** (`use_external(path)`): si hay una instalación en curso falla con `AlreadyInstalling` (comparte el mismo `Mutex` que `install`). El nombre debe ser `llama-server` o `llama-server.exe` y debe pasar `verify_server`. No se modifica (sin `xattr`, D10). Se guarda como `source: external` y `backend: None`. No borra los directorios gestionados (`<tag>-<backend>/`) que haya en disco: los limpia la siguiente instalación gestionada (paso 9).
 - **Progreso:** `ProgressEvent { phase: Fetching{artifact} | Extracting | Verifying | Done, done: u64, total: u64 }`. Se emite solo cuando cambia la fase o el porcentaje entero (sin reloj, determinista). Se cancela con un `CancelToken` (`Arc<AtomicBool>`) que se comprueba en cada bloque descargado y en cada entrada extraída.
 
 ## Criterios de aceptación
@@ -167,17 +170,17 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **CA7** — Dado un `llama-server` cuyo `--version` falla o no muestra `version: N (hash)`, cuando se instala, entonces `install` devuelve `VerificationFailed`, `.staging-<tag>` se borra y el runtime activo anterior sigue intacto (mismo `runtime.json`).
 - **CA8** — Dada una instalación gestionada en macOS, cuando se instala, entonces se ejecuta `/usr/bin/xattr -cr <directorio de instalación>` antes de `--version`. En Windows no se ejecuta. Para un binario externo no se ejecuta nunca. Además, en la CI de macOS, `remove_quarantine` con el runner real elimina un atributo `com.apple.quarantine` puesto en un fichero de un `tempdir`.
 - **CA9** — Dada la ruta de un `llama-server[.exe]` válido, cuando se llama a `use_external`, entonces queda activo con `source: external`, su versión y `backend: None`. Si hay una instalación en curso, el error es `AlreadyInstalling`. Si el nombre no es `llama-server[.exe]` o la verificación falla, el error es `InvalidExternalBinary` o `VerificationFailed` y el estado no cambia.
-- **CA10** — Dado `b12779` gestionado y activo con `b12780` publicada, cuando se llama a `check_update`, entonces `{ installed: 12779, latest: 12780, update_available: true }`. Tras `install`, queda activo `b12780` y el directorio `runtime/b12779/` ya no existe. Con `b12780` instalado, `update_available: false`.
+- **CA10** — Dado `b12779` gestionado y activo con `b12780` publicada, cuando se llama a `check_update`, entonces `{ installed: 12779, latest: 12780, update_available: true }`. Tras `install` con el mismo backend (p. ej. `Cpu{Generic}`), queda activo `b12780` en `runtime/b12780-cpu/` y el directorio `runtime/b12779-cpu/` ya no existe. Con `b12780` instalado, `update_available: false`.
 - **CA11** — Dado `runtime.json` escrito por una instalación, cuando se crea un `RuntimeManager` nuevo sobre el mismo directorio, entonces `status` devuelve el mismo runtime activo. Si el binario ya no existe, devuelve `Broken { path }`. Si `runtime.json` está corrupto, devuelve `NotInstalled` y conserva una copia `runtime.json.bak`.
 - **CA12** — Dada la vista Ajustes (`ui/src/views/Settings.svelte`) con la sección "llama.cpp", cuando se abre, entonces muestra:
   - el hardware detectado;
   - el runtime activo (versión `bN`, backend solo si es gestionado, origen gestionado o externo, y ruta) o "No instalado";
   - un selector de backend con solo los disponibles;
-  - los botones "Instalar" o "Actualizar a bN", "Buscar actualizaciones" y "Usar binario existente…";
+  - una acción principal según `primaryAction` (D16): "Instalar", "Actualizar a bN", "Instalar <backend>" (habilitada aunque no haya actualización si el backend elegido no es el del runtime gestionado activo, o el activo es externo), "Al día" (deshabilitada, solo si el backend elegido coincide con el activo y no hay versión nueva) o "Buscar actualizaciones"; y el botón "Usar binario existente…";
   - la línea `Versión 0.1.0` de la app, como hasta ahora.
 
   Durante la instalación muestra la fase y el porcentaje (evento `runtime://progress`) y un botón "Cancelar". Si una llamada al backend falla (o no hay IPC, como en `App.test.ts`), la sección muestra el mensaje de error y no hay rechazos sin capturar. Lo cubren los tests de `view-model.ts`, `RuntimeSettings.test.ts` y `Settings.test.ts`.
-- **CA13** — Dado un PC Windows x64 real, cuando se ejecuta `npm --prefix ui run tauri -- dev` y se pulsa "Instalar" en Ajustes, entonces termina con la versión `bN` visible, y `llama-server.exe --version`, ejecutado a mano desde `%APPDATA%\io.github.devlitus.appllama\runtime\bN\…`, da el mismo número. Comprobación manual en T14. **macOS no se prueba a mano (D6):** lo cubren los tests unitarios y la CI (CA8, CA14).
+- **CA13** — Dado un PC Windows x64 real, cuando se ejecuta `npm --prefix ui run tauri -- dev` y se pulsa "Instalar" en Ajustes, entonces termina con la versión `bN` visible, y `llama-server.exe --version`, ejecutado a mano desde `%APPDATA%\io.github.devlitus.appllama\runtime\bN-<backend>\…` (p. ej. `b12780-cuda-13.5`), da el mismo número. Comprobación manual en T14. **macOS no se prueba a mano (D6):** lo cubren los tests unitarios y la CI (CA8, CA14).
 - **CA14** — Dado el plan aplicado, cuando se ejecuta `node scripts/quality-gate.mjs`, entonces termina en verde en local (Windows) y en la CI de Windows y macOS, incluido el paso `tauri build --debug --no-bundle`.
 
 ## Tareas
@@ -442,32 +445,40 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `external_durante_instalacion_rechazado` | `Mutex` de instalación tomado (p. ej. con el guard de `begin_install()`) | `Err(AlreadyInstalling)`, estado sin cambios, 0 llamadas al runner |
   | `external_nombre_invalido` | `tempdir/llama-cli.exe` | `Err(InvalidExternalBinary)`, estado sin cambios, 0 llamadas al runner |
   | `external_verificacion_falla` | `--version` con salida 1 | `Err(VerificationFailed)`, estado sin cambios |
-  | `external_no_borra_gestionado` | activo `Managed b12780` con `runtime/b12780/` en disco | tras `use_external`, `runtime/b12780/` sigue existiendo |
+  | `external_no_borra_gestionado` | activo `Managed b12780` con `runtime/b12780-cpu/` en disco | tras `use_external`, `runtime/b12780-cpu/` sigue existiendo |
 
 ### T11 — `RuntimeManager::install`: instalación, actualización y limpieza
 - **Ficheros/módulos:** `crates/core/src/runtime/install.rs`, `crates/core/src/runtime/test_support.rs` (`FakeFetcher`, que escribe un zip o tar.gz generado en el test)
 - **Depende de:** T5, T6, T10
 - **Cubre:** CA5, CA7, CA8, CA10 (instalación), CA11
 - **Subtareas:**
-  - [ ] T11.1 `ProgressEvent` + `ProgressPhase` (`Serialize`, `#[serde(tag = "kind", rename_all = "camelCase")]`) y un emisor que solo notifica cuando cambia la fase o el porcentaje entero.
-  - [ ] T11.2 `install(preference, on_progress, cancel) -> Result<ActiveRuntime, RuntimeError>`: los pasos 0–9 del Diseño, con limpieza de `.staging-<tag>` ante cualquier error o cancelación.
-  - [ ] T11.3 Limpieza tras el éxito (paso 9): borra todos los `b<N>/` distintos del nuevo con `DirRemover`; los fallos van a `pending_cleanup`.
+  - [x] T11.1 `ProgressEvent` + `ProgressPhase` (`Serialize`, `#[serde(tag = "kind", rename_all = "camelCase")]`) y un emisor que solo notifica cuando cambia la fase o el porcentaje entero.
+  - [x] T11.2 `install(preference, on_progress, cancel) -> Result<ActiveRuntime, RuntimeError>`: los pasos 0–9 del Diseño, con limpieza de `.staging-<tag>` ante cualquier error o cancelación. Incluye la función pura `managed_dir_name(tag, backend)` (destino `<runtime_dir>/<tag>-<backend>/`), la salida temprana sin descarga si ya está activo el mismo tag y backend con su binario presente, el `Err` antes de descargar si `.staging-<tag>` no se pudo borrar, el reemplazo de un destino residual antes del `rename` (incluido el directorio del activo cuando su binario no existe, D15) y la retirada del directorio final de `pending_cleanup` al guardar (paso 8).
+  - [x] T11.3 Limpieza tras el éxito (paso 9, best-effort): borra con `DirRemover` todos los directorios `b<N>` y `b<N>-…` distintos del final; los fallos van a `pending_cleanup`. Un fallo al listar o al guardar `pending_cleanup` no convierte el éxito en error.
 - **Tests unitarios** (con `FakeSource`, `FakeFetcher`, `FakeRunner`, `FakeProbe`, `FakeRemover`; `tempdir` como `runtime_dir`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
-  | `install_cpu_windows_ok` | Win x64 sin GPU, `Auto` | `runtime/b12780/llama-server.exe` existe, `runtime.json` es `Managed{b12780}` con `backend: Some(Cpu{Generic})`, no queda `.staging-*` |
-  | `install_cuda_extrae_cudart_junto_al_server` | driver 13.0; el zip principal tiene `bin/llama-server.exe`; el cudart, `cudart64_13.dll` | `runtime/b12780/bin/cudart64_13.dll` existe; 2 `fetch` |
+  | `managed_dir_name_por_backend` | (`b12780`, `Cpu{Generic}`), (`b12780`, `Cuda{13,5}`), (`b12780`, `Vulkan`), (`b12780`, `Metal`), (`b4500`, `Cpu{Avx2}`), (`b4500`, `Cpu{Avx512}`), (`b4500`, `Cpu{Avx}`) | `b12780-cpu`, `b12780-cuda-13.5`, `b12780-vulkan`, `b12780-metal`, `b4500-cpu-avx2`, `b4500-cpu-avx512`, `b4500-cpu-avx` |
+  | `install_cpu_windows_ok` | Win x64 sin GPU, `Auto` | `runtime/b12780-cpu/llama-server.exe` existe, `runtime.json` es `Managed{b12780}` con `backend: Some(Cpu{Generic})`, no queda `.staging-*` |
+  | `install_cuda_extrae_cudart_junto_al_server` | driver 13.0; el zip principal tiene `bin/llama-server.exe`; el cudart, `cudart64_13.dll` | `runtime/b12780-cuda-13.5/bin/cudart64_13.dll` existe; 2 `fetch` |
   | `install_macos_quita_cuarentena_antes_de_verificar` | macOS arm64 | orden de llamadas al runner: `/usr/bin/xattr -cr <staging/install>` y después `--version` |
   | `install_windows_no_llama_xattr` | Win x64 | ninguna llamada a `xattr` |
-  | `install_verificacion_falla_conserva_anterior` | activo `b12779`; `--version` con salida 1 | `Err(VerificationFailed)`, `runtime.json` sin cambios, `runtime/b12779/` intacto, sin `.staging-*` |
+  | `install_verificacion_falla_conserva_anterior` | activo `b12779` en `runtime/b12779-cpu/`; `--version` con salida 1 | `Err(VerificationFailed)`, `runtime.json` sin cambios, `runtime/b12779-cpu/` intacto, sin `.staging-*` |
   | `install_hash_falla_no_cambia_estado` | el fetcher devuelve `IntegrityMismatch` | error propagado, `runtime.json` sin cambios, sin `.staging-*` |
   | `install_cancelado` | token cancelado durante el fetch | `Err(Cancelled)`, sin `.staging-*` |
   | `install_concurrente_rechazado` | segunda llamada mientras la primera espera en el fetcher (sincronizado con `tokio::sync::Notify`) | `Err(AlreadyInstalling)` |
   | `install_limpia_staging_huerfano` | existe `runtime/.staging-b12000/` de antes | tras `install` OK no queda ningún `.staging-*` |
   | `install_progreso_por_fases` | instalación OK | eventos en orden `Fetching(main)` → `Extracting` → `Verifying` → `Done`; sin dos eventos seguidos con la misma fase y el mismo porcentaje |
-  | `update_reemplaza_y_borra_anterior` | activo `b12779` gestionado y source con `b12780` | activo `b12780`, `runtime/b12779/` no existe |
-  | `install_tras_externo_borra_gestionada_previa` | activo `External`, `runtime/b12779/` en disco | activo `Managed b12780`, `runtime/b12779/` no existe |
-  | `update_borrado_fallido_queda_pendiente` | `FakeRemover` que falla con `runtime/b12779` | `install` devuelve `Ok`; `pending_cleanup` contiene la ruta; con un remover que ya funciona, el siguiente `status()` la borra |
+  | `update_reemplaza_y_borra_anterior` | activo `b12779` gestionado en `runtime/b12779-cpu/` y source con `b12780`, Win x64 sin GPU | activo `b12780` en `runtime/b12780-cpu/`, `runtime/b12779-cpu/` no existe |
+  | `install_tras_externo_borra_gestionada_previa` | activo `External`, `runtime/b12779-cpu/` y un directorio con la forma antigua `runtime/b12000/` en disco | activo `Managed b12780`, ni `runtime/b12779-cpu/` ni `runtime/b12000/` existen |
+  | `update_borrado_fallido_queda_pendiente` | `FakeRemover` que falla con `runtime/b12779-cpu` | `install` devuelve `Ok`; `pending_cleanup` contiene la ruta; con un remover que ya funciona, el siguiente `status()` la borra |
+  | `reinstalar_mismo_tag_otro_backend` | activo `Managed b12780` con `Cpu{Generic}` en `runtime/b12780-cpu/`; Win x64 con Vulkan; `install(Vulkan)` | `Ok`; activo `Managed b12780` con `backend: Some(Vulkan)` y `server_path` bajo `runtime/b12780-vulkan/`; `runtime/b12780-cpu/` no existe; 1 `fetch` |
+  | `reinstalar_mismo_tag_y_backend_no_descarga` | activo `Managed b12780` con `Cpu{Generic}` y su `llama-server.exe` presente en `runtime/b12780-cpu/`; Win x64 sin GPU; `install(Auto)` | `Ok(activo)` igual al anterior; 0 `fetch`; 0 llamadas al runner; `runtime.json` sin cambios (mismo contenido); no se crea `.staging-*` |
+  | `install_destino_residual_se_reemplaza` | activo `None`; existe `runtime/b12780-cpu/` con un fichero `basura.txt` y sin `runtime.json` que lo apunte; Win x64 sin GPU | `Ok`; `runtime/b12780-cpu/llama-server.exe` existe y `basura.txt` no; sin `.staging-*` |
+  | `install_destino_residual_no_borrable_falla` | como el anterior, con `FakeRemover` que falla con `runtime/b12780-cpu` | `Err(Io)`; `runtime.json` sin cambios; sin `.staging-*` (el remover sí borra el staging) |
+  | `install_staging_no_borrable_falla_antes_de_descargar` | existe `runtime/.staging-b12780/` y `FakeRemover` que falla con esa ruta | `Err(Io)`; 0 `fetch`; `runtime.json` sin cambios |
+  | `install_saca_destino_de_pending_cleanup` | `runtime.json` con `pending_cleanup: [<runtime_dir>/b12780-cpu]` (un borrado previo falló) y ese directorio en disco; Win x64 sin GPU | `Ok`; `runtime.json` tiene activo `b12780` en `runtime/b12780-cpu/` y `pending_cleanup` no contiene esa ruta; un `status()` posterior no borra el directorio activo |
+  | `reinstalar_activo_roto_reemplaza` | `runtime.json` con activo `Managed b12780`, `backend: Some(Cpu{Generic})` y `server_path` en `runtime/b12780-cpu/llama-server.exe`; el directorio `runtime/b12780-cpu/` existe con un fichero `basura.txt` pero sin `llama-server.exe` (`status()` → `Broken`); Win x64 sin GPU; `install(Auto)` | `Ok`; 1 `fetch` (no hay salida temprana); `runtime/b12780-cpu/llama-server.exe` existe y `basura.txt` no; `runtime.json` con activo `Managed b12780` y `backend: Some(Cpu{Generic})`; `status()` → `Ready`; sin `.staging-*` |
   | `status_persistente_entre_instancias` | `install` OK y después un `RuntimeManager` nuevo sobre el mismo `runtime_dir` | el mismo `Ready(..)` |
 
 ### T12 — Comandos y eventos Tauri
@@ -498,11 +509,16 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   - [ ] T13.2 `view-model.ts` (funciones puras):
     - `describeHardware(hw)`;
     - `describeStatus(status)` (el backend solo aparece si no es `null`);
-    - `primaryAction(status, update)` → `{ label: "Instalar" | "Actualizar a bN" | "Al día" | "Buscar actualizaciones", enabled }`;
+    - `primaryAction(status, update, selectedBackend)` → `{ label: "Instalar" | "Instalar <backend>" | "Actualizar a bN" | "Al día" | "Buscar actualizaciones", enabled }`, donde `selectedBackend` es el valor del selector (`"auto" | "cuda" | "vulkan" | "metal" | "cpu"`). Reglas, en este orden (D16):
+      1. `NotInstalled` o `Broken` → `{ "Instalar", true }`.
+      2. `update` = `null` → `{ "Buscar actualizaciones", true }`.
+      3. `update_available: true` → `{ "Actualizar a bN", true }` (instala la última con el backend elegido).
+      4. Backend efectivo: con `"auto"`, `available_backends[0]`; con otro valor, el elemento de `available_backends` de ese tipo (si no hay ninguno, se trata como `"auto"`). Si el activo es externo (`backend: null`) o el backend efectivo no es igual (comparación estructural, incluida la versión de CUDA) al `backend` del activo gestionado → `{ "Instalar <backend>", true }`, con la misma etiqueta de backend que `describeStatus` (`"Instalar CPU"`, `"Instalar Vulkan"`, `"Instalar CUDA 13.5"`, `"Instalar Metal"`).
+      5. En otro caso → `{ "Al día", false }`;
     - `backendOptions(update)`;
     - `progressLabel(event)` → `"Descargando llama.cpp… 42 %"`, etc.;
     - `errorMessage(payload)` (acepta también un error que no sea `ErrorPayload`, p. ej. sin IPC).
-  - [ ] T13.3 `RuntimeSettings.svelte` (Svelte 5, runes): sin lógica propia; usa `view-model` y `api`. Al montarse pide `runtime_hardware` y `runtime_status`; todas las promesas tienen manejo de error (muestra `errorMessage`). La suscripción a `runtime://progress` se crea al pulsar Instalar y se libera al terminar. El progreso usa `<progress value max>` (sin atributo `style`: la CSP no permite estilos en línea). "Usar binario existente…" abre `open()` de `plugin-dialog`: en Windows con filtro de extensión `exe`; en macOS sin filtro (el nombre lo valida el backend con `InvalidExternalBinary`). "Cancelar" solo se ve durante la instalación.
+  - [ ] T13.3 `RuntimeSettings.svelte` (Svelte 5, runes): sin lógica propia; usa `view-model` y `api`. Al montarse pide `runtime_hardware` y `runtime_status`; todas las promesas tienen manejo de error (muestra `errorMessage`). La acción principal se recalcula con `primaryAction(status, update, selectedBackend)` cada vez que cambia el selector; "Buscar actualizaciones" llama a `runtime_check_update` y las acciones "Instalar…" y "Actualizar…" llaman a `runtime_install(selectedBackend)`. La suscripción a `runtime://progress` se crea al pulsar una acción de instalación y se libera al terminar. El progreso usa `<progress value max>` (sin atributo `style`: la CSP no permite estilos en línea). "Usar binario existente…" abre `open()` de `plugin-dialog`: en Windows con filtro de extensión `exe`; en macOS sin filtro (el nombre lo valida el backend con `InvalidExternalBinary`). "Cancelar" solo se ve durante la instalación.
   - [ ] T13.4 `Settings.svelte`: sustituye "Próximamente" por `<RuntimeSettings />` bajo un `<h2>llama.cpp</h2>` y mantiene `Versión …`. `Settings.test.ts`: el `mockIPC` responde según `cmd` (`app_info` y los `runtime_*`).
 - **Tests unitarios** (Vitest, sin Tauri real; `mockIPC` de `@tauri-apps/api/mocks` en los de componente):
   | Test | Entrada | Resultado esperado |
@@ -513,10 +529,17 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `describe_status_listo_gestionado` | `Ready(Managed b12780, backend: Cuda 13.5)` | `"b12780 · CUDA 13.5 · gestionado"` (el gestionado sigue mostrando el backend) |
   | `describe_status_externo` | `Ready(External, 12000, backend: null)` | contiene `"b12000"`, `"externo"` y la ruta; no contiene ningún nombre de backend (`"CPU"`, `"CUDA"`, `"Vulkan"`, `"Metal"`) |
   | `describe_status_roto` | `Broken { path }` | contiene `"no se encuentra"` y la ruta |
-  | `accion_instalar` | `NotInstalled` | `{ label: "Instalar", enabled: true }` |
-  | `accion_actualizar` | `installed: 12779`, `latest: 12780` | `"Actualizar a b12780"` |
-  | `accion_al_dia` | `update_available: false` | `{ label: "Al día", enabled: false }` |
-  | `accion_sin_info_update` | `update` = `null` (sin consultar todavía) y `Ready` | `{ label: "Buscar actualizaciones", enabled: true }` |
+  | `accion_instalar` | `NotInstalled`, `update` = `null`, `"auto"` | `{ label: "Instalar", enabled: true }` |
+  | `accion_instalar_roto` | `Broken { path }`, `update` con `update_available: false`, `"cpu"` | `{ label: "Instalar", enabled: true }` |
+  | `accion_actualizar` | `Ready(Managed b12779, Cpu)`, `installed: 12779`, `latest: 12780`, `available_backends: [Vulkan, Cpu]`, `"cpu"` | `{ label: "Actualizar a b12780", enabled: true }` |
+  | `accion_actualizar_otro_backend` | como el anterior con `"vulkan"` | `{ label: "Actualizar a b12780", enabled: true }` |
+  | `accion_al_dia` | `Ready(Managed b12780, Cpu)`, `update_available: false`, `available_backends: [Vulkan, Cpu]`, `"cpu"` | `{ label: "Al día", enabled: false }` |
+  | `accion_sin_info_update` | `Ready(Managed b12780, Cpu)`, `update` = `null` (sin consultar todavía), `"vulkan"` | `{ label: "Buscar actualizaciones", enabled: true }` |
+  | `accion_reinstalar_otro_backend` | `Ready(Managed b12780, Cpu)`, `update_available: false`, `available_backends: [Vulkan, Cpu]`, `"vulkan"` | `{ label: "Instalar Vulkan", enabled: true }` |
+  | `accion_auto_compara_con_primero` | `available_backends: [Cuda 13.5, Vulkan, Cpu]`, `update_available: false`, `"auto"`; (a) activo `Managed b12780, Cpu`; (b) activo `Managed b12780, Cuda 13.5` | (a) `{ label: "Instalar CUDA 13.5", enabled: true }`; (b) `{ label: "Al día", enabled: false }` |
+  | `accion_cuda_otra_version` | activo `Managed b12780, Cuda 12.4`, `available_backends: [Cuda 13.5, Cpu]`, `update_available: false`, `"cuda"` | `{ label: "Instalar CUDA 13.5", enabled: true }` |
+  | `accion_externo_ofrece_instalar` | `Ready(External, 12780, backend: null)`, `update_available: false`, `available_backends: [Vulkan, Cpu]`, `"auto"` | `{ label: "Instalar Vulkan", enabled: true }` |
+  | `accion_backend_no_disponible_usa_auto` | activo `Managed b12780, Cpu`, `available_backends: [Cpu]`, `update_available: false`, `"vulkan"` | `{ label: "Al día", enabled: false }` |
   | `opciones_backend` | `available_backends: [Cuda 13.5, Vulkan, Cpu]` | `["auto", "cuda", "vulkan", "cpu"]` con etiquetas en español |
   | `progreso_etiquetas` | `Fetching(main) 42/100`, `Fetching(cudart)`, `Extracting`, `Verifying`, `total: 0` | `"Descargando llama.cpp… 42 %"`, `"Descargando DLL de CUDA… N %"`, `"Extrayendo…"`, `"Verificando…"`, sin división por cero (`"Descargando llama.cpp…"`) |
   | `mensaje_error_rate_limit` | `{ code: "RateLimited", message }` | incluye "Inténtalo más tarde" |
@@ -532,8 +555,8 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T1–T13 integradas
 - **Cubre:** CA13
 - **Subtareas:**
-  - [ ] T14.1 Windows x64 (con GPU NVIDIA si la hay): `npm --prefix ui run tauri -- dev` → Ajustes → Instalar (`Auto`) → versión visible. Ejecutar a mano `%APPDATA%\io.github.devlitus.appllama\runtime\bNNNNN\…\llama-server.exe --version` y comparar.
-  - [ ] T14.2 Forzar `Cpu` y `Vulkan`, y repetir. Comprobar que tras cada instalación solo queda un directorio `bNNNNN` (o el mismo tag reinstalado) y ningún `.staging-*`.
+  - [ ] T14.1 Windows x64 (con GPU NVIDIA si la hay): `npm --prefix ui run tauri -- dev` → Ajustes → Instalar (`Auto`) → versión visible. Ejecutar a mano `%APPDATA%\io.github.devlitus.appllama\runtime\bNNNNN-<backend>\…\llama-server.exe --version` (p. ej. `b12780-cuda-13.5`) y comparar.
+  - [ ] T14.2 Tras "Buscar actualizaciones", elegir `CPU` en el selector: la acción principal pasa a "Instalar CPU" (habilitada, D16); pulsarla. Después elegir `Vulkan` → "Instalar Vulkan" y pulsarla (mismo tag, otro backend). Comprobar que tras cada instalación solo queda un directorio gestionado, el del backend recién instalado (`bNNNNN-cpu`, `bNNNNN-vulkan`…), y ningún `.staging-*`. Con el backend elegido igual al activo y sin versión nueva, la acción muestra "Al día" deshabilitada (la reinstalación sin descarga del mismo tag y backend la cubre el test de core `reinstalar_mismo_tag_y_backend_no_descarga`).
   - [ ] T14.3 "Usar binario existente…" con el binario instalado de T14.1 → `externo`.
   - [ ] T14.4 **Diferida (D6):** prueba manual en macOS Apple Silicon. No se ejecuta en este plan; queda para la checklist de Mac del plan 010 (`docs/checklist-prueba-mac.md`, paso "Fase 1"). En este plan macOS se valida solo por la CI (CA8, CA14).
   - [ ] T14.5 Anotar los resultados (tag, backend, tiempos aproximados) en este plan.
@@ -574,7 +597,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 | Los binarios de llama.cpp exigen macOS 13.3 y la app declara 11.0 (D8) | En macOS < 13.3 la instalación termina en `VerificationFailed` con el error de `dyld` visible y el runtime anterior intacto; queda "Usar binario existente…". La decisión de fondo está en Preguntas abiertas |
 | Gatekeeper bloquea `llama-server` en Apple Silicon aunque se quite la cuarentena, y no hay Mac para probarlo (D6) ni firma (D7) | `xattr -cr` cubierto por tests con `FakeRunner` y por un test real en la CI de macOS (CA8). Si en la práctica falla, `VerificationFailed` muestra el stderr y no se activa nada. La primera prueba real va en la checklist de Mac del plan 010; si falla, la firma ad hoc se plantea en un plan aparte |
 | Al borrar la versión anterior (D5) no hay vuelta atrás si la nueva da problemas al cargar modelos (no solo en `--version`) | Se borra solo tras verificar la nueva. El usuario puede forzar otro backend y reinstalar, o usar un binario externo |
-| Windows bloquea el borrado del directorio anterior (servidor en marcha, antivirus) | `pending_cleanup` y reintento en `status()`. Se instala en un directorio nuevo por tag, nunca encima del activo |
+| Windows bloquea el borrado del directorio anterior (servidor en marcha, antivirus) | `pending_cleanup` y reintento en `status()`. Se instala en un directorio nuevo por tag y backend (`<tag>-<backend>/`), nunca encima del activo, de modo que reinstalar el mismo tag con otro backend no renombra sobre un directorio bloqueado |
 | Archivo malicioso o corrupto (zip slip) | SHA256 del `digest` de GitHub antes de extraer + extracción con rutas encerradas en `dest` (CA6) |
 | `nvidia-smi` no está en el `PATH` o su formato cambia | Si falla, se trata como "sin NVIDIA" sin error. Parsers tolerantes con fixtures. El usuario puede forzar `Cuda` solo si se detectó; si no, `Vulkan` o `Cpu` |
 | Integrar `RuntimeSettings` en Ajustes rompe los tests existentes (`Settings.test.ts` responde lo mismo a cualquier comando; `App.test.ts` no mockea IPC) | T13.4 adapta `Settings.test.ts` a un `mockIPC` por comando, y el componente captura todos los errores de IPC (test `runtime_settings_error_backend`; `navega_a_cada_seccion` sigue en verde) |
