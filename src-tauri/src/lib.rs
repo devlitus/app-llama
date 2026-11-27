@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn ipc_app_info_responde() {
         let response = invoke("app_info").expect("app_info responde");
-        let value: serde_json::Value = response.deserialize().expect("json valido");
+        let value: serde_json::Value = response.deserialize().expect("json válido");
         assert_eq!(
             value,
             serde_json::json!({"name": "app-llama", "version": "0.1.0"})
