@@ -1,6 +1,6 @@
 //! Clasificación de los assets de una release de llama.cpp a partir de los tokens de su nombre.
 use crate::runtime::build_number;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Os {
@@ -15,7 +15,7 @@ pub enum Arch {
 }
 
 // Las variantes van de menos a más capacidad: el orden derivado las compara.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CpuIsa {
     Generic,
     Avx,
@@ -23,7 +23,7 @@ pub enum CpuIsa {
     Avx512,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Backend {
     Cpu { isa: CpuIsa },
     Cuda { major: u32, minor: u32 },

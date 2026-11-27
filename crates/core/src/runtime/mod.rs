@@ -6,6 +6,7 @@ mod hardware;
 mod process;
 mod release;
 mod select;
+mod state;
 #[cfg(test)]
 mod test_support;
 mod verify;
@@ -20,6 +21,7 @@ pub use release::{Asset, Release, build_number, latest_build_release, parse_rele
 pub use select::{
     BackendPreference, InstallPlan, available_backends, is_compatible, select_install,
 };
+pub use state::{ActiveRuntime, RuntimeSource, RuntimeState, RuntimeStatus, StateStore, status_of};
 pub use verify::{
     CommandOutput, CommandRunner, RuntimeVersion, TokioCommandRunner, parse_version,
     remove_quarantine, verify_server,

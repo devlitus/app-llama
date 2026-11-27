@@ -5,6 +5,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::runtime::process::hide_console_async;
 use crate::runtime::{Os, RuntimeError};
@@ -18,7 +19,7 @@ const XATTR: &str = "/usr/bin/xattr";
 
 const VERSION_PREFIX: &str = "version: ";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeVersion {
     pub build: u32,
     pub commit: String,

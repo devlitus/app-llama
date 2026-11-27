@@ -171,3 +171,29 @@ estado: abierto
 ### Errores
 
 - **ruta-relativa-con-cwd** — verify_server usa cwd=parent del binario; con ruta relativa en Unix el programa se resuelve tras chdir y falla (minor, produccion usa rutas absolutas) (C1)
+
+## T8
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a8d296d0c00cff5d2 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-27 | 1 | a63b097742c4ffbdc | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T8 estado persistido del runtime (state.rs) con StateStore atómico y status_of; Serialize/Deserialize en Backend, CpuIsa, RuntimeVersion
+- C1 · reviewer · T8 estado persistido; gate verde y 10 tests del plan, pero load() trata la lectura no UTF-8 y otros errores de E/S como inexistente, sin .bak (CA11)
+- C2 · developer · T8 ciclo 2: load() devuelve Result, lee bytes (no UTF-8 cuenta como corrupto) y propaga errores de E/S; tests nuevos.
+- C2 · reviewer · T8 C2 aprobada; load() devuelve Result, no UTF-8 hace .bak y errores de E/S no se enmascaran (#30 resuelto)
+
+### Decisiones
+
+- **limitacion-documentada** — StateStore documenta que no es seguro para escrituras concurrentes; la serialización queda para T10 (C1, C2)
+- **refactor-equivalente** — load() devuelve Default ante corrupto/schema desconocido y copia a .bak best-effort (C1)
+
+### Errores
+
+- **corrupto-sin-copia** — load() con bytes no UTF-8 devolvía Default sin .bak (#30). (C1, C2 · #30)
+- **reserva-sin-test** — save sobre un runtime.json existente (reemplazo en Windows) sin test (C1)

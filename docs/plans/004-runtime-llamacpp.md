@@ -369,11 +369,11 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T2, T7
 - **Cubre:** CA11
 - **Subtareas:**
-  - [ ] T8.1 `RuntimeState { schema: 1, active: Option<ActiveRuntime>, pending_cleanup: Vec<PathBuf> }` y `ActiveRuntime { source: Managed { tag } | External, backend, server_path, version: RuntimeVersion }` (`serde`, JSON legible).
-  - [ ] T8.2 `StateStore::new(runtime_dir)`:
+  - [x] T8.1 `RuntimeState { schema: 1, active: Option<ActiveRuntime>, pending_cleanup: Vec<PathBuf> }` y `ActiveRuntime { source: Managed { tag } | External, backend, server_path, version: RuntimeVersion }` (`serde`, JSON legible).
+  - [x] T8.2 `StateStore::new(runtime_dir)`:
     - `load()`: si no existe → `Default`; si está corrupto → copia a `runtime.json.bak` y devuelve `Default`.
     - `save()`: atómico (`runtime.json.tmp` + `rename`); crea `runtime_dir` si no existe.
-  - [ ] T8.3 `RuntimeStatus { NotInstalled, Ready(ActiveRuntime), Broken { path } }` (`Serialize`) y `status_of(state, exists: impl Fn(&Path) -> bool)`.
+  - [x] T8.3 `RuntimeStatus { NotInstalled, Ready(ActiveRuntime), Broken { path } }` (`Serialize`) y `status_of(state, exists: impl Fn(&Path) -> bool)`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
