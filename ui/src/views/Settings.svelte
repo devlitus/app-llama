@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { getAppInfo } from "../lib/api";
   import { sectionLabel } from "../lib/navigation";
+  import RuntimeSettings from "../lib/runtime/RuntimeSettings.svelte";
 
   let versionText = $state("Versión …");
 
@@ -14,5 +15,6 @@
 </script>
 
 <h1>{sectionLabel("settings")}</h1>
-<p>Próximamente</p>
+<h2>llama.cpp</h2>
+<RuntimeSettings />
 <p>{versionText}</p>

@@ -91,26 +91,44 @@ impl RuntimeAppState {
         }
     }
 
-    /// Registra el token de la instalación que empieza; `None` si ya hay una en curso, para no
-    /// pisar el token de la que se puede cancelar.
-    fn begin_install(&self) -> Option<CancelToken> {
+    /// Reserva la instalación que empieza; `None` si ya hay una en curso, para no pisar el
+    /// token de la que se puede cancelar. La guarda libera la reserva al soltarse, también si
+    /// la instalación entra en pánico o se descarta su future.
+    fn begin_install(&self) -> Option<InstallSlot<'_>> {
         let mut slot = self.cancel.lock().unwrap_or_else(PoisonError::into_inner);
         if slot.is_some() {
             return None;
         }
         let token = CancelToken::default();
         *slot = Some(token.clone());
-        Some(token)
-    }
-
-    fn finish_install(&self) {
-        *self.cancel.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        Some(InstallSlot { state: self, token })
     }
 
     /// `true` si había una instalación en curso a la que pedir la cancelación.
     fn cancel_install(&self) -> bool {
         let slot = self.cancel.lock().unwrap_or_else(PoisonError::into_inner);
         slot.as_ref().map(CancelToken::cancel).is_some()
+    }
+}
+
+struct InstallSlot<'a> {
+    state: &'a RuntimeAppState,
+    token: CancelToken,
+}
+
+impl InstallSlot<'_> {
+    fn token(&self) -> &CancelToken {
+        &self.token
+    }
+}
+
+impl Drop for InstallSlot<'_> {
+    fn drop(&mut self) {
+        *self
+            .state
+            .cancel
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = None;
     }
 }
 
@@ -161,19 +179,17 @@ pub async fn runtime_install<R: Runtime>(
     state: State<'_, RuntimeAppState>,
     preference: BackendPreference,
 ) -> Result<ActiveRuntime, ErrorPayload> {
-    let cancel = state
+    let slot = state
         .begin_install()
         .ok_or(RuntimeError::AlreadyInstalling)?;
     // El progreso es informativo: si no se puede emitir, la instalación sigue.
     let on_progress = |event| {
         let _ = app.emit(PROGRESS_EVENT, event);
     };
-    let result = state
+    Ok(state
         .manager
-        .install(preference, &on_progress, &cancel)
-        .await;
-    state.finish_install();
-    Ok(result?)
+        .install(preference, &on_progress, slot.token())
+        .await?)
 }
 
 #[tauri::command]
@@ -285,9 +301,9 @@ mod tests {
     #[test]
     fn cancel_marca_el_token_de_la_instalacion_en_curso() {
         let state = test_state();
-        let token = state.begin_install().expect("primera instalación");
+        let slot = state.begin_install().expect("primera instalación");
         assert!(state.cancel_install());
-        assert!(token.is_cancelled());
+        assert!(slot.token().is_cancelled());
     }
 
     #[test]
@@ -296,16 +312,137 @@ mod tests {
         let first = state.begin_install().expect("primera instalación");
         assert!(state.begin_install().is_none());
         assert!(state.cancel_install());
-        assert!(first.is_cancelled());
+        assert!(first.token().is_cancelled());
     }
 
     #[test]
-    fn terminar_libera_el_token() {
+    fn soltar_la_guarda_libera_el_token() {
         let state = test_state();
-        state.begin_install().expect("primera instalación");
-        state.finish_install();
+        drop(state.begin_install().expect("primera instalación"));
         assert!(!state.cancel_install());
         assert!(state.begin_install().is_some());
+    }
+
+    #[test]
+    fn la_guarda_libera_el_token_tras_un_error() {
+        let state = test_state();
+        let attempt = |state: &RuntimeAppState| -> Result<(), RuntimeError> {
+            let _slot = state
+                .begin_install()
+                .ok_or(RuntimeError::AlreadyInstalling)?;
+            Err(RuntimeError::Cancelled)
+        };
+        assert!(matches!(attempt(&state), Err(RuntimeError::Cancelled)));
+        assert!(matches!(attempt(&state), Err(RuntimeError::Cancelled)));
+    }
+
+    #[test]
+    fn la_guarda_libera_el_token_si_hay_panico() {
+        let state = test_state();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _slot = state.begin_install().expect("primera instalación");
+            panic!("fallo en la instalación");
+        }));
+        assert!(result.is_err());
+        assert!(state.begin_install().is_some());
+    }
+
+    // La UI (`ui/src/lib/runtime/types.ts`) espeja estas formas: si cambian, hay que actualizarla.
+    #[test]
+    fn json_hardware_status_y_update_para_la_ui() {
+        use app_llama_core::runtime::{
+            Arch, Backend, CpuIsa, CudaVersion, GpuInfo, Os, RuntimeSource, RuntimeVersion,
+        };
+        let hardware = HardwareInfo {
+            os: Os::MacOs,
+            arch: Arch::Aarch64,
+            avx2: true,
+            avx512: false,
+            gpus: vec![GpuInfo {
+                name: "RTX".to_string(),
+                vram_mib: Some(12282),
+            }],
+            driver_cuda: Some(CudaVersion {
+                major: 13,
+                minor: 5,
+            }),
+            vulkan_available: true,
+            metal: false,
+        };
+        assert_eq!(
+            serde_json::to_string(&hardware).expect("serializa"),
+            concat!(
+                r#"{"os":"MacOs","arch":"Aarch64","avx2":true,"avx512":false,"#,
+                r#""gpus":[{"name":"RTX","vram_mib":12282}],"#,
+                r#""driver_cuda":{"major":13,"minor":5},"vulkan_available":true,"metal":false}"#
+            )
+        );
+
+        let active = |source, backend| ActiveRuntime {
+            source,
+            backend,
+            server_path: PathBuf::from("srv"),
+            version: RuntimeVersion {
+                build: 12780,
+                commit: "abc".to_string(),
+            },
+        };
+        let managed = RuntimeStatus::Ready(active(
+            RuntimeSource::Managed {
+                tag: "b12780".to_string(),
+            },
+            Some(Backend::Cpu { isa: CpuIsa::Avx2 }),
+        ));
+        assert_eq!(
+            serde_json::to_string(&managed).expect("serializa"),
+            concat!(
+                r#"{"Ready":{"source":{"Managed":{"tag":"b12780"}},"#,
+                r#""backend":{"Cpu":{"isa":"Avx2"}},"server_path":"srv","#,
+                r#""version":{"build":12780,"commit":"abc"}}}"#
+            )
+        );
+        let external = RuntimeStatus::Ready(active(RuntimeSource::External, None));
+        assert_eq!(
+            serde_json::to_string(&external).expect("serializa"),
+            concat!(
+                r#"{"Ready":{"source":"External","backend":null,"server_path":"srv","#,
+                r#""version":{"build":12780,"commit":"abc"}}}"#
+            )
+        );
+        assert_eq!(
+            serde_json::to_string(&RuntimeStatus::NotInstalled).expect("serializa"),
+            r#""NotInstalled""#
+        );
+        assert_eq!(
+            serde_json::to_string(&RuntimeStatus::Broken {
+                path: PathBuf::from("srv")
+            })
+            .expect("serializa"),
+            r#"{"Broken":{"path":"srv"}}"#
+        );
+
+        let update = UpdateInfo {
+            installed: None,
+            latest: 12780,
+            latest_tag: "b12780".to_string(),
+            available_backends: vec![
+                Backend::Cuda {
+                    major: 13,
+                    minor: 5,
+                },
+                Backend::Vulkan,
+                Backend::Metal,
+            ],
+            update_available: true,
+        };
+        assert_eq!(
+            serde_json::to_string(&update).expect("serializa"),
+            concat!(
+                r#"{"installed":null,"latest":12780,"latest_tag":"b12780","#,
+                r#""available_backends":[{"Cuda":{"major":13,"minor":5}},"Vulkan","Metal"],"#,
+                r#""update_available":true}"#
+            )
+        );
     }
 
     fn test_state() -> RuntimeAppState {

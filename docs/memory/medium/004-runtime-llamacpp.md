@@ -305,3 +305,31 @@ estado: abierto
 - **carrera-pending-cleanup** — status() entre rename y modify_state borraba el runtime recien instalado; corregido con free_destination previo al rename (C1)
 - **plan-desalineado** — el paso 8 del plan dice que final_dir sale de pending_cleanup en la misma escritura; ahora ocurre antes del rename (minor) (C1)
 - **token-sin-guarda-raii** — finish_install no se ejecuta si install entra en pánico: runtime_install respondería AlreadyInstalling hasta reiniciar (minor) (C1)
+
+## T13
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a1b2ee2854a65c3d3 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-27 | 1 | ab6aee5c410a1fdbb | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T13 sección llama.cpp en Ajustes (types, api, view-model, RuntimeSettings) y guarda RAII InstallSlot en runtime_install
+- C1 · reviewer · UI de llama.cpp en Ajustes correcta y tipos alineados con serde; falta test de componente del flujo de instalación y Cancelar (CA12), factible con mockIPC shouldMockEvents
+- C2 · developer · T13 ciclo 2: test de instalar/cancelar con mockIPC+eventos, PrimaryAction.kind y estado busy comun.
+- C2 · reviewer · Ciclo 2 de T13: PrimaryAction.kind, estado busy con exclusive() y tests de componente de instalar/cancelar y bloqueo; gate verde, CA12 cubierto
+
+### Decisiones
+
+- **csp-estricta** — progreso con <progress> sin style en línea; JSON de Rust fijado en un test para que los tipos TS no diverjan (C1)
+- **limitacion-documentada** — Se aceptan backendOptions(null) solo auto y el reset de update/selected tras instalar; T14.2 necesita volver a pulsar Buscar actualizaciones entre instalaciones (C1)
+- **refactor-equivalente** — la acción se decide por kind y no por la etiqueta; busy común deshabilita selector, primario y binario externo (C1, C2)
+
+### Errores
+
+- **acoplamiento-por-etiqueta** — El componente comparaba action.label con una constante; corregido con kind. (C1, C2)
+- **aserto-debil** — minor: el aserto del 77 % tras terminar no prueba el unlisten, porque el bloque de progreso ya se oculta con installing=false (C2)
+- **reserva-sin-test** — CA12 Cancelar y reseteo de installing/unlisten sin test de componente; se dio por difícil pero mockIPC(..., { shouldMockEvents: true }) de @tauri-apps/api 2.12.5 lo permite (C1)
