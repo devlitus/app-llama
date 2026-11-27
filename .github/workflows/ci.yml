@@ -54,3 +54,6 @@ jobs:
 
       - name: Quality gate
         run: node scripts/quality-gate.mjs
+
+      - name: Build app
+        run: npm --prefix ui run tauri -- build --debug --no-bundle

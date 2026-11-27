@@ -1,7 +1,7 @@
 # 003 — Esqueleto: workspace Rust, app Tauri 2 + Svelte 5 y CI
 
 - **Tipo:** chore
-- **Estado:** borrador
+- **Estado:** hecho
 - **Rama:** chore/003-esqueleto
 - **Fase del roadmap:** 0 (Esqueleto) de [docs/MVP.md](../MVP.md)
 
@@ -94,22 +94,22 @@ docs/DESARROLLO.md
 
 > Todas las tareas de código son **(developer)**, con TDD: primero los tests de la tabla (rojo) y después el código (verde). **(O)** = orchestrator. Los ficheros generados (`Cargo.lock`, `package-lock.json`, iconos) no cuentan para el límite de ~300 líneas por tarea.
 
-### T1 — Workspace Rust y crate `core` (developer)
+### T1 — Workspace Rust y crate `core` (developer) ✅ hecha
 - **Ficheros/módulos:** `Cargo.toml`, `rust-toolchain.toml`, `Cargo.lock`, `crates/core/Cargo.toml`, `crates/core/src/lib.rs`, `crates/core/src/about.rs`, `crates/core/src/{hf,download,gguf,runtime,server,config}/mod.rs`
 - **Depende de:** —
 - **Cubre:** CA1, CA2, CA9 (parte Rust)
 - **Subtareas:**
-  - [ ] T1.1 `Cargo.toml` raíz: `[workspace] members = ["crates/core"]` (T5 añade `src-tauri`), `resolver = "3"`, `[workspace.package] version = "0.1.0"`, `edition = "2024"`, `license` vacío (no se publica), y `[workspace.dependencies]` con `serde = { version = "1", features = ["derive"] }` y `serde_json = "1"`.
-  - [ ] T1.2 `rust-toolchain.toml` según D6, con `profile = "minimal"`.
-  - [ ] T1.3 `crates/core`: paquete `app-llama-core`, `version.workspace = true`, `edition.workspace = true`, dependencia `serde` y dev-dependencia `serde_json`.
-  - [ ] T1.4 Módulos vacíos. Cada `mod.rs` solo lleva un `//!`:
+  - [x] T1.1 `Cargo.toml` raíz: `[workspace] members = ["crates/core"]` (T5 añade `src-tauri`), `resolver = "3"`, `[workspace.package] version = "0.1.0"`, `edition = "2024"`, `license` vacío (no se publica), y `[workspace.dependencies]` con `serde = { version = "1", features = ["derive"] }` y `serde_json = "1"`.
+  - [x] T1.2 `rust-toolchain.toml` según D6, con `profile = "minimal"`.
+  - [x] T1.3 `crates/core`: paquete `app-llama-core`, `version.workspace = true`, `edition.workspace = true`, dependencia `serde` y dev-dependencia `serde_json`.
+  - [x] T1.4 Módulos vacíos. Cada `mod.rs` solo lleva un `//!`:
     - `hf` (cliente de la API de Hugging Face, fase 2);
     - `download` (cola de descargas, reanudación y progreso, fase 3);
     - `gguf` (lector de metadatos GGUF, fase 4);
     - `runtime` (detección de hardware e instalación o selección de llama.cpp, fase 1);
     - `server` (ciclo de vida de llama-server, fase 5);
     - `config` (perfiles, ajustes y rutas, fases 4–5).
-  - [ ] T1.5 `about.rs`: `#[derive(Debug, Clone, PartialEq, Eq, Serialize)] pub struct AppInfo { pub name: String, pub version: String }` y `pub fn app_info() -> AppInfo`, con `name = "app-llama"` (constante `APP_NAME`) y `version = env!("CARGO_PKG_VERSION")`.
+  - [x] T1.5 `about.rs`: `#[derive(Debug, Clone, PartialEq, Eq, Serialize)] pub struct AppInfo { pub name: String, pub version: String }` y `pub fn app_info() -> AppInfo`, con `name = "app-llama"` (constante `APP_NAME`) y `version = env!("CARGO_PKG_VERSION")`.
 - **Tests unitarios** (en `about.rs`, `#[cfg(test)]`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -118,13 +118,13 @@ docs/DESARROLLO.md
   | `app_info_serializa_campos` | `serde_json::to_value(app_info())` | `{"name":"app-llama","version":"0.1.0"}` exacto (sin campos extra) |
   | `app_info_es_determinista` | dos llamadas | iguales (`assert_eq!`) |
 
-### T2 — Quality gate: pasos extraídos, testeables y con Build UI (developer)
+### T2 — Quality gate: pasos extraídos, testeables y con Build UI (developer) ✅ hecha
 - **Ficheros/módulos:** `scripts/lib/gate-steps.mjs` (nuevo), `scripts/lib/gate-steps.test.mjs` (nuevo), `scripts/quality-gate.mjs`, `docs/GOVERNANCE.md` (§2)
 - **Depende de:** —
 - **Cubre:** CA6, CA10
 - **Subtareas:**
-  - [ ] T2.1 Tests (rojo).
-  - [ ] T2.2 `export function planSteps({ hasCargo, uiScripts, hasMemoryCli })` → `Array<{ label, cmd } | { label, error }>`. Es una función pura, sin acceso a disco. `uiScripts` es `null` si no existe `ui/package.json`, y si existe, el objeto `scripts`. Orden:
+  - [x] T2.1 Tests (rojo).
+  - [x] T2.2 `export function planSteps({ hasCargo, uiScripts, hasMemoryCli })` → `Array<{ label, cmd } | { label, error }>`. Es una función pura, sin acceso a disco. `uiScripts` es `null` si no existe `ui/package.json`, y si existe, el objeto `scripts`. Orden:
     1. `Build UI` (`npm --prefix ui run build`) si `uiScripts?.build`.
     2. Los 3 de Rust si `hasCargo`, con los comandos actuales sin cambios.
     3. Un `{ label: "Script UI '<x>'", error: "ui/package.json debe definir el script '<x>'" }` por cada `lint` o `test` que falte.
@@ -132,8 +132,8 @@ docs/DESARROLLO.md
     5. `Tests scripts` y `Memoria (R11)` si `hasMemoryCli`.
     
     No incluye los escaneos internos (Patrones prohibidos y Secretos), que `quality-gate.mjs` añade siempre al final.
-  - [ ] T2.3 `quality-gate.mjs`: `buildSteps()` usa `planSteps` y conserva la salida y los códigos de salida actuales. Las etiquetas no cambian.
-  - [ ] T2.4 `GOVERNANCE.md` §2: fila `Build UI | npm --prefix ui run build | script build`, la primera de la tabla, y una nota de una línea: "va antes de Rust porque `src-tauri` incrusta `ui/dist` al compilar".
+  - [x] T2.3 `quality-gate.mjs`: `buildSteps()` usa `planSteps` y conserva la salida y los códigos de salida actuales. Las etiquetas no cambian.
+  - [x] T2.4 `GOVERNANCE.md` §2: fila `Build UI | npm --prefix ui run build | script build`, la primera de la tabla, y una nota de una línea: "va antes de Rust porque `src-tauri` incrusta `ui/dist` al compilar".
 - **Tests unitarios** (`scripts/lib/gate-steps.test.mjs`, `node:test`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -145,12 +145,12 @@ docs/DESARROLLO.md
   | `pasos_ui_falta_lint_y_test` | `uiScripts: {}` | dos pasos con `error` que contienen `'lint'` y `'test'`, y ningún `cmd` de UI |
   | `pasos_build_ui_comando` | `uiScripts: { build, lint, test }` | el primer paso es `{ label: "Build UI", cmd: "npm --prefix ui run build" }` |
 
-### T3 — Proyecto UI: Vite + Svelte 5 + TS, tooling y navegación (developer)
+### T3 — Proyecto UI: Vite + Svelte 5 + TS, tooling y navegación (developer) ✅ hecha
 - **Ficheros/módulos:** `ui/package.json`, `ui/package-lock.json`, `ui/index.html`, `ui/vite.config.ts`, `ui/svelte.config.js`, `ui/tsconfig.json`, `ui/eslint.config.js`, `ui/src/main.ts`, `ui/src/lib/navigation.ts`, `ui/src/lib/navigation.test.ts`, `ui/src/vite-env.d.ts`
 - **Depende de:** —
 - **Cubre:** CA4 (parte de datos), CA9 (parte UI), CA10
 - **Subtareas:**
-  - [ ] T3.1 `package.json` (`"private": true`, `"type": "module"`, `engines.node: ">=22.12"`). Scripts:
+  - [x] T3.1 `package.json` (`"private": true`, `"type": "module"`, `engines.node: ">=22.12"`). Scripts:
     - `dev: vite`
     - `build: vite build`
     - `lint: eslint .`
@@ -164,18 +164,18 @@ docs/DESARROLLO.md
     - `vitest` 5, `jsdom`, `@testing-library/svelte` y `@testing-library/jest-dom`;
     - `eslint` (flat config), `@eslint/js`, `typescript-eslint`, `eslint-plugin-svelte` y `globals`;
     - `@tauri-apps/cli` 2.
-  - [ ] T3.2 `vite.config.ts`:
+  - [x] T3.2 `vite.config.ts`:
     - `server.port = 5173`, `strictPort: true` y `clearScreen: false` (requisitos de Tauri);
     - `build.outDir = "dist"`;
     - bloque `test` con `environment: "jsdom"`, `setupFiles` para `jest-dom` y `resolve.conditions: ["browser"]` en test, necesario para montar componentes Svelte 5 en Vitest.
-  - [ ] T3.3 `eslint.config.js` con las reglas recomendadas de JS, TS y Svelte. Ignora `dist/` y `node_modules/`. Sin desactivar reglas (R2).
-  - [ ] T3.4 `navigation.ts`:
+  - [x] T3.3 `eslint.config.js` con las reglas recomendadas de JS, TS y Svelte. Ignora `dist/` y `node_modules/`. Sin desactivar reglas (R2).
+  - [x] T3.4 `navigation.ts`:
     - `export const SECTIONS = [{ id: "explore", label: "Explorar" }, { id: "library", label: "Biblioteca" }, { id: "run", label: "Ejecutar" }, { id: "chat", label: "Chat" }, { id: "settings", label: "Ajustes" }] as const`;
     - `export type SectionId`;
     - `export const INITIAL_SECTION: SectionId = "explore"`;
     - `export function isSectionId(value: string): value is SectionId`;
     - `export function sectionLabel(id: SectionId): string`.
-  - [ ] T3.5 `main.ts` con `mount(App, { target: document.getElementById("app")! })`. Como `App.svelte` llega en T4, aquí se crea un `App.svelte` mínimo (un `<main>` vacío) para que `build` y `check` pasen.
+  - [x] T3.5 `main.ts` con `mount(App, { target: document.getElementById("app")! })`. Como `App.svelte` llega en T4, aquí se crea un `App.svelte` mínimo (un `<main>` vacío) para que `build` y `check` pasen.
 - **Tests unitarios** (`navigation.test.ts`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -186,18 +186,18 @@ docs/DESARROLLO.md
   | `ids_de_seccion_invalidos` | `""`, `"Explore"`, `"ajustes"`, `"constructor"`, `"toString"` | `false` en todos (sin buscar en el prototipo) |
   | `etiqueta_de_seccion` | `sectionLabel("chat")` | `"Chat"` |
 
-### T4 — Shell de la UI: navegación y vistas vacías (developer)
+### T4 — Shell de la UI: navegación y vistas vacías (developer) ✅ hecha
 - **Ficheros/módulos:** `ui/src/App.svelte`, `ui/src/App.test.ts`, `ui/src/views/{Explore,Library,Run,Chat,Settings}.svelte`, `ui/src/app.css`
 - **Depende de:** T3
 - **Cubre:** CA4
 - **Subtareas:**
-  - [ ] T4.1 Tests (rojo).
-  - [ ] T4.2 `App.svelte`:
+  - [x] T4.1 Tests (rojo).
+  - [x] T4.2 `App.svelte`:
     - `let active = $state<SectionId>(INITIAL_SECTION)`;
     - `<nav aria-label="Secciones">` con un `<button>` por cada sección de `SECTIONS`, y `aria-current="page"` solo en la activa;
     - `<main>` que muestra la vista activa.
-  - [ ] T4.3 Cada vista es un componente con `<h1>{etiqueta}</h1>` y un párrafo "Próximamente". `Settings.svelte` lleva un hueco para la versión, que se rellena en T6.
-  - [ ] T4.4 `app.css`: estilos mínimos (barra lateral y contenido), sin librería de componentes.
+  - [x] T4.3 Cada vista es un componente con `<h1>{etiqueta}</h1>` y un párrafo "Próximamente". `Settings.svelte` lleva un hueco para la versión, que se rellena en T6.
+  - [x] T4.4 `app.css`: estilos mínimos (barra lateral y contenido), sin librería de componentes.
 - **Tests unitarios** (`App.test.ts`, `@testing-library/svelte`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -206,7 +206,7 @@ docs/DESARROLLO.md
   | `navega_a_cada_seccion` | click en cada botón (bucle sobre `SECTIONS`) | `h1` = etiqueta pulsada; exactamente 1 botón con `aria-current="page"` |
   | `click_en_la_activa_no_cambia` | click en "Explorar" estando en Explorar | sigue en Explorar, sin errores |
 
-### T5 — App Tauri y comando `app_info` (developer)
+### T5 — App Tauri y comando `app_info` (developer) ✅ hecha
 - **Ficheros/módulos:**
   - `Cargo.toml` (añade `src-tauri` a `members`, más `tauri` y `tauri-build` a `[workspace.dependencies]`);
   - `src-tauri/Cargo.toml`, `src-tauri/build.rs`, `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`, `src-tauri/icons/*`, `src-tauri/.gitignore`;
@@ -215,22 +215,23 @@ docs/DESARROLLO.md
 - **Depende de:** T1, T3 (`ui/dist` y la CLI)
 - **Cubre:** CA1, CA3, CA9
 - **Subtareas:**
-  - [ ] T5.1 Tests (rojo).
-  - [ ] T5.2 `src-tauri/Cargo.toml`:
+  - [x] T5.1 Tests (rojo).
+  - [x] T5.2 `src-tauri/Cargo.toml`:
     - paquete `app-llama` (D4) con `[lib] name = "app_llama_lib"`, `crate-type = ["rlib"]`;
     - dependencias `tauri` 2, `serde` y `app-llama-core = { path = "../crates/core" }`;
     - `[build-dependencies] tauri-build` 2;
     - `[dev-dependencies] tauri = { …, features = ["test"] }` y `serde_json`.
-  - [ ] T5.3 `tauri.conf.json` (schema v2):
+  - [x] T5.3 `tauri.conf.json` (schema v2):
     - `productName: "app-llama"`, sin `version` (se toma de Cargo);
-    - `identifier` según la pregunta abierta P1 (por defecto `com.devlitus.appllama`);
+    - `identifier: "io.github.devlitus.appllama"` (P1, decidido por el usuario);
     - `build.frontendDist: "../ui/dist"`, `build.devUrl: "http://localhost:5173"`, `beforeDevCommand: "npm --prefix ui run dev"` y `beforeBuildCommand: "npm --prefix ui run build"` (si la CLI no los ejecuta desde la raíz, se usa la forma `{ script, cwd }`; ver Riesgos);
+      - **Implementado:** se usa la forma `{ script, cwd: "../ui" }` en `beforeDevCommand` y `beforeBuildCommand` (desviación prevista en Riesgos).
     - una ventana `main` con `title: "app-llama"` y 1200×800;
     - `bundle.active: false` (el empaquetado es la fase 7).
-  - [ ] T5.4 `capabilities/default.json` con `windows: ["main"]` y `permissions: ["core:default"]`. Los comandos propios de la app no necesitan permiso.
-  - [ ] T5.5 Iconos: los de la plantilla oficial de `create-tauri-app` (generados con `npm --prefix ui run tauri -- icon <png>`). Son provisionales hasta la fase 7. `src-tauri/.gitignore` ignora `/target/` y `/gen/schemas`.
-  - [ ] T5.6 `commands.rs`: `#[tauri::command] pub fn app_info() -> AppInfo { app_llama_core::about::app_info() }`.
-  - [ ] T5.7 `lib.rs`:
+  - [x] T5.4 `capabilities/default.json` con `windows: ["main"]` y `permissions: ["core:default"]`. Los comandos propios de la app no necesitan permiso.
+  - [x] T5.5 Iconos: los de la plantilla oficial de `create-tauri-app` (generados con `npm --prefix ui run tauri -- icon <png>`). Son provisionales hasta la fase 7. `src-tauri/.gitignore` ignora `/target/` y `/gen/schemas`.
+  - [x] T5.6 `commands.rs`: `#[tauri::command] pub fn app_info() -> AppInfo { app_llama_core::about::app_info() }`.
+  - [x] T5.7 `lib.rs`:
     - `pub fn register<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R>`, que añade `invoke_handler(tauri::generate_handler![commands::app_info])`;
     - `pub fn run() -> Result<(), tauri::Error>`, que hace `register(tauri::Builder::default()).run(tauri::generate_context!())`.
     
@@ -242,14 +243,14 @@ docs/DESARROLLO.md
   | `ipc_app_info_responde` | `register(tauri::test::mock_builder())` + `mock_context(noop_assets())` + `get_ipc_response` con `cmd: "app_info"` | `Ok`, deserializa a `serde_json::Value` `{"name":"app-llama","version":"0.1.0"}` |
   | `ipc_comando_desconocido_falla` | igual, con `cmd: "no_existe"` | `Err` |
 
-### T6 — UI ↔ backend: versión en Ajustes (developer)
+### T6 — UI ↔ backend: versión en Ajustes (developer) ✅ hecha
 - **Ficheros/módulos:** `ui/src/lib/api.ts`, `ui/src/lib/api.test.ts`, `ui/src/views/Settings.svelte`, `ui/src/views/Settings.test.ts`
 - **Depende de:** T4, T5
 - **Cubre:** CA3 (lado UI), CA5
 - **Subtareas:**
-  - [ ] T6.1 Tests (rojo). `afterEach(clearMocks)`. Si jsdom no trae `crypto.getRandomValues`, se añade un polyfill determinista en el `setupFiles`.
-  - [ ] T6.2 `api.ts`: `export interface AppInfo { name: string; version: string }` y `export function getAppInfo(): Promise<AppInfo>`, que llama a `invoke<AppInfo>("app_info")`. Es el único punto de la UI que conoce el nombre del comando.
-  - [ ] T6.3 `Settings.svelte`: al montarse llama a `getAppInfo()`. Mientras carga muestra `Versión …`, si acaba bien `Versión {version}` y si falla `Versión no disponible`.
+  - [x] T6.1 Tests (rojo). `afterEach(clearMocks)`. Si jsdom no trae `crypto.getRandomValues`, se añade un polyfill determinista en el `setupFiles`.
+  - [x] T6.2 `api.ts`: `export interface AppInfo { name: string; version: string }` y `export function getAppInfo(): Promise<AppInfo>`, que llama a `invoke<AppInfo>("app_info")`. Es el único punto de la UI que conoce el nombre del comando.
+  - [x] T6.3 `Settings.svelte`: al montarse llama a `getAppInfo()`. Mientras carga muestra `Versión …`, si acaba bien `Versión {version}` y si falla `Versión no disponible`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -258,27 +259,30 @@ docs/DESARROLLO.md
   | `ajustes_muestra_version` | `render(Settings)` con el mock OK | `findByText("Versión 0.1.0")` |
   | `ajustes_version_no_disponible` | `render(Settings)` con el mock que lanza | `findByText("Versión no disponible")`, sin rechazos sin capturar |
 
-### T7 — CI con build de la app y guía de desarrollo (developer)
+### T7 — CI con build de la app y guía de desarrollo (developer) ✅ hecha
 - **Ficheros/módulos:** `.github/workflows/ci.yml`, `docs/DESARROLLO.md` (nuevo)
 - **Depende de:** T2, T5, T6
 - **Cubre:** CA7, CA9
 - **Subtareas:**
-  - [ ] T7.1 `ci.yml`: añadir tras "Quality gate" el paso `Build app` → `npm --prefix ui run tauri -- build --debug --no-bundle`. Los pasos de toolchain, cache y `npm ci` actuales no cambian: ya se activan solos al existir los ficheros. `Swatinem/rust-cache@v2` se mantiene en la raíz del workspace.
-  - [ ] T7.2 Comprobar en local (Windows) que el paso de R10 de la CI acepta `chore/003-esqueleto`.
-  - [ ] T7.3 `docs/DESARROLLO.md`:
+  - [x] T7.1 `ci.yml`: añadir tras "Quality gate" el paso `Build app` → `npm --prefix ui run tauri -- build --debug --no-bundle`. Los pasos de toolchain, cache y `npm ci` actuales no cambian: ya se activan solos al existir los ficheros. `Swatinem/rust-cache@v2` se mantiene en la raíz del workspace.
+  - [x] T7.2 Comprobar en local (Windows) que el paso de R10 de la CI acepta `chore/003-esqueleto`.
+  - [x] T7.3 `docs/DESARROLLO.md`:
     - prerrequisitos por SO (enlace a la página oficial de Tauri), Node ≥ 22.12 y Rust gestionado por `rust-toolchain.toml`;
     - comandos: `npm ci --prefix ui`, `npm --prefix ui run tauri -- dev`, `node scripts/quality-gate.mjs` y `npm --prefix ui run tauri -- build --debug --no-bundle`;
     - una nota: el gate compila la UI antes de Rust (D9).
 - **Tests unitarios:** no aplica (configuración de CI y documentación). La verificación es CA7, en el PR.
 
-### T8 — Verificación en vivo, revisión final y cierre (O + reviewer)
+### T8 — Verificación en vivo, revisión final y cierre (O + reviewer) ✅ hecha
 - **Depende de:** T1–T7
 - **Cubre:** CA7, CA8, y todos en la revisión
 - **Subtareas:**
-  - [ ] T8.1 (O) En Windows: `npm ci --prefix ui`, `npm --prefix ui run tauri -- dev`. Se comprueba la ventana, la navegación por las 5 secciones y `Versión 0.1.0` en Ajustes. Después, `git status --porcelain` vacío (CA9). Los resultados se anotan en este plan.
-  - [ ] T8.2 (O) macOS: solo la CI (CA7), mientras no haya un Mac (MVP §7.4). Se anota en el plan.
-  - [ ] T8.3 El orchestrator lanza el `reviewer` con el plan, el diff completo y `última tarea: sí`. El reviewer hace `session`, `flush` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
-  - [ ] T8.4 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`.
+  - [x] T8.1 (O) En Windows: `npm ci --prefix ui`, `npm --prefix ui run tauri -- dev`. Se comprueba la ventana, la navegación por las 5 secciones y `Versión 0.1.0` en Ajustes. Después, `git status --porcelain` vacío (CA9). Los resultados se anotan en este plan.
+    - **Resultado (2026-11-27):** `npm ci --prefix ui` sin cambios en `git status --porcelain`. `tauri dev` levanta Vite en 5173, compila en 7,7 s y abre la ventana `app-llama`. El usuario confirma las 5 secciones navegables, `Versión 0.1.0` en Ajustes y los estilos correctos (la CSP estricta no afecta al modo dev).
+  - [x] T8.2 (O) macOS: solo la CI (CA7), mientras no haya un Mac (MVP §7.4). Se anota en el plan.
+    - **Resultado (2026-11-27):** run 45953175348 (PR #26, commit `600f8f4`) en verde en `windows-latest` y `macos-latest`: `Quality gate` y `Build app` correctos en ambos.
+  - [x] T8.3 El orchestrator lanza el `reviewer` con el plan, el diff completo y `última tarea: sí`. El reviewer hace `session`, `flush` y, con `APPROVED`, `close`. Como máximo, 3 ciclos.
+  - [x] T8.4 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde → `Estado: hecho`.
+    - **Resultado (2026-11-27):** reviewer `APPROVED` en el ciclo 1, sin issues; memoria `003-esqueleto` cerrada; check de memoria y quality gate en verde.
 - **Tests unitarios:** no aplica (los automatizados son T1–T6).
 
 ## Fuera de alcance
@@ -307,5 +311,6 @@ docs/DESARROLLO.md
 
 ## Preguntas abiertas
 
-- **P1 — Identificador del bundle (`tauri.conf.json` → `identifier`).** Determina el directorio de datos de la app en las fases siguientes (crate `directories`), y cambiarlo después mueve los datos del usuario. La propuesta por defecto es `com.devlitus.appllama` (formato DNS inverso, sin terminar en `.app`, que macOS desaconseja). Hay que confirmarlo o dar otro antes de T5.
-- **P2 — Nombre visible de la app.** La propuesta es `app-llama` para `productName` y el título de la ventana. Se puede cambiar sin coste hasta la fase 7; no bloquea.
+- ~~P1 — Identificador del bundle.~~ **Resuelta (2026-11-26):** `io.github.devlitus.appllama`. No se cambia después de la primera release.
+- ~~P2 — Nombre visible de la app.~~ **Resuelta (2026-11-26):** `app-llama`.
+- **Nota (2026-11-26):** de momento no hay pruebas manuales en Mac; macOS se valida solo con la CI (T8.2).
