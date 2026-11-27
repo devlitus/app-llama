@@ -252,9 +252,9 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T1 (solo por el módulo)
 - **Cubre:** CA6
 - **Subtareas:**
-  - [ ] T4.1 Constantes `FALLBACK_CTX = 4096`, `MAX_ESTIMATION_CTX = 8192`, `OVERHEAD_BYTES = 536_870_912` y `KV_BYTES_PER_TOKEN_PER_BILLION = 16_384`.
-  - [ ] T4.2 `estimation_ctx(context_length: Option<u64>) -> u32`: `min(context_length, MAX_ESTIMATION_CTX)` si es `Some(n)` con `n > 0`; `FALLBACK_CTX` si es `None` o `Some(0)`.
-  - [ ] T4.3 `estimate_memory(file_bytes: u64, params_total: Option<u64>, ctx: u32) -> MemoryEstimate { bytes: u64, kv_included: bool }`, con aritmética `u128` y saturación a `u64::MAX`.
+  - [x] T4.1 Constantes `FALLBACK_CTX = 4096`, `MAX_ESTIMATION_CTX = 8192`, `OVERHEAD_BYTES = 536_870_912` y `KV_BYTES_PER_TOKEN_PER_BILLION = 16_384`.
+  - [x] T4.2 `estimation_ctx(context_length: Option<u64>) -> u32`: `min(context_length, MAX_ESTIMATION_CTX)` si es `Some(n)` con `n > 0`; `FALLBACK_CTX` si es `None` o `Some(0)`.
+  - [x] T4.3 `estimate_memory(file_bytes: u64, params_total: Option<u64>, ctx: u32) -> MemoryEstimate { bytes: u64, kv_included: bool }`, con aritmética `u128` y saturación a `u64::MAX`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

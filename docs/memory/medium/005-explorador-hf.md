@@ -75,3 +75,25 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T4
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | ab767607f0d9e1ffc | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T4 memory.rs con estimation_ctx y estimate_memory (u128, KV truncado por token), 14 tests de la tabla.
+- C1 · reviewer · T4 estimación de memoria correcta; 14 tests de la tabla con entradas exactas; aritmética CA6 verificada a mano; gate verde
+
+### Decisiones
+
+- **aritmetica-u128-sin-desborde** — el peor caso intermedio (u64::MAX*16384*u32::MAX ~ 2^80) cabe en u128, así que la saturación final a u64::MAX basta (C1)
+- **refactor-equivalente** — kv_cache_bytes aparte para truncar B/token antes de multiplicar por ctx. (C1)
+
+### Errores
+
+- (ninguno)
