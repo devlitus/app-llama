@@ -99,3 +99,26 @@ estado: abierto
 
 - **rama-inalcanzable** — cuda_version tiene un brazo _ => (0,0) inalcanzable; mejor llevar (major, minor) en el filter_map (minor) (C1)
 - **reserva-sin-test** — BackendPreference deriva Deserialize con rename_all lowercase sin test que lo fije (minor) (C1)
+
+## T5
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a99603e7b78627d21 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T5 descargador simple (fetch.rs, CancelToken, SimpleHttpFetcher) con 9 tests wiremock; hallazgos de T1 y T4 corregidos
+- C1 · reviewer · T5 C1 descargador simple: CA5 cubierto y gate verde; solo minors (tamaño sin corte temprano, cancelación a mitad sin test, part_of duplicado)
+
+### Decisiones
+
+- **limitacion-documentada** — tamaño comprobado al final y cancelación entre bloques aceptados como minor; 006 aportará el descargador robusto (C1)
+- **refactor-equivalente** — cuda_version eliminado: el filter_map devuelve ((major, minor), candidate) y max_by_key usa esa tupla (C1)
+
+### Errores
+
+- **reserva-sin-test** — la rama de cancelación con .part ya creado (fetch.rs:81) no tiene test; solo se prueba la cancelación previa a la petición (C1)
+- **validacion-hex-laxa** — Asset::sha256 aceptaba "+f" repetido con from_str_radix; ahora hex::decode_to_slice con test de regresión (C1)

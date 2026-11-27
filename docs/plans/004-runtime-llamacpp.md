@@ -128,7 +128,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Selección (`select_install`)**, sobre los assets compatibles con el SO y la arquitectura de la máquina:
   - CUDA solo si hay GPU NVIDIA con `driver_cuda` detectado. Se elige la versión de mayor número cuyo `major ≤ driver_cuda.major` (compatibilidad de versión menor de CUDA). Exige el cudart de la misma versión y arquitectura; si falta, ese candidato se descarta.
   - Vulkan solo si `vulkan_available`. Metal solo en macOS arm64.
-  - CPU: se prefiere `Generic`. Si no existe (releases antiguas), la mayor `isa` soportada por la CPU.
+  - CPU: la mayor `isa` soportada por la CPU, con `Generic` como mínimo. `Avx` y `Avx2` se consideran soportadas si `avx2 || avx512` (no hay detección de AVX a secas) y `Avx512` si `avx512`. En las releases actuales solo existe `Generic`; en las antiguas, `noavx` (= `Generic`) solo se elige si la CPU no soporta ninguna otra.
   - `Auto` = primer candidato disponible en el orden **CUDA > Metal > Vulkan > CPU** (D4). Con una preferencia explícita no disponible → `RuntimeError::BackendUnavailable`.
   - `available_backends(release, hw)` devuelve la lista para el selector de la UI.
 - **Instalación** (`RuntimeManager::install`), con un solo proceso a la vez (`AlreadyInstalling`):
@@ -291,12 +291,12 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T1
 - **Cubre:** CA5
 - **Subtareas:**
-  - [ ] T5.1 `#[async_trait] trait ArtifactFetcher { async fn fetch(&self, req: FetchRequest, progress: &(dyn Fn(u64, u64) + Send + Sync), cancel: &CancelToken) -> Result<(), RuntimeError>; }`, con `FetchRequest { url, dest: PathBuf, expected_size: u64, sha256: Option<[u8; 32]> }`. Doc-comment: "el plan 006 aportará una implementación con reanudación".
-  - [ ] T5.2 `SimpleHttpFetcher` (con `reqwest::Client` inyectado):
+  - [x] T5.1 `#[async_trait] trait ArtifactFetcher { async fn fetch(&self, req: FetchRequest, progress: &(dyn Fn(u64, u64) + Send + Sync), cancel: &CancelToken) -> Result<(), RuntimeError>; }`, con `FetchRequest { url, dest: PathBuf, expected_size: u64, sha256: Option<[u8; 32]> }`. Doc-comment: "el plan 006 aportará una implementación con reanudación".
+  - [x] T5.2 `SimpleHttpFetcher` (con `reqwest::Client` inyectado):
     - Descarga en streaming a `<dest>.part`, calculando el SHA256 sobre la marcha y llamando a `progress(done, total)` por bloque.
     - Al terminar, comprueba tamaño y hash y renombra a `dest`.
     - Con error HTTP, de tamaño, de hash o cancelación, borra `.part`.
-  - [ ] T5.3 `CancelToken` (`Arc<AtomicBool>`, `cancel()`, `is_cancelled()`).
+  - [x] T5.3 `CancelToken` (`Arc<AtomicBool>`, `cancel()`, `is_cancelled()`).
 - **Tests unitarios** (`wiremock` en `127.0.0.1`, `tempfile`, `#[tokio::test]`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|

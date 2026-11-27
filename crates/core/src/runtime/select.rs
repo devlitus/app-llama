@@ -129,7 +129,7 @@ fn cuda_candidate<'a>(assets: &[ClassifiedAsset<'a>], hw: &HardwareInfo) -> Opti
     let driver = hw.driver_cuda?;
     assets_of(assets, AssetKind::Main)
         .filter_map(|(main, backend)| {
-            let Backend::Cuda { major, .. } = backend else {
+            let Backend::Cuda { major, minor } = backend else {
                 return None;
             };
             if major > driver.major {
@@ -137,20 +137,15 @@ fn cuda_candidate<'a>(assets: &[ClassifiedAsset<'a>], hw: &HardwareInfo) -> Opti
             }
             let (cudart, _) =
                 assets_of(assets, AssetKind::Cudart).find(|(_, found)| *found == backend)?;
-            Some(Candidate {
+            let candidate = Candidate {
                 backend,
                 main,
                 cudart: Some(cudart),
-            })
+            };
+            Some(((major, minor), candidate))
         })
-        .max_by_key(|candidate| cuda_version(candidate.backend))
-}
-
-fn cuda_version(backend: Backend) -> (u32, u32) {
-    match backend {
-        Backend::Cuda { major, minor } => (major, minor),
-        _ => (0, 0),
-    }
+        .max_by_key(|(version, _)| *version)
+        .map(|(_, candidate)| candidate)
 }
 
 /// El build con más instrucciones que la CPU soporta. `Generic` (la build actual) lleva

@@ -31,14 +31,11 @@ impl Asset {
 }
 
 fn decode_sha256_hex(hex: &str) -> Option<[u8; 32]> {
-    if hex.len() != SHA256_HEX_LEN || !hex.is_ascii() {
+    if hex.len() != SHA256_HEX_LEN {
         return None;
     }
     let mut bytes = [0u8; 32];
-    for (byte, pair) in bytes.iter_mut().zip(hex.as_bytes().chunks(2)) {
-        let pair = std::str::from_utf8(pair).ok()?;
-        *byte = u8::from_str_radix(pair, 16).ok()?;
-    }
+    hex::decode_to_slice(hex, &mut bytes).ok()?;
     Some(bytes)
 }
 
@@ -155,11 +152,13 @@ mod tests {
     fn sha256_digest_invalido_o_ausente() {
         let sixty_four_a = "a".repeat(64);
         let sixty_four_z = "z".repeat(64);
+        let signed_pairs = "+f".repeat(32);
         let invalid = [
             None,
             Some(format!("md5:{sixty_four_a}")),
             Some("sha256:abc".to_string()),
             Some(format!("sha256:{sixty_four_z}")),
+            Some(format!("sha256:{signed_pairs}")),
         ];
         for digest in invalid {
             assert_eq!(asset_with_digest(digest.as_deref()).sha256(), None);
