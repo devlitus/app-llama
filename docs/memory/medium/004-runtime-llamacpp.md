@@ -122,3 +122,29 @@ estado: abierto
 
 - **reserva-sin-test** — la rama de cancelación con .part ya creado (fetch.rs:81) no tiene test; solo se prueba la cancelación previa a la petición (C1)
 - **validacion-hex-laxa** — Asset::sha256 aceptaba "+f" repetido con from_str_radix; ahora hex::decode_to_slice con test de regresión (C1)
+
+## T6
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 1 | a2af751013ba9b0e9 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-27 | 1 | a85a928aa5d3ad242 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T6 extract.rs (zip/tar.gz seguro + find_server_binary) y hallazgos de T5 en fetch.rs (límite de tamaño en streaming, Content-Length, cancelación)
+- C1 · reviewer · extracción zip/tar.gz y find_server_binary correctas salvo que la comprobación de symlinks del tar.gz se elude; gate verde
+- C2 · developer · T6 ciclo 2: extracción tar.gz endurecida (destino de enlaces sin .., ./ ignorado, sin entradas bajo symlinks), find_server solo ficheros regulares, modos enmascarados.
+- C2 · reviewer · T6 C2 aprobada; el escape por symlinks de #29 queda cerrado (verificado con PoC) y el gate está en verde
+
+### Decisiones
+
+- **limitacion-documentada** — los tests de symlink que dependen de privilegios solo corren en Unix; la comprobación de ancestros es una defensa en profundidad sin test propio (minor) (C1, C2)
+- **refactor-equivalente** — min_by sin clonar y set_mask(0o7000) en tar, & 0o777 en zip. (C1, C2)
+
+### Errores
+
+- **reserva-sin-test** — los tests de ./l y encadenado fallan por el destino '..' y no ejercitan has_symlink_ancestor ni normal_components (extract.rs:109-111, 137-148) (C2)
+- **symlink-forma-eludible** — validar symlinks por la forma de la ruta se eludía con ./ y encadenado; ahora se rechaza el destino con .. y se rastrean symlinks (#29). (C1, C2 · #29)

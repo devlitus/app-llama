@@ -43,7 +43,7 @@ impl CancelToken {
         self.0.load(Ordering::SeqCst)
     }
 
-    fn check(&self) -> Result<(), RuntimeError> {
+    pub(super) fn check(&self) -> Result<(), RuntimeError> {
         if self.is_cancelled() {
             Err(RuntimeError::Cancelled)
         } else {
@@ -73,6 +73,15 @@ impl SimpleHttpFetcher {
         if !response.status().is_success() {
             return Err(RuntimeError::HttpStatus(response.status().as_u16()));
         }
+        if let Some(announced) = response
+            .content_length()
+            .filter(|n| *n != req.expected_size)
+        {
+            return Err(RuntimeError::SizeMismatch {
+                expected: req.expected_size,
+                actual: announced,
+            });
+        }
         let mut file = tokio::fs::File::create(part).await?;
         let mut hasher = Sha256::new();
         let mut done = 0u64;
@@ -83,8 +92,17 @@ impl SimpleHttpFetcher {
             file.write_all(&chunk).await?;
             hasher.update(&chunk);
             done += chunk.len() as u64;
+            // Corta antes de llenar el disco con un servidor que envía de más.
+            if done > req.expected_size {
+                return Err(RuntimeError::SizeMismatch {
+                    expected: req.expected_size,
+                    actual: done,
+                });
+            }
             progress(done, req.expected_size);
         }
+        // `progress` puede cancelar tras el último bloque.
+        cancel.check()?;
         file.flush().await?;
         verify(req, done, hasher.finalize().into())?;
         tokio::fs::rename(part, &req.dest).await?;
@@ -150,12 +168,6 @@ mod tests {
         Sha256::digest(bytes).into()
     }
 
-    fn part_of(dest: &Path) -> PathBuf {
-        let mut name = dest.as_os_str().to_owned();
-        name.push(".part");
-        PathBuf::from(name)
-    }
-
     async fn serve(body: Vec<u8>) -> MockServer {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -182,7 +194,30 @@ mod tests {
 
     fn assert_no_files(dest: &Path) {
         assert!(!dest.exists());
-        assert!(!part_of(dest).exists());
+        assert!(!part_path(dest).exists());
+    }
+
+    /// Servidor HTTP/1.1 de una sola respuesta con `Transfer-Encoding: chunked`.
+    fn serve_chunked(chunks: Vec<Vec<u8>>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            let mut response = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
+            for chunk in chunks {
+                response.extend(format!("{:x}\r\n", chunk.len()).into_bytes());
+                response.extend(chunk);
+                response.extend(b"\r\n");
+            }
+            response.extend(b"0\r\n\r\n");
+            let _ = stream.write_all(&response);
+        });
+        format!("http://{addr}/asset")
     }
 
     async fn run(req: FetchRequest, cancel: &CancelToken) -> Result<(), RuntimeError> {
@@ -202,7 +237,7 @@ mod tests {
         run(req, &CancelToken::default()).await.unwrap();
 
         assert_eq!(std::fs::read(&dest).unwrap(), body);
-        assert!(!part_of(&dest).exists());
+        assert!(!part_path(&dest).exists());
     }
 
     #[tokio::test]
@@ -317,6 +352,60 @@ mod tests {
         run(req, &CancelToken::default()).await.unwrap();
 
         assert!(dest.exists());
+    }
+
+    #[tokio::test]
+    async fn fetch_tamano_excedido() {
+        let server = serve(content()).await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("a.zip");
+        let req = request(&server, dest.clone(), MIB as u64 - 1, None);
+
+        let result = run(req, &CancelToken::default()).await;
+
+        assert!(matches!(
+            result,
+            Err(RuntimeError::SizeMismatch { expected, .. }) if expected == MIB as u64 - 1
+        ));
+        assert_no_files(&dest);
+    }
+
+    // Sin Content-Length (chunked) el exceso solo se detecta durante la descarga.
+    #[tokio::test]
+    async fn fetch_chunked_excedido() {
+        let url = serve_chunked(vec![vec![1u8; 600], vec![2u8; 600]]);
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("a.zip");
+        let req = FetchRequest {
+            url,
+            dest: dest.clone(),
+            expected_size: 1000,
+            sha256: None,
+        };
+
+        let result = run(req, &CancelToken::default()).await;
+
+        assert!(matches!(
+            result,
+            Err(RuntimeError::SizeMismatch { expected: 1000, actual }) if actual > 1000
+        ));
+        assert_no_files(&dest);
+    }
+
+    #[tokio::test]
+    async fn fetch_cancelado_a_mitad_de_descarga() {
+        let server = serve(content()).await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("a.zip");
+        let req = request(&server, dest.clone(), MIB as u64, None);
+        let cancel = CancelToken::default();
+
+        let result = SimpleHttpFetcher::new(reqwest::Client::new())
+            .fetch(req, &|_, _| cancel.cancel(), &cancel)
+            .await;
+
+        assert!(matches!(result, Err(RuntimeError::Cancelled)));
+        assert_no_files(&dest);
     }
 
     #[test]

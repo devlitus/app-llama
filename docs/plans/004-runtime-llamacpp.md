@@ -315,11 +315,11 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T2 (`ArchiveFormat`), T5 (`CancelToken`)
 - **Cubre:** CA6
 - **Subtareas:**
-  - [ ] T6.1 `extract_archive(archive: &Path, format, dest: &Path, cancel) -> Result<(), RuntimeError>`:
+  - [x] T6.1 `extract_archive(archive: &Path, format, dest: &Path, cancel) -> Result<(), RuntimeError>`:
     - Zip con `enclosed_name()`; tar.gz con `Entry::unpack_in` y modos preservados.
     - Rechaza las rutas absolutas, `..` y los enlaces simbólicos que apuntan fuera de `dest` (`UnsafeArchivePath`).
-  - [ ] T6.2 `find_server_binary(root: &Path, os) -> Result<PathBuf, RuntimeError>`: busca `llama-server.exe` (Windows) o `llama-server` (macOS) con profundidad ≤ 4, sin suponer la estructura del archivo. Si hay varios, el menos profundo; con empate, el primero en orden lexicográfico. Si no hay ninguno, `ServerBinaryNotFound`.
-  - [ ] T6.3 Los archivos de prueba se generan en el propio test con `zip`/`tar` en un `tempdir` (sin binarios versionados).
+  - [x] T6.2 `find_server_binary(root: &Path, os) -> Result<PathBuf, RuntimeError>`: busca `llama-server.exe` (Windows) o `llama-server` (macOS) con profundidad ≤ 4, sin suponer la estructura del archivo. Si hay varios, el menos profundo; con empate, el primero en orden lexicográfico. Si no hay ninguno, `ServerBinaryNotFound`.
+  - [x] T6.3 Los archivos de prueba se generan en el propio test con `zip`/`tar` en un `tempdir` (sin binarios versionados).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

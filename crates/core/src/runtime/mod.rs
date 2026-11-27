@@ -1,5 +1,6 @@
 //! Detección de hardware e instalación o selección de llama.cpp (fase 1).
 mod asset;
+mod extract;
 mod fetch;
 mod hardware;
 mod process;
@@ -11,6 +12,7 @@ mod test_support;
 pub use asset::{
     Arch, ArchiveFormat, AssetDescriptor, AssetKind, Backend, CpuIsa, Os, classify_asset,
 };
+pub use extract::{extract_archive, find_server_binary};
 pub use fetch::{ArtifactFetcher, CancelToken, FetchRequest, SimpleHttpFetcher};
 pub use hardware::{CudaVersion, GpuInfo, HardwareInfo, NativeProbe, SystemProbe, detect};
 pub use release::{Asset, Release, build_number, latest_build_release, parse_releases};
@@ -41,4 +43,10 @@ pub enum RuntimeError {
     IntegrityMismatch,
     #[error("operación cancelada")]
     Cancelled,
+    #[error("el archivo contiene una ruta que sale del directorio de destino: {0}")]
+    UnsafeArchivePath(String),
+    #[error("no se pudo extraer el archivo: {0}")]
+    Extract(String),
+    #[error("no se encontró llama-server en el archivo extraído")]
+    ServerBinaryNotFound,
 }
