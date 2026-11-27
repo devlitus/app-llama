@@ -610,7 +610,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 - **Depende de:** T1–T14
 - **Cubre:** CA14
 - **Subtareas:**
-  - [ ] T15.1 Reviewer con el diff completo y `última tarea: sí` → `flush` y, con `APPROVED`, `close`.
+  - [x] T15.1 Reviewer con el diff completo y `última tarea: sí` → `flush` y, con `APPROVED`, `close`.
   - [ ] T15.2 `node scripts/memory.mjs check` y `node scripts/quality-gate.mjs` en verde, y CI verde en Windows y macOS → `Estado: hecho`.
 - **Tests unitarios:** no aplica.
 

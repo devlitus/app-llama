@@ -1,10 +1,48 @@
 ---
 schema: memoria-plan/2
 plan: 004-runtime-llamacpp
-estado: abierto
+estado: cerrado
 ---
 
 # Memoria del plan 004-runtime-llamacpp
+
+## Patrones del plan
+
+### Decisiones
+
+- **analizador-null-ante-duda** — x-ratelimit-reset no numérico, negativo o decimal se degrada a reset_epoch None sin error; correcto, sin test propio (T9)
+- **backend-externo-opcional** — Option<Backend> con serde(default) lee runtime.json previos como Some y externos/null como None; verificado con tests (T10)
+- **consola-oculta-compartida** — hide_console_async en process.rs reutiliza CREATE_NO_WINDOW; CommandOutput lleva exit_code Option<i32> (T7)
+- **cpu-mayor-isa** — CPU elige la mayor ISA soportada con Generic como minimo: el Diseño contradice su propia tabla de tests y prevalecen los tests (T4)
+- **csp-estricta** — progreso con <progress> sin style en línea; JSON de Rust fijado en un test para que los tipos TS no diverjan (T12, T13)
+- **cuda-por-driver** — CUDA basta con driver_cuda (solo lo produce nvidia-smi) y compara solo major, segun el Diseño (T4)
+- **directorio-por-tag-y-backend** — free_destination saca final_dir de pending_cleanup tras clear_residual y antes del rename; si el rename falla no se pierde nada porque el destino ya no existe (T11, T12)
+- **formato-version-dual** — la cabecera de nvidia-smi se acepta en formato antiguo (CUDA Version) y nuevo (CUDA UMD Version) en la misma linea (T14)
+- **limitacion-documentada** — los minors de T14 (condición hint duplicada, fixture del aviso distinto del plan) y el parser CUDA por primera línea quedan documentados sin corregir (T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T13, T14, T15)
+- **limpieza-best-effort** — el token de cancelación se libera tras install con éxito o error; pánico queda como minor (guarda RAII recomendada) (T11, T12)
+- **refactor-equivalente** — la acción se decide por kind y no por la etiqueta; busy común deshabilita selector, primario y binario externo (T1, T2, T3, T5, T6, T7, T8, T9, T10, T11, T13)
+
+### Errores
+
+- **acoplamiento-por-etiqueta** — El componente comparaba action.label con una constante; corregido con kind. (T13)
+- **aserto-debil** — escapes de ruta Windows rotos al generar tests con script; el lint los detectó (T2, T3, T11, T13, T14)
+- **carrera-pending-cleanup** — status() entre rename y modify_state borraba el runtime recien instalado; corregido con free_destination previo al rename (T11, T12)
+- **condicion-sin-test** — la condición extra !installing que oculta el aviso durante la instalación está en el .svelte, duplicada, sin test ni reflejo en T13.5 (minor) (T14)
+- **consola-visible-windows** — NativeProbe::run sin CREATE_NO_WINDOW hace parpadear consolas en la release de Windows #28 (T3 · #28)
+- **corrupto-sin-copia** — load() con bytes no UTF-8 devolvía Default sin .bak (#30). (T8 · #30)
+- **dato-inventado** — el parser solo conocia la etiqueta antigua; el formato de nvidia-smi cambia entre drivers, validar con fixtures reales (T10, T14 · #31)
+- **exito-reportado-como-error** — si falla el listado del paso 9, install devuelve Err con el runtime nuevo ya activo (T11)
+- **fixture-distinto-del-plan** — runtime_settings_aviso_backends usa External b12000 e installed null en vez de Managed b12816 Cpu de la tabla del plan (T14, T15)
+- **notfound-no-es-exito** — retry_pending_cleanup dejaba rutas inexistentes pendientes para siempre; ahora NotFound cuenta como borrado (#32) (T10 · #32)
+- **plan-desalineado** — el paso 8 del plan dice que final_dir sale de pending_cleanup en la misma escritura; ahora ocurre antes del rename (minor) (T12)
+- **rama-inalcanzable** — cuda_version tiene un brazo _ => (0,0) inalcanzable; mejor llevar (major, minor) en el filter_map (minor) (T4)
+- **rename-sobre-existente** — rename de staging a runtime/<tag> falla con Io al reinstalar el mismo tag con otro backend #33 (T11 · #33)
+- **reserva-sin-test** — CA12 Cancelar y reseteo de installing/unlisten sin test de componente; se dio por difícil pero mockIPC(..., { shouldMockEvents: true }) de @tauri-apps/api 2.12.5 lo permite (T2, T4, T5, T6, T8, T9, T10, T11, T13 · #33)
+- **ruta-relativa-con-cwd** — verify_server usa cwd=parent del binario; con ruta relativa en Unix el programa se resuelve tras chdir y falla (minor, produccion usa rutas absolutas) (T7)
+- **staging-reutilizado** — si no se pudo borrar .staging-<tag> huérfano, la extracción mezcla contenido viejo y nuevo (T11)
+- **symlink-forma-eludible** — validar symlinks por la forma de la ruta se eludía con ./ y encadenado; ahora se rechaza el destino con .. y se rastrean symlinks (#29). (T6 · #29)
+- **token-sin-guarda-raii** — finish_install no se ejecuta si install entra en pánico: runtime_install respondería AlreadyInstalling hasta reiniciar (minor) (T12)
+- **validacion-hex-laxa** — Asset::sha256 aceptaba "+f" repetido con from_str_radix; ahora hex::decode_to_slice con test de regresión (T1, T2, T5)
 
 ## T1
 
@@ -14,19 +52,6 @@ estado: abierto
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | a7c554070d131c111 | verde | APPROVED |
 
-### Resúmenes
-
-- C1 · developer · T1 plan 004: modelo Release/Asset, parse_releases, build_number, sha256, latest_build_release y RuntimeError inicial, con fixtures.
-- C1 · reviewer · T1 aprobada; gate verde, CA4 y los 9 tests del plan presentes; solo hallazgos minor
-
-### Decisiones
-
-- **refactor-equivalente** — se acepta decodificar hex a mano sin el crate hex hasta T5 y mod release privado con re-exports (C1)
-
-### Errores
-
-- **validacion-hex-laxa** — decode_sha256_hex acepta '+' porque u8::from_str_radix admite signo; minor, falla en lado seguro (C1)
-
 ## T2
 
 ### Ciclos
@@ -34,22 +59,6 @@ estado: abierto
 | Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | aa060e1b875ac7db1 | verde | APPROVED |
-
-### Resúmenes
-
-- C1 · developer · T2 clasificación de assets por tokens (asset.rs) y ReleaseParse sin duplicar el error de serde
-- C1 · reviewer · classify_asset por tokens cumple el Diseño y los 8 tests del plan; gate verde; solo hallazgos minor
-
-### Decisiones
-
-- **limitacion-documentada** — la sensibilidad a mayúsculas y la doble tolerancia de "cu" se aceptan como minor sin issue (C1)
-- **refactor-equivalente** — ReleaseParse mantiene #[source] y el mensaje ya no incluye {0} (C1)
-
-### Errores
-
-- **aserto-debil** — clasificacion_sensible_a_mayusculas falla por la extensión .ZIP antes de mirar los tokens; no prueba lo que dice (C1)
-- **reserva-sin-test** — Escribí tests y código a la vez, sin comprobar antes el rojo del TDD (C1)
-- **validacion-hex-laxa** — el brazo [version] quita "cu" dos veces: "win-cucu12.4-x64.zip" se clasifica como Cuda{12,4} (C1)
 
 ## T3
 
@@ -60,22 +69,6 @@ estado: abierto
 | 1 | 2026-11-27 | 1 | af1acb609ece412c4 | verde | CHANGES_REQUESTED |
 | 2 | 2026-11-27 | 0 | a8395a4fa2e892007 | verde | APPROVED |
 
-### Resúmenes
-
-- C1 · developer · T3 detección de hardware (SystemProbe, detect, parsers nvidia-smi, FakeProbe) y correcciones de T2 en asset.rs
-- C1 · reviewer · deteccion de hardware correcta y CA1 cubierto; NativeProbe::run lanza nvidia-smi sin CREATE_NO_WINDOW en una app GUI
-- C2 · reviewer · ciclo 2 de T3 correcto; hide_console, run_with_timeout de 10 s, supertrait Send+Sync y run_count tolerante a envenenamiento resuelven #28 y los minors
-
-### Decisiones
-
-- **limitacion-documentada** — nieto que herede stdout y aserto elapsed<20 s aceptados como minor por el orchestrator (C1, C2)
-- **refactor-equivalente** — prefijo cu de CUDA se quita solo en el brazo de parse_backend, parse_cuda_version recibe la versión limpia (C1)
-
-### Errores
-
-- **aserto-debil** — FakeProbe::run descarta el registro si el mutex está envenenado mientras run_count lo recupera; incoherencia menor (C1, C2)
-- **consola-visible-windows** — NativeProbe::run sin CREATE_NO_WINDOW hace parpadear consolas en la release de Windows #28 (C1 · #28)
-
 ## T4
 
 ### Ciclos
@@ -84,22 +77,6 @@ estado: abierto
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | abb1afe09c37e59fd | verde | APPROVED |
 
-### Resúmenes
-
-- C1 · developer · T4 select.rs (BackendPreference, InstallPlan, available_backends, select_install, is_compatible) con 16 tests; fixture b12780 ampliado y FakeProbe::run sin perder llamadas con mutex envenenado.
-- C1 · reviewer · select.rs cubre CA2/CA3 con los 16 tests de la tabla; gate verde; solo minors
-
-### Decisiones
-
-- **cpu-mayor-isa** — CPU elige la mayor ISA soportada con Generic como minimo: el Diseño contradice su propia tabla de tests y prevalecen los tests (C1)
-- **cuda-por-driver** — CUDA basta con driver_cuda (solo lo produce nvidia-smi) y compara solo major, segun el Diseño (C1)
-- **limitacion-documentada** — CPU elige la mayor ISA soportada con Generic como mínimo (el plan decía preferir Generic, que contradice legacy_cpu_mejor_isa); CpuIsa deriva Ord. (C1)
-
-### Errores
-
-- **rama-inalcanzable** — cuda_version tiene un brazo _ => (0,0) inalcanzable; mejor llevar (major, minor) en el filter_map (minor) (C1)
-- **reserva-sin-test** — BackendPreference deriva Deserialize con rename_all lowercase sin test que lo fije (minor) (C1)
-
 ## T5
 
 ### Ciclos
@@ -107,21 +84,6 @@ estado: abierto
 | Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | a99603e7b78627d21 | verde | APPROVED |
-
-### Resúmenes
-
-- C1 · developer · T5 descargador simple (fetch.rs, CancelToken, SimpleHttpFetcher) con 9 tests wiremock; hallazgos de T1 y T4 corregidos
-- C1 · reviewer · T5 C1 descargador simple: CA5 cubierto y gate verde; solo minors (tamaño sin corte temprano, cancelación a mitad sin test, part_of duplicado)
-
-### Decisiones
-
-- **limitacion-documentada** — tamaño comprobado al final y cancelación entre bloques aceptados como minor; 006 aportará el descargador robusto (C1)
-- **refactor-equivalente** — cuda_version eliminado: el filter_map devuelve ((major, minor), candidate) y max_by_key usa esa tupla (C1)
-
-### Errores
-
-- **reserva-sin-test** — la rama de cancelación con .part ya creado (fetch.rs:81) no tiene test; solo se prueba la cancelación previa a la petición (C1)
-- **validacion-hex-laxa** — Asset::sha256 aceptaba "+f" repetido con from_str_radix; ahora hex::decode_to_slice con test de regresión (C1)
 
 ## T6
 
@@ -132,23 +94,6 @@ estado: abierto
 | 1 | 2026-11-27 | 1 | a2af751013ba9b0e9 | verde | CHANGES_REQUESTED |
 | 2 | 2026-11-27 | 1 | a85a928aa5d3ad242 | verde | APPROVED |
 
-### Resúmenes
-
-- C1 · developer · T6 extract.rs (zip/tar.gz seguro + find_server_binary) y hallazgos de T5 en fetch.rs (límite de tamaño en streaming, Content-Length, cancelación)
-- C1 · reviewer · extracción zip/tar.gz y find_server_binary correctas salvo que la comprobación de symlinks del tar.gz se elude; gate verde
-- C2 · developer · T6 ciclo 2: extracción tar.gz endurecida (destino de enlaces sin .., ./ ignorado, sin entradas bajo symlinks), find_server solo ficheros regulares, modos enmascarados.
-- C2 · reviewer · T6 C2 aprobada; el escape por symlinks de #29 queda cerrado (verificado con PoC) y el gate está en verde
-
-### Decisiones
-
-- **limitacion-documentada** — los tests de symlink que dependen de privilegios solo corren en Unix; la comprobación de ancestros es una defensa en profundidad sin test propio (minor) (C1, C2)
-- **refactor-equivalente** — min_by sin clonar y set_mask(0o7000) en tar, & 0o777 en zip. (C1, C2)
-
-### Errores
-
-- **reserva-sin-test** — los tests de ./l y encadenado fallan por el destino '..' y no ejercitan has_symlink_ancestor ni normal_components (extract.rs:109-111, 137-148) (C2)
-- **symlink-forma-eludible** — validar symlinks por la forma de la ruta se eludía con ./ y encadenado; ahora se rechaza el destino con .. y se rastrean symlinks (#29). (C1, C2 · #29)
-
 ## T7
 
 ### Ciclos
@@ -156,21 +101,6 @@ estado: abierto
 | Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | a514f403df71c417f | verde | APPROVED |
-
-### Resúmenes
-
-- C1 · developer · T7 verify.rs (parse_version, CommandRunner, TokioCommandRunner, verify_server, remove_quarantine), FakeRunner y tests de extract del hallazgo de T6
-- C1 · reviewer · T7 C1 aprobada; verify_server, remove_quarantine, TokioCommandRunner y FakeRunner cubren los 14 tests del plan, gate verde
-
-### Decisiones
-
-- **consola-oculta-compartida** — hide_console_async en process.rs reutiliza CREATE_NO_WINDOW; CommandOutput lleva exit_code Option<i32> (C1)
-- **limitacion-documentada** — remove_quarantine rechaza rutas no UTF-8 con QuarantineFailed; aceptable porque APFS exige nombres UTF-8 (C1)
-- **refactor-equivalente** — CommandRunner Send+Sync y &dyn CommandRunner aceptados: necesarios para Arc<dyn> en T10 (C1)
-
-### Errores
-
-- **ruta-relativa-con-cwd** — verify_server usa cwd=parent del binario; con ruta relativa en Unix el programa se resuelve tras chdir y falla (minor, produccion usa rutas absolutas) (C1)
 
 ## T8
 
@@ -181,23 +111,6 @@ estado: abierto
 | 1 | 2026-11-27 | 1 | a8d296d0c00cff5d2 | verde | CHANGES_REQUESTED |
 | 2 | 2026-11-27 | 1 | a63b097742c4ffbdc | verde | APPROVED |
 
-### Resúmenes
-
-- C1 · developer · T8 estado persistido del runtime (state.rs) con StateStore atómico y status_of; Serialize/Deserialize en Backend, CpuIsa, RuntimeVersion
-- C1 · reviewer · T8 estado persistido; gate verde y 10 tests del plan, pero load() trata la lectura no UTF-8 y otros errores de E/S como inexistente, sin .bak (CA11)
-- C2 · developer · T8 ciclo 2: load() devuelve Result, lee bytes (no UTF-8 cuenta como corrupto) y propaga errores de E/S; tests nuevos.
-- C2 · reviewer · T8 C2 aprobada; load() devuelve Result, no UTF-8 hace .bak y errores de E/S no se enmascaran (#30 resuelto)
-
-### Decisiones
-
-- **limitacion-documentada** — StateStore documenta que no es seguro para escrituras concurrentes; la serialización queda para T10 (C1, C2)
-- **refactor-equivalente** — load() devuelve Default ante corrupto/schema desconocido y copia a .bak best-effort (C1)
-
-### Errores
-
-- **corrupto-sin-copia** — load() con bytes no UTF-8 devolvía Default sin .bak (#30). (C1, C2 · #30)
-- **reserva-sin-test** — save sobre un runtime.json existente (reemplazo en Windows) sin test (C1)
-
 ## T9
 
 ### Ciclos
@@ -205,21 +118,6 @@ estado: abierto
 | Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | a554b9563c55efccf | verde | APPROVED |
-
-### Resúmenes
-
-- C1 · developer · T9 cliente de releases de GitHub (ReleaseSource, GitHubReleaseSource) con 7 tests wiremock.
-- C1 · reviewer · T9 C1 cliente de releases de GitHub con wiremock; 7 tests del plan presentes, gate verde, solo hallazgos minor
-
-### Decisiones
-
-- **analizador-null-ante-duda** — x-ratelimit-reset no numérico, negativo o decimal se degrada a reset_epoch None sin error; correcto, sin test propio (C1)
-- **limitacion-documentada** — base_url con barra final produce //repos; se acepta porque producción inyecta https://api.github.com sin barra, recomendado normalizar en new() (C1)
-- **refactor-equivalente** — per_page literal en la URL en vez de .query() por la feature de reqwest 0.13; equivalente y cubierto por query_param en el mock (C1)
-
-### Errores
-
-- **reserva-sin-test** — rama de x-ratelimit-reset no numérico sin test que fije el None (minor) (C1)
 
 ## T10
 
@@ -230,25 +128,6 @@ estado: abierto
 | 1 | 2026-11-27 | 1 | a71e1a65cc61af1b2 | verde | CHANGES_REQUESTED |
 | 2 | 2026-11-27 | 1 | a78564bc4f0f6876f | verde | APPROVED |
 
-### Resúmenes
-
-- C1 · developer · RuntimeManager (status, hardware, check_update, use_external) con cerrojo de estado y bloqueo de instalacion; minors de github.rs
-- C1 · reviewer · T10 C1, gate verde y CA9/CA10/CA11 con tests; 2 major: backend inventado para externo y pending_cleanup con NotFound
-- C2 · developer · T10 ciclo 2: backend Option, NotFound como exito, borrado en spawn_blocking, nombre por Os, external rechazado si instalando
-- C2 · reviewer · T10 C2 gate verde; #31 y #32 resueltos con tests; CA9/CA10/CA11 cubiertos; solo minors de nomenclatura y cobertura de active_server_path
-
-### Decisiones
-
-- **backend-externo-opcional** — Option<Backend> con serde(default) lee runtime.json previos como Some y externos/null como None; verificado con tests (C1, C2)
-- **limitacion-documentada** — active_server_path async con Result aceptado (status puede fallar por E/S); hay que actualizar el plan para 008 (C1)
-- **refactor-equivalente** — remove_dirs async con spawn_blocking y NotFound como borrado, reutilizable por T11 (C1, C2)
-
-### Errores
-
-- **dato-inventado** — use_external persistia Cpu Generic para binarios externos; ahora None (#31) (C1, C2 · #31)
-- **notfound-no-es-exito** — retry_pending_cleanup dejaba rutas inexistentes pendientes para siempre; ahora NotFound cuenta como borrado (#32) (C1, C2 · #32)
-- **reserva-sin-test** — active_server_path sin test con Broken -> Ok(None) ni con error de E/S -> Err; nombres de test del plan distintos del código (minor) (C2)
-
 ## T11
 
 ### Ciclos
@@ -258,29 +137,6 @@ estado: abierto
 | 1 | 2026-11-27 | 1 | a198b00b7220a89af | verde | CHANGES_REQUESTED |
 | 2 | 2026-11-27 | 1 | a981f48ba5fe195a8 | verde | APPROVED |
 
-### Resúmenes
-
-- C1 · developer · T11 install (pasos 0-9) con emisor de progreso, FakeFetcher real y fixtures compartidos en test_support
-- C1 · reviewer · install con staging, verificación y limpieza correcto y con tests de todos los CA; reinstalar la misma build falla en el rename
-- C2 · developer · T11 ciclo 2: directorio gestionado <tag>-<backend>, reinstalar sin descargar, residuo y pending_cleanup, limpieza best-effort (#33)
-- C2 · reviewer · T11 C2 resuelve #33 (dir <tag>-<backend>, salida temprana, borrado de residuo); gate verde; quedan minors
-
-### Decisiones
-
-- **directorio-por-tag-y-backend** — managed_dir_name + clear_residual antes del rename cierran #33; activo roto = residuo (D15) (C1, C2)
-- **limitacion-documentada** — Reinstalar el mismo tag con el directorio ya existente no está cubierto (rename fallaría); no está en el plan (C1)
-- **limpieza-best-effort** — paso 9 ignora fallos de listar/guardar; se acepta sin test (C1, C2)
-- **refactor-equivalente** — Fixture/helpers de manager.rs movidos a test_support para reutilizarlos en install.rs (C1)
-
-### Errores
-
-- **aserto-debil** — 3 tests de T11 omiten asertos del plan (runner, staging, basura.txt); D15 no se detectaría en POSIX (C2)
-- **carrera-pending-cleanup** — status() concurrente entre rename y paso 8 puede borrar final_dir si estaba pendiente (C2)
-- **exito-reportado-como-error** — si falla el listado del paso 9, install devuelve Err con el runtime nuevo ya activo (C1)
-- **rename-sobre-existente** — rename de staging a runtime/<tag> falla con Io al reinstalar el mismo tag con otro backend #33 (C1 · #33)
-- **reserva-sin-test** — el best-effort del paso 9 sigue sin test; provocable con un DirRemover que rompa runtime.json (C2 · #33)
-- **staging-reutilizado** — si no se pudo borrar .staging-<tag> huérfano, la extracción mezcla contenido viejo y nuevo (C1)
-
 ## T12
 
 ### Ciclos
@@ -288,23 +144,6 @@ estado: abierto
 | Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | ab22f887797c7f532 | verde | APPROVED |
-
-### Resúmenes
-
-- C1 · developer · T12 comandos y eventos Tauri (runtime_*), error_to_payload, estado con timeouts reqwest; minors de T11 incorporados
-- C1 · reviewer · comandos Tauri del runtime, error_to_payload y estado de cancelación correctos; gate verde; solo minors
-
-### Decisiones
-
-- **csp-estricta** — capability mínima dialog:allow-open y CSP intacta; use_external con ruta arbitraria aceptado por validación de nombre y --version en core (C1)
-- **directorio-por-tag-y-backend** — free_destination saca final_dir de pending_cleanup tras clear_residual y antes del rename; si el rename falla no se pierde nada porque el destino ya no existe (C1)
-- **limpieza-best-effort** — el token de cancelación se libera tras install con éxito o error; pánico queda como minor (guarda RAII recomendada) (C1)
-
-### Errores
-
-- **carrera-pending-cleanup** — status() entre rename y modify_state borraba el runtime recien instalado; corregido con free_destination previo al rename (C1)
-- **plan-desalineado** — el paso 8 del plan dice que final_dir sale de pending_cleanup en la misma escritura; ahora ocurre antes del rename (minor) (C1)
-- **token-sin-guarda-raii** — finish_install no se ejecuta si install entra en pánico: runtime_install respondería AlreadyInstalling hasta reiniciar (minor) (C1)
 
 ## T13
 
@@ -314,25 +153,6 @@ estado: abierto
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | a1b2ee2854a65c3d3 | verde | CHANGES_REQUESTED |
 | 2 | 2026-11-27 | 1 | ab6aee5c410a1fdbb | verde | APPROVED |
-
-### Resúmenes
-
-- C1 · developer · T13 sección llama.cpp en Ajustes (types, api, view-model, RuntimeSettings) y guarda RAII InstallSlot en runtime_install
-- C1 · reviewer · UI de llama.cpp en Ajustes correcta y tipos alineados con serde; falta test de componente del flujo de instalación y Cancelar (CA12), factible con mockIPC shouldMockEvents
-- C2 · developer · T13 ciclo 2: test de instalar/cancelar con mockIPC+eventos, PrimaryAction.kind y estado busy comun.
-- C2 · reviewer · Ciclo 2 de T13: PrimaryAction.kind, estado busy con exclusive() y tests de componente de instalar/cancelar y bloqueo; gate verde, CA12 cubierto
-
-### Decisiones
-
-- **csp-estricta** — progreso con <progress> sin style en línea; JSON de Rust fijado en un test para que los tipos TS no diverjan (C1)
-- **limitacion-documentada** — Se aceptan backendOptions(null) solo auto y el reset de update/selected tras instalar; T14.2 necesita volver a pulsar Buscar actualizaciones entre instalaciones (C1)
-- **refactor-equivalente** — la acción se decide por kind y no por la etiqueta; busy común deshabilita selector, primario y binario externo (C1, C2)
-
-### Errores
-
-- **acoplamiento-por-etiqueta** — El componente comparaba action.label con una constante; corregido con kind. (C1, C2)
-- **aserto-debil** — minor: el aserto del 77 % tras terminar no prueba el unlisten, porque el bloque de progreso ya se oculta con installing=false (C2)
-- **reserva-sin-test** — CA12 Cancelar y reseteo de installing/unlisten sin test de componente; se dio por difícil pero mockIPC(..., { shouldMockEvents: true }) de @tauri-apps/api 2.12.5 lo permite (C1)
 
 ## T14
 
@@ -344,23 +164,10 @@ estado: abierto
 | 2 | 2026-11-27 | 1 | a03de7d42f04eeba9 | verde | APPROVED |
 | 3 | 2026-11-27 | 1 | a2aea020c5ccc0b77 | verde | APPROVED |
 
-### Resúmenes
+## T15
 
-- C1 · developer · parse_version acepta también el formato `version: <semver> (build N, commit hex)` de b12816; fixture y tests nuevos.
-- C1 · reviewer · parser de --version acepta formato antiguo y semver de b12816; coincide con el plan; gate verde; solo minors
-- C2 · developer · parse_nvidia_smi_cuda acepta CUDA UMD Version (driver 621.x) con CRLF; fixture UMD y test CRLF real en verify
-- C2 · reviewer · C2 aprobado; parse_nvidia_smi_cuda admite CUDA UMD Version con fixture real y CRLF; gate verde
-- C3 · developer · aviso bajo el selector de backend (backendHint) mientras no se haya consultado GitHub; sin peticiones extra
-- C3 · reviewer · C3 de T14 (hallazgo 3, usabilidad): aviso backendHint bajo el selector sin llamadas extra a GitHub; gate verde, CA12 ampliado cubierto por 3 tests; solo minors
+### Ciclos
 
-### Decisiones
-
-- **formato-version-dual** — la cabecera de nvidia-smi se acepta en formato antiguo (CUDA Version) y nuevo (CUDA UMD Version) en la misma linea (C1, C2)
-- **limitacion-documentada** — T14.2 parcial a propósito (CUDA a CPU sin repetir la descarga de ~600 MB) aceptado; resultados T14.5 coherentes con CA13 (C1, C3)
-
-### Errores
-
-- **aserto-debil** — escapes de ruta Windows rotos al generar tests con script; el lint los detectó (C1, C2, C3)
-- **condicion-sin-test** — la condición extra !installing que oculta el aviso durante la instalación está en el .svelte, duplicada, sin test ni reflejo en T13.5 (minor) (C3)
-- **dato-inventado** — el parser solo conocia la etiqueta antigua; el formato de nvidia-smi cambia entre drivers, validar con fixtures reales (C1, C2)
-- **fixture-distinto-del-plan** — runtime_settings_aviso_backends usa Ready External b12000 en lugar de Managed b12816 Cpu como dice la tabla del plan (minor) (C3)
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-27 | 0 | a4b6f67fb81579c4c | verde | APPROVED |
