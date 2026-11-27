@@ -240,9 +240,7 @@ mod tests {
     #[test]
     fn version_formato_semver_tras_lineas_cuda() {
         let stderr = format!(
-            "ggml_cuda_init: found 1 CUDA devices:
-  Device 0: RTX 4070
-{VERSION_SEMVER}"
+            "ggml_cuda_init: found 1 CUDA devices:\r\n  Device 0: RTX 4070\r\n{VERSION_SEMVER}"
         );
         assert_eq!(
             parse_version("", &stderr),

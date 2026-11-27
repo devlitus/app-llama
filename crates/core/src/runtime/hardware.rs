@@ -17,7 +17,7 @@ const NVIDIA_SMI_GPU_QUERY: [&str; 2] = [
 ];
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
-const CUDA_VERSION_LABEL: &str = "CUDA Version:";
+const CUDA_VERSION_LABEL: &str = "Version:";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GpuInfo {
@@ -67,10 +67,25 @@ fn parse_gpu_line(line: &str) -> Option<GpuInfo> {
     })
 }
 
-/// Busca `CUDA Version: X.Y` en la cabecera de `nvidia-smi` sin argumentos.
+/// Busca `CUDA Version: X.Y` (drivers antiguos) o `CUDA UMD Version: X.Y`
+/// (drivers nuevos) en la cabecera de `nvidia-smi` sin argumentos.
 pub fn parse_nvidia_smi_cuda(header: &str) -> Option<CudaVersion> {
-    let (_, after_label) = header.split_once(CUDA_VERSION_LABEL)?;
-    let (major, minor) = after_label.split_whitespace().next()?.split_once('.')?;
+    header
+        .lines()
+        .find_map(|line| line.split_once("CUDA").map(|(_, tail)| tail))
+        .and_then(parse_version_after_cuda)
+}
+
+/// Tras `CUDA` espera solo palabras (p. ej. `UMD`), la etiqueta `Version:` y `X.Y`.
+fn parse_version_after_cuda(tail: &str) -> Option<CudaVersion> {
+    let mut tokens = tail.split_whitespace();
+    let label_found = tokens
+        .by_ref()
+        .find(|token| !token.chars().all(char::is_alphabetic))?;
+    if label_found != CUDA_VERSION_LABEL {
+        return None;
+    }
+    let (major, minor) = tokens.next()?.split_once('.')?;
     Some(CudaVersion {
         major: major.parse().ok()?,
         minor: minor.parse().ok()?,
@@ -206,6 +221,10 @@ mod tests {
     use crate::runtime::test_support::FakeProbe;
     use std::time::Instant;
 
+    const SMI_HEADER_UMD: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/runtime/nvidia_smi_header_umd.txt"
+    ));
     const SMI_HEADER: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/runtime/nvidia_smi_header.txt"
@@ -287,8 +306,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_cuda_cabecera_umd() {
+        assert_eq!(
+            parse_nvidia_smi_cuda(SMI_HEADER_UMD),
+            Some(CudaVersion {
+                major: 13,
+                minor: 5
+            })
+        );
+    }
+
+    #[test]
+    fn parse_cuda_cabecera_umd_crlf() {
+        let header =
+            "| NVIDIA-SMI 621.24   KMD Version: 621.24   CUDA UMD Version: 13.5   |\r\n+---+\r\n";
+        assert_eq!(
+            parse_nvidia_smi_cuda(header),
+            Some(CudaVersion {
+                major: 13,
+                minor: 5
+            })
+        );
+    }
+
+    #[test]
     fn parse_cuda_ausente_o_raro() {
-        for header in ["", "CUDA Version: N/A", "CUDA Version: 12"] {
+        for header in [
+            "",
+            "CUDA Version: N/A",
+            "CUDA Version: 12",
+            "CUDA UMD Version: N/A",
+            "| NVIDIA-SMI 621.24   KMD Version: 621.24 |",
+            "CUDA\nVersion: 13.5",
+        ] {
             assert_eq!(parse_nvidia_smi_cuda(header), None, "{header:?}");
         }
     }

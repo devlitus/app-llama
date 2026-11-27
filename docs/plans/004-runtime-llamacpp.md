@@ -121,7 +121,7 @@ crates/core/src/runtime/
 ├─ manager.rs       # RuntimeManager: status, hardware, active_server_path, check_update, use_external
 ├─ install.rs       # RuntimeManager::install (pasos 1-9) y limpieza de versiones
 └─ test_support.rs  # #[cfg(test)] FakeProbe, FakeRunner, FakeSource, FakeFetcher, FakeRemover
-crates/core/tests/fixtures/runtime/   # releases_*.json, nvidia_smi_header.txt, version_*.txt
+crates/core/tests/fixtures/runtime/   # releases_*.json, nvidia_smi_header*.txt, version_*.txt
 src-tauri/src/commands.rs             # + `pub mod runtime;`
 src-tauri/src/commands/runtime.rs     # comandos + evento runtime://progress
 ui/src/lib/runtime/                   # api.ts, view-model.ts (+ tests), RuntimeSettings.svelte
@@ -242,7 +242,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `clasificacion_sensible_a_mayusculas` | `LLAMA-B1-BIN-WIN-CPU-X64.ZIP` | `None` |
 
 ### T3 — Detección de hardware
-- **Ficheros/módulos:** `crates/core/src/runtime/hardware.rs`, `crates/core/src/runtime/test_support.rs` (`FakeProbe`), fixture `nvidia_smi_header.txt`
+- **Ficheros/módulos:** `crates/core/src/runtime/hardware.rs`, `crates/core/src/runtime/test_support.rs` (`FakeProbe`), fixtures `nvidia_smi_header.txt` (formato antiguo, `CUDA Version: 13.0`) y `nvidia_smi_header_umd.txt` (formato nuevo, driver 621.24, `CUDA UMD Version: 13.5`)
 - **Depende de:** T2 (`Os`, `Arch`)
 - **Cubre:** CA1
 - **Subtareas:**
@@ -250,6 +250,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   - [x] T3.2 Parsers puros:
     - `parse_nvidia_smi_gpus(csv: &str) -> Vec<GpuInfo>` (salida de `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`).
     - `parse_nvidia_smi_cuda(header: &str) -> Option<CudaVersion>` (busca `CUDA Version: X.Y` en la salida de `nvidia-smi` sin argumentos).
+    - **Ampliación (hallazgo de T14.1, 2026-11-27, driver 621.24):** `parse_nvidia_smi_cuda` acepta los **dos formatos** de cabecera: el antiguo `Driver Version: 581.42   CUDA Version: 13.0` y el nuevo `NVIDIA-SMI 621.24   KMD Version: 621.24   CUDA UMD Version: 13.5`. Etiqueta tolerante y acotada: en **una misma línea**, la palabra `CUDA`, seguida de cero o más palabras (letras, separadas por espacios), seguida de `Version:` y el valor `X.Y` (`major.minor` numéricos). La etiqueta no puede cruzar saltos de línea y `KMD Version` (sin `CUDA` delante) no cuenta. Se toma la primera coincidencia válida. Los tests existentes del formato antiguo no cambian.
   - [x] T3.3 Trait `SystemProbe`:
     - `os()`, `arch()`, `cpu_has(feature: &str) -> bool`;
     - `run(program, args) -> Option<String>` (stdout si el código de salida es 0);
@@ -268,7 +269,9 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `parse_gpus_vram_no_numerica` | `"Tesla X, [N/A]"` | `vram_mib: None` |
   | `parse_gpus_vacio` | `""` | `[]` |
   | `parse_cuda_cabecera_real` | `nvidia_smi_header.txt` con `CUDA Version: 13.0` | `Some(13.0)` |
-  | `parse_cuda_ausente_o_raro` | `""`, `CUDA Version: N/A`, `CUDA Version: 12` | `None` |
+  | `parse_cuda_cabecera_umd` | `nvidia_smi_header_umd.txt` (cabecera real del driver 621.24: `\| NVIDIA-SMI 621.24                 KMD Version: 621.24        CUDA UMD Version: 13.5     \|`) | `Some(13.5)` |
+  | `parse_cuda_cabecera_umd_crlf` | contenido de `nvidia_smi_header_umd.txt` con `\r\n` explícitos en cada línea | `Some(13.5)` |
+  | `parse_cuda_ausente_o_raro` | `""`, `CUDA Version: N/A`, `CUDA Version: 12`, `CUDA UMD Version: N/A`, cabecera con solo `KMD Version: 621.24` (sin `CUDA … Version:`) | `None` |
   | `detect_windows_nvidia_vulkan` | probe de CA1 | `HardwareInfo` de CA1 |
   | `detect_sin_nvidia_smi` | `run` → `None` | `gpus: []`, `driver_cuda: None` |
   | `detect_sin_vulkan` | `vulkan-1.dll` ausente | `vulkan_available: false` |
@@ -374,7 +377,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   | `version_en_stdout` | la línea en stdout y stderr vacío | `12780` |
   | `version_con_crlf` | `version: 5 (abc)\r\n` | `{ 5, "abc" }` |
   | `version_formato_semver` | `version_semver.txt` en stderr (`version: 1.1.0-dev (build 12816, commit 7b74cb92d)` + `built with Clang 22.1.8 for Windows x86_64`) | `{ build: 12816, commit: "7b74cb92d" }` |
-  | `version_formato_semver_tras_lineas_cuda` | stderr con líneas `ggml_cuda_init: …` y `Device 0: NVIDIA GeForce RTX 4070, …` antes de la línea de `version_semver.txt`, terminado en `\r\n` | `{ build: 12816, commit: "7b74cb92d" }` |
+  | `version_formato_semver_tras_lineas_cuda` | stderr con líneas `ggml_cuda_init: …` y `Device 0: NVIDIA GeForce RTX 4070, …` antes de la línea de `version_semver.txt`, con `\r\n` explícitos al final de cada línea (incluida la última) | `{ build: 12816, commit: "7b74cb92d" }` |
   | `version_no_parseable` | Formato antiguo: `""`, `version: x (abc)`, `version 12 (abc)`, `version: 12 abc`. Formato nuevo: `version: 1.1.0-dev`, `version: 1.1.0-dev (build x, commit abc)`, `version: 1.1.0-dev (build 12816)`, `version: 1.1.0-dev (commit 7b74cb92d)`, `version: 1.1.0-dev (build 12816, commit XYZ)`, `version: (build 12816, commit abc)` | `None` |
   | `verify_ok_usa_cwd_del_binario` | fake con salida 0 + versión | `Ok`; la llamada es `[server, ["--version"], Some(dir)]` |
   | `verify_codigo_no_cero` | salida 1, stderr `"missing cudart64_12.dll"` | `Err(VerificationFailed)` con ese texto |
@@ -580,6 +583,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
   - [ ] T14.4 **Diferida (D6):** prueba manual en macOS Apple Silicon. No se ejecuta en este plan; queda para la checklist de Mac del plan 010 (`docs/checklist-prueba-mac.md`, paso "Fase 1"). En este plan macOS se valida solo por la CI (CA8, CA14).
   - [ ] T14.5 Anotar los resultados (tag, backend, tiempos aproximados) en este plan.
 - **Nota (primer intento de T14.1, 2026-11-27, Windows x64, RTX 4070):** la instalación de `b12816` falló con `VerificationFailed` porque `llama-server --version` ya usa el formato nuevo `version: 1.1.0-dev (build 12816, commit 7b74cb92d)`, que el parser no reconocía. El rollback fue correcto (CA7: sin `.staging-*`, runtime anterior intacto). Corrección: ampliación de T7.1 (parser tolerante a ambos formatos, fixture `version_semver.txt`). Hay que repetir T14.1 tras la corrección; T14.5 debe recoger este intento fallido junto con el resultado definitivo.
+- **Nota (segundo intento de T14.1, 2026-11-27, Windows x64, RTX 4070, driver 621.24):** con la corrección de `--version`, `Auto` instaló `b12816` **Vulkan** y la verificación fue correcta. Pero `Auto` no eligió CUDA porque `driver_cuda` salió `None`: el driver 621 escribe en la cabecera de `nvidia-smi` `CUDA UMD Version: 13.5` (junto a `KMD Version: 621.24`) en lugar de `CUDA Version: X.Y`, y el parser solo buscaba esta última. Corrección: ampliación de T3.2 (etiqueta tolerante `CUDA … Version:`, fixture `nvidia_smi_header_umd.txt`). Hay que repetir T14.1 esperando que `Auto` elija CUDA con `driver_cuda = 13.5` (directorio `b12816-cuda-…`); T14.5 debe recoger los dos intentos anteriores junto con el resultado definitivo.
 - **Tests unitarios:** no aplica.
 
 ### T15 — Revisión final y cierre (O + reviewer)
@@ -620,7 +624,7 @@ ui/src/views/Settings.svelte          # incrusta <RuntimeSettings />
 | Al borrar la versión anterior (D5) no hay vuelta atrás si la nueva da problemas al cargar modelos (no solo en `--version`) | Se borra solo tras verificar la nueva. El usuario puede forzar otro backend y reinstalar, o usar un binario externo |
 | Windows bloquea el borrado del directorio anterior (servidor en marcha, antivirus) | `pending_cleanup` y reintento en `status()`. Se instala en un directorio nuevo por tag y backend (`<tag>-<backend>/`), nunca encima del activo, de modo que reinstalar el mismo tag con otro backend no renombra sobre un directorio bloqueado |
 | Archivo malicioso o corrupto (zip slip) | SHA256 del `digest` de GitHub antes de extraer + extracción con rutas encerradas en `dest` (CA6) |
-| `nvidia-smi` no está en el `PATH` o su formato cambia | Si falla, se trata como "sin NVIDIA" sin error. Parsers tolerantes con fixtures. El usuario puede forzar `Cuda` solo si se detectó; si no, `Vulkan` o `Cpu` |
+| `nvidia-smi` no está en el `PATH` o su formato cambia | El formato **ya cambió**: con el driver 621 la cabecera dice `CUDA UMD Version: 13.5` (y `KMD Version`) en lugar de `CUDA Version: X.Y` (hallazgo de T14.1, 2026-11-27). Mitigación: parser tolerante (`CUDA` + palabras + `Version:` en la misma línea, T3.2) y fixtures de ambos formatos (`nvidia_smi_header.txt`, `nvidia_smi_header_umd.txt`). Si aun así falla, se trata como "sin NVIDIA" sin error y `Auto` cae a `Vulkan`/`Cpu`; el usuario puede forzar `Cuda` solo si se detectó |
 | Integrar `RuntimeSettings` en Ajustes rompe los tests existentes (`Settings.test.ts` responde lo mismo a cualquier comando; `App.test.ts` no mockea IPC) | T13.4 adapta `Settings.test.ts` a un `mockIPC` por comando, y el componente captura todos los errores de IPC (test `runtime_settings_error_backend`; `navega_a_cada_seccion` sigue en verde) |
 | El plan 007 resuelve el directorio de datos con `directories::ProjectDirs`, que no coincide con `app_data_dir()` de Tauri | Este plan usa `app_data_dir()` (D9) y `core` recibe la ruta ya resuelta. Se avisa al planner de 007 para que use la misma base |
 

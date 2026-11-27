@@ -341,18 +341,21 @@ estado: abierto
 | Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
 |---|---|---|---|---|---|
 | 1 | 2026-11-27 | 1 | a7d69c8e7e19f946f | verde | APPROVED |
+| 2 | 2026-11-27 | 1 | a03de7d42f04eeba9 | verde | APPROVED |
 
 ### Resúmenes
 
 - C1 · developer · parse_version acepta también el formato `version: <semver> (build N, commit hex)` de b12816; fixture y tests nuevos.
 - C1 · reviewer · parser de --version acepta formato antiguo y semver de b12816; coincide con el plan; gate verde; solo minors
+- C2 · developer · parse_nvidia_smi_cuda acepta CUDA UMD Version (driver 621.x) con CRLF; fixture UMD y test CRLF real en verify
+- C2 · reviewer · C2 aprobado; parse_nvidia_smi_cuda admite CUDA UMD Version con fixture real y CRLF; gate verde
 
 ### Decisiones
 
-- **formato-version-dual** — Ambos formatos validan commit hex en minúsculas y semver sin espacios; sin dependencia regex. (C1)
+- **formato-version-dual** — la cabecera de nvidia-smi se acepta en formato antiguo (CUDA Version) y nuevo (CUDA UMD Version) en la misma linea (C1, C2)
 - **limitacion-documentada** — commit hex minusculas segun regex del plan; builds sin git ("unknown") quedan fuera, aceptado como minor (C1)
 
 ### Errores
 
-- **aserto-debil** — version_formato_semver_tras_lineas_cuda no fuerza \r\n como pide el plan; depende de autocrlf al hacer checkout del fixture (C1)
-- **dato-inventado** — El parser solo conocía el formato antiguo; la salida real de la build actual no se había contrastado. (C1)
+- **aserto-debil** — minor: find_map se queda con la primera linea que contiene CUDA (no la primera coincidencia valida de T3.2) y CUDA sin limite de palabra (NVCUDA Version: 1.2 casaria); sin test que lo fije (C1, C2)
+- **dato-inventado** — el parser solo conocia la etiqueta antigua; el formato de nvidia-smi cambia entre drivers, validar con fixtures reales (C1, C2)
