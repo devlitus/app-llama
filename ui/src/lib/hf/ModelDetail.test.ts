@@ -50,10 +50,12 @@ function detail(variants: VariantView[], overrides: Partial<Detail> = {}, gated:
       likes: 1,
       gguf: { total: null, architecture: "llama", context_length: 32_768 },
       license: "apache-2.0",
+      sha: null,
     },
     ctx: 8192,
     budget: GPU_AND_RAM,
     variants,
+    revision: "main",
     ...overrides,
   };
 }

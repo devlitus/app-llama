@@ -353,3 +353,26 @@ estado: abierto
 - **dato-inventado** — remove en Cancelled confía en estados Verified que cancel no reinicia y borra el modelo de una descarga posterior ya quitada de la lista (#87) (C4 · #87)
 - **fixture-distinto-del-plan** — pausa_conserva_part y los cancel "desde on_bytes" usan stalling_server; con el servidor parado la aserción del .part queda vacía (C1)
 - **reserva-sin-test** — #87 remove en Cancelled borraba el final de una descarga posterior de la misma variante; corregido con PartsOnly. (C2, C3, C5 · #85, #87)
+
+## T14
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a53cc09b86ba8846d | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T14 revisión fijada (sha del commit), tree por revisión y UnitRequest::try_from validado.
+- C1 · reviewer · T14 revisión fijada al commit y TryFrom DownloadRequest->UnitRequest; gate verde, 8 de 10 mutaciones detectadas
+
+### Decisiones
+
+- **aserto-por-identidad** — model_detail_usa_sha_del_commit compara la lista exacta de rutas /tree/ pedidas, así detecta peticiones a /tree/main (C1)
+- **limitacion-documentada** — VariantRow.svelte sigue enviando revision "main"; usar detail.revision queda fuera de T14. (C1)
+- **validacion-hex-estricta** — sha256 con hex::decode_to_slice a 32 bytes y revisión "main" o 40 hex minúsculas, como pide el plan (C1)
+
+### Errores
+
+- **aserto-debil** — unit_request_sha_laxo solo usa longitudes impares (63, 65) y revision_invalida no tiene 40 hex en mayúsculas: usar hex::decode sin longitud o aceptar A-F sobreviven (minor) (C1)

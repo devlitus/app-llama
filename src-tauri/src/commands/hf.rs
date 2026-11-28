@@ -371,6 +371,7 @@ mod tests {
                     context_length: Some(8192),
                 }),
                 license: Some("mit".to_owned()),
+                sha: Some("9217f5db79a29953eb74d5343926648285ec7e67".to_owned()),
             },
             ctx: 8192,
             budget: rtx_4090_32gib(),
@@ -389,6 +390,7 @@ mod tests {
                 fit: Some(Fit::NoFit),
                 recommended: false,
             }],
+            revision: "9217f5db79a29953eb74d5343926648285ec7e67".to_owned(),
         };
         let sha = |path: &str| json!({"path": path, "size": 20_000_000_000_u64, "sha256": "abc"});
         assert_eq!(
@@ -397,7 +399,7 @@ mod tests {
                 "info": {
                     "id": "ana/modelo-GGUF", "gated": "Open", "downloads": 10, "likes": 2,
                     "gguf": {"total": 70_000_000_000_u64, "architecture": "llama", "context_length": 8192},
-                    "license": "mit"
+                    "license": "mit", "sha": "9217f5db79a29953eb74d5343926648285ec7e67"
                 },
                 "ctx": 8192,
                 "budget": {
@@ -413,7 +415,8 @@ mod tests {
                     "estimate": {"bytes": 41_000_000_000_u64, "kv_included": true},
                     "fit": "NoFit",
                     "recommended": false
-                }]
+                }],
+                "revision": "9217f5db79a29953eb74d5343926648285ec7e67"
             })
         );
     }

@@ -590,10 +590,10 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T2, T11
 - **Cubre:** CA6, CA12
 - **Subtareas:**
-  - [ ] T14.1 `MODEL_INFO_EXPANDS` añade `"sha"`; `ModelInfo` gana `sha: Option<String>`. `DEFAULT_REVISION` pasa a `pub` y `is_valid_revision(&str) -> bool` (`"main"` o `^[0-9a-f]{40}$`).
-  - [ ] T14.2 `tree_url(base, repo, revision)` y `HfClient::tree(repo, revision)`. `HfService::model_detail` usa `revision = info.sha` si es válida o `DEFAULT_REVISION` si no, pide el árbol en esa revisión y devuelve `ModelDetail { …, revision }`.
-  - [ ] T14.3 `GgufPart` y `DownloadRequest` derivan también `Deserialize`. Se borra `GgufVariant::download_request` (código muerto: la UI construye la petición con la revisión de la ficha) y sus dos tests se sustituyen por los de esta tabla. `UnitRequest::try_from(DownloadRequest)` valida `repo_id` (`InvalidRequest` si `RepoId::parse` falla), revisión (`is_valid_revision`), `sha256` (32 bytes con `hex::decode_to_slice`) y `size > 0`.
-  - [ ] T14.4 `ui/src/lib/hf/types.ts`: `ModelInfo.sha: string | null` y `ModelDetail.revision: string`.
+  - [x] T14.1 `MODEL_INFO_EXPANDS` añade `"sha"`; `ModelInfo` gana `sha: Option<String>`. `DEFAULT_REVISION` pasa a `pub` y `is_valid_revision(&str) -> bool` (`"main"` o `^[0-9a-f]{40}$`).
+  - [x] T14.2 `tree_url(base, repo, revision)` y `HfClient::tree(repo, revision)`. `HfService::model_detail` usa `revision = info.sha` si es válida o `DEFAULT_REVISION` si no, pide el árbol en esa revisión y devuelve `ModelDetail { …, revision }`.
+  - [x] T14.3 `GgufPart` y `DownloadRequest` derivan también `Deserialize`. Se borra `GgufVariant::download_request` (código muerto: la UI construye la petición con la revisión de la ficha) y sus dos tests se sustituyen por los de esta tabla. `UnitRequest::try_from(DownloadRequest)` valida `repo_id` (`InvalidRequest` si `RepoId::parse` falla), revisión (`is_valid_revision`), `sha256` (32 bytes con `hex::decode_to_slice`) y `size > 0`.
+  - [x] T14.4 `ui/src/lib/hf/types.ts`: `ModelInfo.sha: string | null` y `ModelDetail.revision: string`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

@@ -62,9 +62,9 @@ impl HfClient {
     }
 
     /// Sigue `Link rel="next"` hasta `MAX_TREE_PAGES` páginas.
-    pub async fn tree(&self, repo: &RepoId) -> Result<Vec<TreeEntry>, HfError> {
+    pub async fn tree(&self, repo: &RepoId, revision: &str) -> Result<Vec<TreeEntry>, HfError> {
         let mut entries = Vec::new();
-        let mut url = tree_url(&self.base_url, repo);
+        let mut url = tree_url(&self.base_url, repo, revision);
         for _ in 0..MAX_TREE_PAGES {
             let (page, next): (Vec<TreeEntry>, _) = self.get_json(&url).await?;
             entries.extend(page);
@@ -441,7 +441,10 @@ mod tests {
     async fn tree_requests_recursive() {
         let server = MockServer::start().await;
         mount_tree(&server, ResponseTemplate::new(200).set_body_string("[]")).await;
-        let entries = client_for(&server, None).tree(&repo()).await.unwrap();
+        let entries = client_for(&server, None)
+            .tree(&repo(), "main")
+            .await
+            .unwrap();
         assert!(entries.is_empty());
     }
 
@@ -465,7 +468,10 @@ mod tests {
             .with_priority(10)
             .mount(&server)
             .await;
-        let entries = client_for(&server, None).tree(&repo()).await.unwrap();
+        let entries = client_for(&server, None)
+            .tree(&repo(), "main")
+            .await
+            .unwrap();
         let paths: Vec<_> = entries.iter().map(|e| e.path.as_str()).collect();
         assert_eq!(paths, ["first.gguf", "second.gguf"]);
     }
@@ -481,7 +487,7 @@ mod tests {
                 .insert_header("Link", link.as_str()),
         )
         .await;
-        let result = client_for(&server, None).tree(&repo()).await;
+        let result = client_for(&server, None).tree(&repo(), "main").await;
         assert!(matches!(result, Err(HfError::TooManyPages)));
         let requests = server.received_requests().await.unwrap();
         assert_eq!(requests.len(), MAX_TREE_PAGES);

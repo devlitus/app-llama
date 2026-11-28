@@ -1,13 +1,12 @@
 //! Filtrado de los archivos GGUF de un repositorio y agrupación de los modelos divididos.
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::model::{TreeEntry, TreeEntryKind};
 use super::quant::{GGUF_EXTENSION, extract_quant, parse_valid_split_suffix, strip_gguf_extension};
-use super::url::{DEFAULT_REVISION, RepoId};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GgufPart {
     pub path: String,
     pub size: u64,
@@ -23,21 +22,11 @@ pub struct GgufVariant {
     pub complete: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DownloadRequest {
     pub repo_id: String,
     pub revision: String,
     pub parts: Vec<GgufPart>,
-}
-
-impl GgufVariant {
-    pub fn download_request(&self, repo: &RepoId) -> DownloadRequest {
-        DownloadRequest {
-            repo_id: repo.as_str().to_owned(),
-            revision: DEFAULT_REVISION.to_owned(),
-            parts: self.parts.clone(),
-        }
-    }
 }
 
 /// Un único archivo se agrupa por su ruta; las partes de un split, por
@@ -365,34 +354,22 @@ mod tests {
     }
 
     #[test]
-    fn download_request_from_split_variant() {
-        let variants = group_gguf_files(&bf16_entries_reversed());
-        let request =
-            variants[0].download_request(&RepoId::parse("unsloth/Qwen3.8-27B-GGUF").unwrap());
-        assert_eq!(request.repo_id, "unsloth/Qwen3.8-27B-GGUF");
-        assert_eq!(request.revision, "main");
-        let paths: Vec<&str> = request.parts.iter().map(|p| p.path.as_str()).collect();
-        assert_eq!(paths, [BF16_PART_1, BF16_PART_2]);
-        let expected: Vec<_> = [BF16_PART_1, BF16_PART_2]
-            .iter()
-            .map(|path| {
-                tree()
-                    .into_iter()
-                    .find(|e| e.path == *path)
-                    .and_then(|e| e.lfs)
-                    .map(|lfs| lfs.oid)
-            })
-            .collect();
-        let shas: Vec<_> = request.parts.iter().map(|p| p.sha256.clone()).collect();
-        assert!(shas.iter().all(Option::is_some));
-        assert_eq!(shas, expected);
-    }
-
-    #[test]
-    fn download_request_non_lfs_has_no_sha() {
-        let variants = group_gguf_files(&[file("m-Q4_0.gguf", 10)]);
-        let request = variants[0].download_request(&RepoId::parse("a/b").unwrap());
-        assert_eq!(request.parts.len(), 1);
-        assert_eq!(request.parts[0].sha256, None);
+    fn download_request_deserializa() {
+        let request: DownloadRequest = serde_json::from_str(
+            r#"{"repo_id":"a/b","revision":"main","parts":[{"path":"m.gguf","size":10,"sha256":null}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            request,
+            DownloadRequest {
+                repo_id: "a/b".to_owned(),
+                revision: "main".to_owned(),
+                parts: vec![GgufPart {
+                    path: "m.gguf".to_owned(),
+                    size: 10,
+                    sha256: None,
+                }],
+            }
+        );
     }
 }

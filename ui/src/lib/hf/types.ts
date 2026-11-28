@@ -82,6 +82,7 @@ export interface ModelInfo {
   likes: number;
   gguf: GgufInfo | null;
   license: string | null;
+  sha: string | null;
 }
 
 export interface ModelDetail {
@@ -89,6 +90,7 @@ export interface ModelDetail {
   ctx: number;
   budget: MemoryBudget;
   variants: VariantView[];
+  revision: string;
 }
 
 export interface TokenStatus {
