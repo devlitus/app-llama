@@ -567,10 +567,10 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T11
 - **Cubre:** CA1, CA2, CA3, CA10, CA17
 - **Subtareas:**
-  - [ ] T12.1 Estado `ExploreState`: `query`, `sort`, `items` (`SearchItem[]`), `next`, `loading` y `error` (texto ya traducido con `errorMessage`). `search()` sustituye los resultados; `loadMore()` los añade y evita peticiones dobles mientras `loading`.
-  - [ ] T12.2 La búsqueda se lanza con Enter o con el botón (sin debounce por tiempo, para no depender del reloj). Al cambiar el orden se relanza la búsqueda.
-  - [ ] T12.3 Tarjeta (`ModelCard` recibe un `SearchItem`): id, descargas, likes, fecha (de `item.model`) e insignia «Restringido» si `gated !== "Open"`. Insignia de encaje con `fitHintBadge(item.hint)` y `title` = `fitHintTitle(item.hint)`; si `fitHintBadge` devuelve `null`, no se pinta nada (ni «?»). Al hacer clic se abre la ficha (T13).
-  - [ ] T12.4 Estados vacíos («Sin resultados») y de error (`ErrorPayload.message`, con un botón «Reintentar»).
+  - [x] T12.1 Estado `ExploreState`: `query`, `sort`, `items` (`SearchItem[]`), `next`, `loading` y `error` (texto ya traducido con `errorMessage`). `search()` sustituye los resultados; `loadMore()` los añade y evita peticiones dobles mientras `loading`.
+  - [x] T12.2 La búsqueda se lanza con Enter o con el botón (sin debounce por tiempo, para no depender del reloj). Al cambiar el orden se relanza la búsqueda.
+  - [x] T12.3 Tarjeta (`ModelCard` recibe un `SearchItem`): id, descargas, likes, fecha (de `item.model`) e insignia «Restringido» si `gated !== "Open"`. Insignia de encaje con `fitHintBadge(item.hint)` y `title` = `fitHintTitle(item.hint)`; si `fitHintBadge` devuelve `null`, no se pinta nada (ni «?»). Al hacer clic se abre la ficha (T13).
+  - [x] T12.4 Estados vacíos («Sin resultados») y de error (`ErrorPayload.message`, con un botón «Reintentar»).
 - **Tests unitarios (Vitest + Testing Library, con `mockIPC` respondiendo a `hf_search`/`hf_search_next`; las respuestas tienen la forma `{ items: [{ model, hint }], next }` de T10):**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

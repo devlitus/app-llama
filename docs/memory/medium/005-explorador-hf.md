@@ -257,6 +257,32 @@ estado: abierto
 
 - **condicion-sin-test** — formatCount muestra "1000 mil" entre 999950 y 999999 al redondear sin pasar a millones (minor) (C1)
 
+## T12
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | ab5e04a2e63ea6f29 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a9afa4524ca013dbd | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T12 pantalla Explorar: ExploreState con runas, ModelCard y Explore.svelte con busqueda, orden y paginacion
+- C1 · reviewer · T12 Explorar correcto en concurrencia (generación, loading) y CA cubiertos, pero ids duplicados entre páginas rompen el each con clave
+- C2 · developer · T12 C2: loadMore descarta ids repetidos (#49) con test explore_state_load_more_skips_duplicates
+- C2 · reviewer · T12 C2 corrige #49: loadMore deduplica por model.id, verificado con test de estado y test temporal de componente; gate verde
+
+### Decisiones
+
+- **limitacion-documentada** — onOpen de ModelCard sin conectar aceptado: el cableado a la ficha es T13.4 del plan (C1)
+- **refactor-equivalente** — withoutRepeated con reduce/some en lugar de Set aceptado (lint svelte/prefer-svelte-reactivity, páginas pequeñas) (C1, C2)
+
+### Errores
+
+- **carrera-paginacion-duplicados** — loadMore añadía duplicados y rompía el each con clave; corregido, ver #49 (C1, C2 · #49)
+- **condicion-sin-test** — la invalidación de un loadMore en curso por un search nuevo no tiene test propio (C1)
+
 ## T15
 
 ### Ciclos
