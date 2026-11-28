@@ -90,6 +90,10 @@ pub fn search_url(base: &Url, params: &SearchParams) -> Url {
     endpoint(base, &["api", "models"], &pairs.join("&"))
 }
 
+pub fn whoami_url(base: &Url) -> Url {
+    endpoint(base, &["api", "whoami-v2"], "")
+}
+
 pub fn model_info_url(base: &Url, repo: &RepoId) -> Url {
     let query = expand_pairs(&MODEL_INFO_EXPANDS).join("&");
     endpoint(base, &["api", "models", repo.as_str()], &query)
@@ -153,7 +157,7 @@ fn endpoint(base: &Url, segments: &[&str], query: &str) -> Url {
             path.push(segment);
         }
     }
-    url.set_query(Some(query));
+    url.set_query((!query.is_empty()).then_some(query));
     url
 }
 
@@ -299,6 +303,13 @@ mod tests {
             url.as_str()
                 .starts_with("http://127.0.0.1:8080/api/models?")
         );
+    }
+
+    #[test]
+    fn whoami_url_has_no_query() {
+        let url = whoami_url(&base());
+        assert_eq!(url.path(), "/api/whoami-v2");
+        assert_eq!(url.query(), None);
     }
 
     #[test]

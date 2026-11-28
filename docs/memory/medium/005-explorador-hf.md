@@ -187,6 +187,33 @@ estado: abierto
 
 - **aserto-debil** — memory_store_with_token_starts_filled solo comprueba is_some y no el valor del token (C1)
 
+## T9
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a4215f00957012a1c | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a5ff838b716d1be7f | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T9 servicio del token (whoami, save/delete/status) con HfService::new(http, base, store) y cliente tras RwLock.
+- C1 · reviewer · T9 correcto en lógica y seguridad del token; status_network_error usa un MockServer del pool que sigue escuchando tras drop
+- C2 · developer · T9 C2: status_network_error usa puerto cerrado real y se añade whoami_network_error en el cliente (#40)
+- C2 · reviewer · Ciclo 2 de T9: #40 resuelto con puerto efímero liberado, test whoami_network_error fija Err(Network); gate verde, sin regresiones; #40 cerrada
+
+### Decisiones
+
+- **aserto-por-identidad** — el test de cliente fija la variante Network; el de servicio solo verifica la agrupación de errores no-401 (C2)
+- **limitacion-documentada** — token_status propaga el error del almacén (Secret) en vez de fingir ausencia; solo el constructor degrada a sin token. (C1)
+- **refactor-equivalente** — endpoint sin query vacía y get_with(token) aceptados: todas las URLs previas llevan query y el token solo va a destinos de confianza (C1)
+
+### Errores
+
+- **aserto-debil** — status_network_error pasaba por 404 del pool de wiremock, no por error de red (#40) (C1, C2 · #40)
+- **codigo-muerto** — minor: el helper closed_port_base de client.rs se duplica en línea en status_network_error de service.rs; carrera residual teórica si otro listener toma el puerto liberado (C2)
+
 ## T15
 
 ### Ciclos

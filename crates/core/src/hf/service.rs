@@ -1,4 +1,6 @@
 //! Casos de uso del explorador: ficha del modelo y búsqueda, ambas con encaje.
+use std::sync::{PoisonError, RwLock};
+
 use reqwest::Url;
 use serde::{Serialize, Serializer};
 
@@ -8,7 +10,8 @@ use super::files::{GgufVariant, group_gguf_files};
 use super::fit::{Fit, MemoryBudget, fit, recommended};
 use super::hint::{FitHint, fit_hint};
 use super::memory::{MemoryEstimate, estimate_memory, estimation_ctx};
-use super::model::{ModelInfo, ModelSummary};
+use super::model::{ModelInfo, ModelSummary, WhoAmI};
+use super::token::{HfToken, SecretStore};
 use super::url::{RepoId, SearchParams};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -48,14 +51,85 @@ fn serialize_url<S: Serializer>(url: &Option<Url>, serializer: S) -> Result<S::O
     }
 }
 
-#[derive(Debug, Clone)]
+/// Estado del token para la sección «Hugging Face» de Ajustes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TokenStatus {
+    pub present: bool,
+    pub user: Option<String>,
+    pub invalid: bool,
+}
+
 pub struct HfService {
-    client: HfClient,
+    http: reqwest::Client,
+    base_url: Url,
+    store: Box<dyn SecretStore + Send + Sync>,
+    client: RwLock<HfClient>,
 }
 
 impl HfService {
-    pub fn new(client: HfClient) -> Self {
-        Self { client }
+    /// Si el almacén falla al leer, arranca sin token en vez de fallar.
+    pub fn new(
+        http: reqwest::Client,
+        base_url: Url,
+        store: Box<dyn SecretStore + Send + Sync>,
+    ) -> Self {
+        let token = store.get().ok().flatten();
+        let client = RwLock::new(HfClient::new(http.clone(), base_url.clone(), token));
+        Self {
+            http,
+            base_url,
+            store,
+            client,
+        }
+    }
+
+    /// Valida el token con whoami y solo entonces lo guarda.
+    pub async fn save_token(&self, raw: &str) -> Result<WhoAmI, HfError> {
+        let token = HfToken::parse(raw)?;
+        let who = self.current_client().whoami(&token).await?;
+        self.store.set(&token)?;
+        self.replace_token(Some(token));
+        Ok(who)
+    }
+
+    pub fn delete_token(&self) -> Result<(), HfError> {
+        self.store.delete()?;
+        self.replace_token(None);
+        Ok(())
+    }
+
+    /// Un token rechazado (401) se marca como inválido, pero no se borra.
+    pub async fn token_status(&self) -> Result<TokenStatus, HfError> {
+        let Some(token) = self.store.get()? else {
+            return Ok(TokenStatus {
+                present: false,
+                user: None,
+                invalid: false,
+            });
+        };
+        let (user, invalid) = match self.current_client().whoami(&token).await {
+            Ok(who) => (Some(who.name), false),
+            Err(HfError::Unauthorized) => (None, true),
+            Err(_) => (None, false),
+        };
+        Ok(TokenStatus {
+            present: true,
+            user,
+            invalid,
+        })
+    }
+
+    /// Clona el cliente y suelta el cerrojo antes de cualquier `await`.
+    fn current_client(&self) -> HfClient {
+        self.client
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn replace_token(&self, token: Option<HfToken>) {
+        let client = HfClient::new(self.http.clone(), self.base_url.clone(), token);
+        *self.client.write().unwrap_or_else(PoisonError::into_inner) = client;
     }
 
     pub async fn model_detail(
@@ -64,8 +138,9 @@ impl HfService {
         budget: &MemoryBudget,
     ) -> Result<ModelDetail, HfError> {
         let repo = RepoId::parse(repo)?;
-        let info = self.client.model_info(&repo).await?;
-        let tree = self.client.tree(&repo).await?;
+        let client = self.current_client();
+        let info = client.model_info(&repo).await?;
+        let tree = client.tree(&repo).await?;
         let ctx = estimation_ctx(info.gguf.as_ref().and_then(|gguf| gguf.context_length));
         let params_total = info.gguf.as_ref().and_then(|gguf| gguf.total);
         let variants = variant_views(group_gguf_files(&tree), params_total, ctx, budget);
@@ -82,7 +157,8 @@ impl HfService {
         params: &SearchParams,
         budget: &MemoryBudget,
     ) -> Result<SearchResults, HfError> {
-        let page = self.client.search(params).await?;
+        let client = self.current_client();
+        let page = client.search(params).await?;
         Ok(with_hints(page.items, page.next, budget))
     }
 
@@ -91,7 +167,8 @@ impl HfService {
         next: &Url,
         budget: &MemoryBudget,
     ) -> Result<SearchResults, HfError> {
-        let page = self.client.search_next(next).await?;
+        let client = self.current_client();
+        let page = client.search_next(next).await?;
         Ok(with_hints(page.items, page.next, budget))
     }
 }
@@ -148,6 +225,7 @@ fn variant_views(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hf::token::{FailingStore, MemoryStore};
     use crate::hf::url::SortBy;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -157,6 +235,7 @@ mod tests {
     const TREE: &str = include_str!("../../fixtures/hf/tree_unsloth.json");
     const TREE_FLAT: &str = include_str!("../../fixtures/hf/tree_flat.json");
     const SEARCH_PAGE: &str = include_str!("../../fixtures/hf/search_page.json");
+    const WHOAMI: &str = include_str!("../../fixtures/hf/whoami.json");
     const REPO: &str = "unsloth/Qwen3.8-27B-GGUF";
 
     fn budget(gpu: u64) -> MemoryBudget {
@@ -176,9 +255,68 @@ mod tests {
         budget(10_302_888_345)
     }
 
-    fn service_for(server: &MockServer) -> HfService {
+    fn raw_token() -> String {
+        format!("hf_{}", "a1B2".repeat(9))
+    }
+
+    fn token() -> HfToken {
+        HfToken::parse(&raw_token()).unwrap()
+    }
+
+    fn service_with(
+        server: &MockServer,
+        store: impl SecretStore + Send + Sync + 'static,
+    ) -> HfService {
         let base = Url::parse(&server.uri()).unwrap();
-        HfService::new(HfClient::new(reqwest::Client::new(), base, None))
+        HfService::new(reqwest::Client::new(), base, Box::new(store))
+    }
+
+    fn service_for(server: &MockServer) -> HfService {
+        service_with(server, MemoryStore::default())
+    }
+
+    async fn mount_status(server: &MockServer, route: &str, status: u16, body: &str) {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(status).set_body_string(body))
+            .mount(server)
+            .await;
+    }
+
+    async fn mount_whoami(server: &MockServer) {
+        mount_status(server, "/api/whoami-v2", 200, WHOAMI).await;
+    }
+
+    async fn mount_search_ok(server: &MockServer) {
+        mount_status(server, "/api/models", 200, "[]").await;
+    }
+
+    /// Cabecera `Authorization` de la última petición a `/api/models`.
+    async fn search_authorization(service: &HfService, server: &MockServer) -> Option<String> {
+        service
+            .search(&search_params(), &MemoryBudget::unknown())
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let last = requests
+            .iter()
+            .rfind(|request| request.url.path() == "/api/models")
+            .unwrap();
+        last.headers
+            .get("authorization")
+            .map(|value| value.to_str().unwrap().to_owned())
+    }
+
+    fn bearer() -> Option<String> {
+        Some(format!("Bearer {}", raw_token()))
+    }
+
+    fn present_no_user(invalid: bool) -> TokenStatus {
+        TokenStatus {
+            present: true,
+            user: None,
+            invalid,
+        }
     }
 
     async fn mount_json(server: &MockServer, route: &str, body: &str) {
@@ -424,5 +562,141 @@ mod tests {
             .unwrap();
         assert_eq!(results.items[0].hint.unwrap().fit, Some(Fit::Gpu));
         assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn save_token_valid_stores() {
+        let server = MockServer::start().await;
+        mount_whoami(&server).await;
+        let service = service_for(&server);
+        let who = service.save_token(&raw_token()).await.unwrap();
+        assert_eq!(who.name, "ejemplo");
+        let stored = service.store.get().unwrap().unwrap();
+        assert_eq!(stored.expose(), raw_token());
+    }
+
+    #[tokio::test]
+    async fn save_token_unauthorized_not_stored() {
+        let server = MockServer::start().await;
+        mount_status(&server, "/api/whoami-v2", 401, "").await;
+        let service = service_for(&server);
+        let result = service.save_token(&raw_token()).await;
+        assert!(matches!(result, Err(HfError::Unauthorized)));
+        assert!(service.store.get().unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn save_token_bad_format_no_request() {
+        let server = MockServer::start().await;
+        let result = service_for(&server).save_token("abc").await;
+        assert!(matches!(result, Err(HfError::InvalidToken)));
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn save_token_store_failure() {
+        let server = MockServer::start().await;
+        mount_whoami(&server).await;
+        let service = service_with(&server, FailingStore);
+        let result = service.save_token(&raw_token()).await;
+        assert!(matches!(result, Err(HfError::Secret(_))));
+    }
+
+    #[tokio::test]
+    async fn save_token_then_search_uses_bearer() {
+        let server = MockServer::start().await;
+        mount_whoami(&server).await;
+        mount_search_ok(&server).await;
+        let service = service_for(&server);
+        service.save_token(&raw_token()).await.unwrap();
+        assert_eq!(search_authorization(&service, &server).await, bearer());
+    }
+
+    #[tokio::test]
+    async fn delete_token_removes_and_drops_header() {
+        let server = MockServer::start().await;
+        mount_whoami(&server).await;
+        mount_search_ok(&server).await;
+        let service = service_for(&server);
+        service.save_token(&raw_token()).await.unwrap();
+        service.delete_token().unwrap();
+        assert!(service.store.get().unwrap().is_none());
+        assert_eq!(search_authorization(&service, &server).await, None);
+    }
+
+    #[tokio::test]
+    async fn delete_token_absent_ok() {
+        let server = MockServer::start().await;
+        assert!(service_for(&server).delete_token().is_ok());
+    }
+
+    #[tokio::test]
+    async fn status_no_token() {
+        let server = MockServer::start().await;
+        let status = service_for(&server).token_status().await.unwrap();
+        assert_eq!(
+            status,
+            TokenStatus {
+                present: false,
+                user: None,
+                invalid: false
+            }
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn status_valid_token() {
+        let server = MockServer::start().await;
+        mount_whoami(&server).await;
+        let service = service_with(&server, MemoryStore::with_token(token()));
+        assert_eq!(
+            service.token_status().await.unwrap(),
+            TokenStatus {
+                present: true,
+                user: Some("ejemplo".to_owned()),
+                invalid: false
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn status_revoked_token() {
+        let server = MockServer::start().await;
+        mount_status(&server, "/api/whoami-v2", 401, "").await;
+        let service = service_with(&server, MemoryStore::with_token(token()));
+        assert_eq!(service.token_status().await.unwrap(), present_no_user(true));
+        assert!(service.store.get().unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn status_network_error() {
+        // Un puerto liberado de verdad: `MockServer` seguiría escuchando desde su pool.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let base = Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap();
+        let store = MemoryStore::with_token(token());
+        let service = HfService::new(reqwest::Client::new(), base, Box::new(store));
+        assert_eq!(
+            service.token_status().await.unwrap(),
+            present_no_user(false)
+        );
+    }
+
+    #[tokio::test]
+    async fn service_loads_stored_token_on_new() {
+        let server = MockServer::start().await;
+        mount_search_ok(&server).await;
+        let service = service_with(&server, MemoryStore::with_token(token()));
+        assert_eq!(search_authorization(&service, &server).await, bearer());
+    }
+
+    #[tokio::test]
+    async fn service_new_store_failure_starts_without_token() {
+        let server = MockServer::start().await;
+        mount_search_ok(&server).await;
+        let service = service_with(&server, FailingStore);
+        assert_eq!(search_authorization(&service, &server).await, None);
     }
 }

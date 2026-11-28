@@ -4,10 +4,11 @@ use reqwest::{Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
 
 use super::error::HfError;
-use super::model::{ModelInfo, ModelSummary, TreeEntry};
+use super::model::{ModelInfo, ModelSummary, TreeEntry, WhoAmI};
 use super::token::HfToken;
 use super::url::{
     RepoId, SearchParams, is_trusted_target, model_info_url, parse_next_link, search_url, tree_url,
+    whoami_url,
 };
 
 pub const MAX_TREE_PAGES: usize = 20;
@@ -48,6 +49,14 @@ impl HfClient {
         Ok(info)
     }
 
+    /// Valida `token` contra la API, no el del cliente: sirve para probar un
+    /// token antes de guardarlo.
+    pub async fn whoami(&self, token: &HfToken) -> Result<WhoAmI, HfError> {
+        let url = whoami_url(&self.base_url);
+        let response = self.get_with(&url, Some(token)).await?;
+        parse_body(response).await
+    }
+
     /// Sigue `Link rel="next"` hasta `MAX_TREE_PAGES` páginas.
     pub async fn tree(&self, repo: &RepoId) -> Result<Vec<TreeEntry>, HfError> {
         let mut entries = Vec::new();
@@ -69,26 +78,30 @@ impl HfClient {
     }
 
     async fn get_json<T: DeserializeOwned>(&self, url: &Url) -> Result<(T, Option<Url>), HfError> {
-        let response = self.get(url).await?;
+        let response = self.get_with(url, self.token.as_ref()).await?;
         let next = next_page_url(&response, &self.base_url);
-        let body = response.bytes().await.map_err(|_| HfError::Network)?;
-        let value = serde_json::from_slice(&body).map_err(|e| HfError::Parse(e.to_string()))?;
+        let value = parse_body(response).await?;
         Ok((value, next))
     }
 
     /// Es el único punto que envía peticiones: el token solo viaja a destinos
     /// de confianza, nunca a otro origen.
-    async fn get(&self, url: &Url) -> Result<Response, HfError> {
+    async fn get_with(&self, url: &Url, token: Option<&HfToken>) -> Result<Response, HfError> {
         if !is_trusted_target(url, &self.base_url) {
             return Err(HfError::ForeignUrl);
         }
         let mut request = self.http.get(url.clone());
-        if let Some(token) = &self.token {
+        if let Some(token) = token {
             request = request.bearer_auth(token.expose());
         }
         let response = request.send().await.map_err(|_| HfError::Network)?;
         check_status(response)
     }
+}
+
+async fn parse_body<T: DeserializeOwned>(response: Response) -> Result<T, HfError> {
+    let body = response.bytes().await.map_err(|_| HfError::Network)?;
+    serde_json::from_slice(&body).map_err(|e| HfError::Parse(e.to_string()))
 }
 
 fn next_page_url(response: &Response, base: &Url) -> Option<Url> {
@@ -176,6 +189,53 @@ mod tests {
             .headers
             .get("authorization")
             .map(|value| value.to_str().unwrap().to_owned())
+    }
+
+    const WHOAMI: &str = include_str!("../../fixtures/hf/whoami.json");
+
+    #[tokio::test]
+    async fn whoami_uses_given_token_not_client_token() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/whoami-v2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(WHOAMI))
+            .mount(&server)
+            .await;
+        let other = HfToken::parse(&format!("hf_{}", "z9Y8".repeat(9))).unwrap();
+        let who = client_for(&server, Some(token()))
+            .whoami(&other)
+            .await
+            .unwrap();
+        assert_eq!(who.name, "ejemplo");
+        let sent = received_authorization(&server).await;
+        assert_eq!(sent, Some(format!("Bearer {}", other.expose())));
+    }
+
+    #[tokio::test]
+    async fn whoami_unauthorized() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        let result = client_for(&server, None).whoami(&token()).await;
+        assert!(matches!(result, Err(HfError::Unauthorized)));
+    }
+
+    /// `MockServer` devuelve el puerto a un pool al soltarse y sigue escuchando,
+    /// así que un puerto cerrado de verdad se obtiene con un listener efímero.
+    fn closed_port_base() -> Url {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap()
+    }
+
+    #[tokio::test]
+    async fn whoami_network_error() {
+        let client = HfClient::new(reqwest::Client::new(), closed_port_base(), None);
+        let result = client.whoami(&token()).await;
+        assert!(matches!(result, Err(HfError::Network)));
     }
 
     #[tokio::test]

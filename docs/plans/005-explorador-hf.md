@@ -473,9 +473,9 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T6, T7 (`HfService::search`), T8. En los tests de esta tarea, `search` recibe `MemoryBudget::unknown()`: aquí solo importa la cabecera `Authorization`.
 - **Cubre:** CA7, CA8, CA9
 - **Subtareas:**
-  - [ ] T9.1 `HfClient::whoami(&HfToken) -> WhoAmI` contra `/api/whoami-v2`.
-  - [ ] T9.2 `HfService::new(http: reqwest::Client, base_url: Url, store: Box<dyn SecretStore + Send + Sync>)`. Guarda el `HfClient` actual en un `std::sync::RwLock` y lo reconstruye con el token actual cada vez que este cambia. Cada operación clona el cliente y suelta el cerrojo **antes** de cualquier `await` (un cerrojo envenenado se recupera con `PoisonError::into_inner`, como en `runtime`). Al crearse lee el token del store; si el store falla, arranca sin token.
-  - [ ] T9.3 `save_token(raw) -> WhoAmI`: valida el formato (sin red si falla), luego whoami y solo con 200 guarda. `delete_token()`. `token_status() -> TokenStatus { present, user: Option<String>, invalid: bool }`: con 401 devuelve `invalid = true` sin borrar; con error de red, `present = true, user = None, invalid = false`.
+  - [x] T9.1 `HfClient::whoami(&HfToken) -> WhoAmI` contra `/api/whoami-v2`.
+  - [x] T9.2 `HfService::new(http: reqwest::Client, base_url: Url, store: Box<dyn SecretStore + Send + Sync>)`. Guarda el `HfClient` actual en un `std::sync::RwLock` y lo reconstruye con el token actual cada vez que este cambia. Cada operación clona el cliente y suelta el cerrojo **antes** de cualquier `await` (un cerrojo envenenado se recupera con `PoisonError::into_inner`, como en `runtime`). Al crearse lee el token del store; si el store falla, arranca sin token.
+  - [x] T9.3 `save_token(raw) -> WhoAmI`: valida el formato (sin red si falla), luego whoami y solo con 200 guarda. `delete_token()`. `token_status() -> TokenStatus { present, user: Option<String>, invalid: bool }`: con 401 devuelve `invalid = true` sin borrar; con error de red, `present = true, user = None, invalid = false`.
 - **Tests unitarios** (mock HTTP + `MemoryStore`):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
