@@ -232,3 +232,27 @@ estado: abierto
 ### Errores
 
 - **aserto-debil** — redireccion_no_filtra_token solo cubre cambio de puerto (127.0.0.1 a 127.0.0.1); falta el cambio de host, caso real de la CDN (minor) (C1)
+
+## T10
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a7bd3038ddaf760ac | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T10 persistencia de la cola (JsonQueueStore, QueueFile, QueuePersistence, RecordingStore) con tests en verde
+- C1 · reviewer · T10 persistencia de la cola conforme al plan y al patron de runtime/state.rs; gate verde; solo minors
+
+### Decisiones
+
+- **limitacion-documentada** — sin sync_all, .bak pisado y copia fallida se aceptan como en 004; el plan no exige durabilidad ante corte de luz (C1)
+- **limpieza-best-effort** — la copia a .bak de un fichero ilegible ignora su error, como en 004 (C1)
+- **origen-estricto-link** — la url persistida no abre fuga del token: auth_header_for solo firma URLs con el origen de HF y sin credenciales (C1)
+- **renombrado-final-atomico** — save escribe .tmp y rename, igual que runtime/state.rs; rename reemplaza en Windows (C1)
+
+### Errores
+
+- **aserto-debil** — no_persiste_token_ni_url_cdn es tautologico: el token nunca entra en la estructura guardada (C1)

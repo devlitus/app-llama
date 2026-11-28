@@ -406,8 +406,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T1
 - **Cubre:** CA10
 - **Subtareas:**
-  - [ ] T10.1 `QueueFile { schema: 1, next_id, units }` con `serde`.
-  - [ ] T10.2 Trait `QueuePersistence: Send + Sync { fn load(&self) -> Result<QueueFile, DownloadError>; fn save(&self, &QueueFile) -> Result<(), DownloadError> }` y `JsonQueueStore::new(dir)`, con el patrón de `runtime/state.rs`: `load` normaliza `Downloading`/`Verifying`/`Queued` a `Paused`; fichero ilegible → copia a `downloads.json.bak` y cola vacía; otro error de E/S → `Err` sin tocar nada; `save` crea el directorio y escribe `.tmp` + `rename`. `RecordingStore` (en memoria, cuenta los `save`) en `cfg(test)`.
+  - [x] T10.1 `QueueFile { schema: 1, next_id, units }` con `serde`.
+  - [x] T10.2 Trait `QueuePersistence: Send + Sync { fn load(&self) -> Result<QueueFile, DownloadError>; fn save(&self, &QueueFile) -> Result<(), DownloadError> }` y `JsonQueueStore::new(dir)`, con el patrón de `runtime/state.rs`: `load` normaliza `Downloading`/`Verifying`/`Queued` a `Paused`; fichero ilegible → copia a `downloads.json.bak` y cola vacía; otro error de E/S → `Err` sin tocar nada; `save` crea el directorio y escribe `.tmp` + `rename`. `RecordingStore` (en memoria, cuenta los `save`) en `cfg(test)`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
