@@ -108,3 +108,27 @@ estado: abierto
 - **condicion-sin-test** — 416 con offset 0 daba RestartFromZero en bucle infinito; corregido con test classify_416_offset_cero_no_reinicia (#67) (C1, C2 · #67)
 - **fixture-distinto-del-plan** — tabla de tests de T5 en el plan: las filas sin_origen_hf_403_es_gated y crea_directorio_padre quedaron fusionadas en una sola línea (minor) (C2)
 - **reinicio-sin-limite** — 416 con offset 0 da RestartFromZero y el plan no limita Restart en T6: posible bucle sin backoff #67 (C1 · #67)
+
+## T5
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a5164ccd0e4606a81 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T5 transfer_once con .part, Range, cancelacion por select! y conversion unica de errores reqwest sin URL; 16 tests en verde y gate verde
+- C1 · reviewer · T5 transfer_once revisada; gate verde, 14 tests de la tabla presentes y sin blocker ni major; 4 minor para el orchestrator
+
+### Decisiones
+
+- **aserto-por-identidad** — network_failure descarta el reqwest::Error y devuelve Failed(Network): FailureKind::Network no lleva texto, asi no puede filtrar la URL firmada (C1)
+- **limitacion-documentada** — UnexpectedContentRange conserva el .part y T6 llama a reset_part; T6 debe no reiniciar si len(.part)==0 (416 con offset 0) (C1)
+- **refactor-equivalente** — Restart en un solo intento y Retry plegado en Interrupted son coherentes con T5.3 y T6.2: T6 mide progreso con len(.part) (C1)
+
+### Errores
+
+- **aserto-debil** — error_reqwest_no_filtra_url_firmada no comprueba que el error crudo contenga la URL antes de convertirlo (minor) (C1)
+- **condicion-sin-test** — rama is_builder de transport_error sin test (minor) (C1)

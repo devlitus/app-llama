@@ -7,6 +7,9 @@ mod model;
 mod paths;
 mod progress;
 mod split;
+#[cfg(test)]
+mod test_support;
+mod transfer;
 
 pub use clock::{Clock, SystemClock};
 #[cfg(test)]
@@ -20,3 +23,4 @@ pub use model::{DownloadId, DownloadUnit, FailureKind, FileSpec, FileStatus, Uni
 pub use paths::{part_path, safe_join};
 pub use progress::{Progress, ProgressReporter, ProgressTracker, Throttle};
 pub use split::{display_name, validate_parts};
+pub use transfer::{HttpFetcher, TransferOutcome, network_failure, reset_part, transfer_once};
