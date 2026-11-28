@@ -1,3 +1,5 @@
+pub mod error;
+pub mod hf;
 pub mod runtime;
 
 use app_llama_core::about::AppInfo;

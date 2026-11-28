@@ -214,6 +214,28 @@ estado: abierto
 - **aserto-debil** — status_network_error pasaba por 404 del pool de wiremock, no por error de red (#40) (C1, C2 · #40)
 - **codigo-muerto** — minor: el helper closed_port_base de client.rs se duplica en línea en status_network_error de service.rs; carrera residual teórica si otro listener toma el puerto liberado (C2)
 
+## T10
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a6c663540280b3ddd | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T10 comandos Tauri del explorador HF, ErrorPayload movido a error.rs, hardware en RuntimeAppState
+- C1 · reviewer · T10 comandos HF revisados; gate verde, CA cubiertos, ErrorPayload con JSON intacto, cliente HTTP y registro conformes al plan; solo minors
+
+### Decisiones
+
+- **limitacion-documentada** — production_state devuelve Box<dyn Error> por Url::parse falible; aceptado, setup lo propaga igual (C1)
+- **refactor-equivalente** — ErrorPayload movido a commands/error.rs sin cambiar forma ni JSON; tests de runtime intactos (C1)
+
+### Errores
+
+- **aserto-debil** — json_search_item_without_hint compara solo gguf y hint en vez del JSON exacto que pide el plan (minor) (C1)
+
 ## T15
 
 ### Ciclos
