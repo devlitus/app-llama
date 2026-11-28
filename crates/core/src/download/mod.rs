@@ -4,10 +4,13 @@ mod auth;
 mod clock;
 mod disk;
 mod error;
+mod events;
 mod http;
+mod manager;
 mod model;
 mod paths;
 mod progress;
+mod request;
 mod retry;
 mod split;
 mod store;
@@ -24,13 +27,16 @@ pub use clock::{FakeClock, SteppingClock};
 pub use disk::FakeDiskSpace;
 pub use disk::{DiskSpace, Fs4DiskSpace, SPACE_MARGIN, check_space, required_bytes};
 pub use error::DownloadError;
+pub use events::{DownloadProgress, DownloadSnapshot, EventSink, FileSnapshot, ProgressPhase};
 pub use http::{
     ContentRange, InvalidContentRange, ResponseAction, ResponseInfo, classify, parse_content_range,
     range_header,
 };
+pub use manager::{DownloadManager, ManagerDeps};
 pub use model::{DownloadId, DownloadUnit, FailureKind, FileSpec, FileStatus, UnitState};
 pub use paths::{part_path, safe_join};
 pub use progress::{Progress, ProgressReporter, ProgressTracker, Throttle};
+pub use request::{PartRequest, UnitRequest};
 #[cfg(test)]
 pub use retry::FakeSleeper;
 pub use retry::{RetryPolicy, Sleeper, TokioSleeper, transfer_with_retry};

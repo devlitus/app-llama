@@ -107,6 +107,12 @@ pub fn tree_url(base: &Url, repo: &RepoId) -> Url {
     )
 }
 
+/// URL de descarga de `path` en la `revision` del repositorio. Cada segmento
+/// de `path` se codifica por separado y la `/` entre ellos se conserva.
+pub fn resolve_url(base: &Url, repo: &RepoId, revision: &str, path: &str) -> Url {
+    endpoint(base, &[repo.as_str(), "resolve", revision, path], "")
+}
+
 /// Extrae la URL con `rel="next"` y la descarta si no comparte esquema, host y
 /// puerto con `base` o si lleva credenciales, para no enviar nunca el token a
 /// otro destino.
@@ -392,5 +398,22 @@ mod tests {
     fn parse_next_link_malformed() {
         assert_eq!(parse_next_link("garbage", &base()), None);
         assert_eq!(parse_next_link("<not a url>; rel=\"next\"", &base()), None);
+    }
+
+    #[test]
+    fn resolve_url_codifica() {
+        let url = resolve_url(&base(), &repo("a/b"), "abc123", "sub dir/m#1?.gguf");
+        assert_eq!(url.path(), "/a/b/resolve/abc123/sub%20dir/m%231%3F.gguf");
+        assert_eq!(url.query(), None);
+    }
+
+    #[test]
+    fn resolve_url_conserva_puerto() {
+        let base = Url::parse("http://127.0.0.1:8080/").unwrap();
+        let url = resolve_url(&base, &repo("a/b"), "main", "m.gguf");
+        assert!(
+            url.as_str()
+                .starts_with("http://127.0.0.1:8080/a/b/resolve/")
+        );
     }
 }

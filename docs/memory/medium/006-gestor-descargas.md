@@ -256,3 +256,32 @@ estado: abierto
 ### Errores
 
 - **aserto-debil** — no_persiste_token_ni_url_cdn es tautologico: el token nunca entra en la estructura guardada (C1)
+
+## T11
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a88bceceb61eb20fc | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | ae4db4364a0355367 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T11 alta de unidades (enqueue/list), EventSink, UnitRequest, ManagerDeps, resolve_url y dest_key; sin planificador (T12).
+- C1 · reviewer · T11 completa y con sus tests del plan, gate verde; dest_key con to_lowercase no detecta en NTFS destinos iguales que difieren en la sigma final (#79)
+- C2 · developer · T11 C2: dest_key normaliza en mayúsculas carácter a carácter y el test de reversión comprueba id y version
+- C2 · reviewer · ciclo 2 de T11; #79 resuelto con char::to_uppercase por componente, tests de la sigma y aserto de reversión corregido, gate verde; issue cerrada
+
+### Decisiones
+
+- **limitacion-documentada** — NFC/NFD en macOS queda en Riesgos sin normalizar; no se repitió la prueba en NTFS porque el entorno lo denegó, la verificación es analítica (C1, C2)
+- **refactor-equivalente** — to_uppercase sin reglas de contexto iguala Σ/σ como NTFS; los grupos de más (ς, ſ, ß→SS) solo dan rechazos innecesarios, que son seguros (C1, C2)
+
+### Errores
+
+- **aserto-debil** — enqueue_revierte_si_falla_el_guardado no comprueba que se reviertan next_id ni version (C1)
+- **condicion-sin-test** — sigma final: Σ y σ daban claves distintas en dest_key (#79) (C1, C2 · #79)
+- **dato-inventado** — minor: la fila de Riesgos pone ſ/s como par que dest_key no iguala, pero to_uppercase('ſ') da 'S' y sí lo iguala (C2)
+- **fixture-distinto-del-plan** — minor: dest_key_sigma_final no incluye qς ni la clave literal "QΣ/M.GGUF", y dest_key_normaliza no comprueba "A/B.GGUF", como pide la tabla del plan (C2)
+- **normalizacion-unicode** — dest_key usa str::to_lowercase como pide el plan, pero la regla de la sigma final da claves distintas para QΣ y qσ, que en NTFS son el mismo fichero (#79) (C1 · #79)

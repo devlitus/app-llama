@@ -74,6 +74,12 @@ impl UnitState {
                 | (Failed(_), Queued)
         )
     }
+
+    /// Una unidad así reserva sus destinos: no se puede encolar otra sobre ellos.
+    /// Solo `Completed` y `Cancelled` los liberan.
+    pub fn blocks_destination(&self) -> bool {
+        !matches!(self, UnitState::Completed | UnitState::Cancelled)
+    }
 }
 
 /// Una variante del modelo, con todas sus partes, que se descarga como una unidad.
@@ -114,6 +120,17 @@ mod tests {
     #[test]
     fn transicion_paused_a_cancelled() {
         assert!(UnitState::Paused.can_transition(&UnitState::Cancelled));
+    }
+
+    #[test]
+    fn blocks_destination_salvo_completed_y_cancelled() {
+        assert!(UnitState::Queued.blocks_destination());
+        assert!(UnitState::Downloading.blocks_destination());
+        assert!(UnitState::Verifying.blocks_destination());
+        assert!(UnitState::Paused.blocks_destination());
+        assert!(UnitState::Failed(FailureKind::Network).blocks_destination());
+        assert!(!UnitState::Completed.blocks_destination());
+        assert!(!UnitState::Cancelled.blocks_destination());
     }
 
     #[test]
