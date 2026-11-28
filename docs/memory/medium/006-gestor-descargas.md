@@ -80,3 +80,31 @@ estado: abierto
 
 - **aserto-debil** — un test con MIB/10 no era entero y falló; se cambió a bloques de 1 MiB cada 1 s (C1)
 - **codigo-muerto** — minor: force siempre devuelve true y finish ignora el valor; el plan sigue diciendo force() sin argumentos (C1)
+
+## T4
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a2e74f81684aa8fcd | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a917081e17ca30486 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T4 http.rs: range_header, parse_content_range estricto y classify de respuestas, 24 tests, gate verde
+- C1 · reviewer · T4 http.rs revisado; gate verde, parser estricto sin panic y tabla de tests completa; 416 con offset 0 puede reiniciar sin fin
+- C2 · developer · T4 C2: 416 con offset 0 ya no reinicia, falla con UnexpectedContentRange (#67)
+- C2 · reviewer · ciclo 2 de T4; #67 resuelto en código (416 con offset 0 falla) y en plan (todo Restart cuenta como intento sin progreso, marca máxima); issue cerrada; gate verde
+
+### Decisiones
+
+- **analizador-null-ante-duda** — 206 con total * o cabecera inválida da UnexpectedContentRange; aceptado porque T6 reinicia desde 0 una vez (C1)
+- **condicion-sin-test** — 416 con offset==expected==0 sigue siendo AlreadyComplete (fichero vacio); el brazo va antes del de offset 0 (C2)
+- **limitacion-documentada** — el 403 de la CDN de GitHub sin reintento en T18 es aceptable: conserva el contrato de 004 (SimpleHttpFetcher ya devolvía HttpStatus(403) sin reintentar) (C1, C2)
+
+### Errores
+
+- **condicion-sin-test** — 416 con offset 0 daba RestartFromZero en bucle infinito; corregido con test classify_416_offset_cero_no_reinicia (#67) (C1, C2 · #67)
+- **fixture-distinto-del-plan** — tabla de tests de T5 en el plan: las filas sin_origen_hf_403_es_gated y crea_directorio_padre quedaron fusionadas en una sola línea (minor) (C2)
+- **reinicio-sin-limite** — 416 con offset 0 da RestartFromZero y el plan no limita Restart en T6: posible bucle sin backoff #67 (C1 · #67)

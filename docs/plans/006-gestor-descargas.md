@@ -68,13 +68,16 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
    - `206` con `Content-Range` que empieza en el offset y cuyo total es `expected_size`: se continúa.
    - `200` con offset > 0: el servidor ignora el `Range`, así que se trunca el `.part` y se empieza de 0.
    - `416` con `.part` de tamaño igual a `expected_size`: el fichero ya está completo.
-   - `416` en cualquier otro caso: se trunca el `.part` y se reinicia.
+   - `416` con offset > 0 y distinto de `expected_size`: se trunca el `.part` y se reinicia.
+   - `416` con offset 0: `Fail(UnexpectedContentRange)`. Sin `Range` en la petición, un `416` es incoherente, y reiniciar desde 0 repetiría la misma petición.
    - `206` con un inicio incoherente: `UnexpectedContentRange`; se trunca y se reinicia desde 0 **una sola vez** por fichero; si se repite, `Failed(UnexpectedContentRange)`.
+   - **Límite de reinicios:** todo reinicio desde 0 (`Restart`: `200` con offset > 0, `416` incompleto o el reinicio único por `UnexpectedContentRange`) cuenta como **intento sin progreso** (§4): consume uno de los 5 intentos, espera su backoff y nunca pone el contador a 0. Así un servidor que ignora siempre el `Range` no puede provocar un bucle infinito de reinicios.
    - `206` con un total distinto de `expected_size`, o un cuerpo que supera `expected_size`: `Failed(SizeMismatch)` y se borra el `.part`. Se corta **antes** de escribir el exceso (lección de `SimpleHttpFetcher`: un servidor que envía de más no debe llenar el disco).
    - `401`/`403` cuya URL final (`Response::url()`) tiene el origen de HF: `Unauthorized`/`Gated`, sin reintento. `403` desde otro origen (la CDN con la firma caducada): transitorio, con reintento, porque el siguiente intento vuelve a pedir `/resolve/`. `404`: `NotFound`, sin reintento.
+   - **Valor por defecto seguro de `from_hf_origin`:** solo vale `false` cuando se puede afirmar que la URL final tiene un origen distinto del de HF. Si no se puede determinar (`hf_origin: None`, como en el `ResumableHttpFetcher` de T18, o un origen opaco), vale `true`: un `401`/`403` acaba en `Unauthorized`/`Gated` sin reintento, nunca en `Failed(Network)` tras 5 intentos.
    - `5xx`, `429`, conexión cortada o timeout de lectura: transitorio, con reintento.
    - **Errores de `reqwest` sin URL:** el `Display` de `reqwest::Error` incluye la URL, que puede ser la URL firmada de la CDN (`?X-Amz-Signature=…`), y `FailureKind` se guarda en `downloads.json` y llega a la UI. Regla: **nunca se construye `FailureKind::Io { message }`, `FailureKind::Network` ni `DownloadError::Io` con `reqwest::Error::to_string()`** (tampoco envolviéndolo en un `std::io::Error`). Se usa `reqwest::Error::without_url()` antes de formatearlo o un mensaje propio. La conversión vive en un único punto (T5.4) y la usan T5 y T6.
-4. **Reintentos:** hasta 5 intentos consecutivos **sin progreso** por fichero, con esperas de 1, 2, 4 y 8 s entre ellos mediante un `Sleeper` inyectado (la espera también compite con `cancel.cancelled()`). Si un intento escribe bytes, el contador vuelve a 0. Agotados los intentos: `Failed(Network)`. El `.part` se conserva, así que "Reintentar" continúa desde donde iba.
+4. **Reintentos:** hasta 5 intentos consecutivos **sin progreso** por fichero, con esperas de 1, 2, 4 y 8 s entre ellos mediante un `Sleeper` inyectado (la espera también compite con `cancel.cancelled()`). Hay progreso cuando, al acabar un intento, `len(.part)` **supera la marca máxima** alcanzada antes en esa misma llamada (no basta con escribir bytes: tras un reinicio, volver a descargar lo que ya se tenía no es progreso). Solo entonces el contador vuelve a 0. Un `Restart` siempre cuenta como intento sin progreso (§3). Agotados los intentos: `Failed(Network)`, también si el último fue un `Restart`. El `.part` se conserva, así que "Reintentar" continúa desde donde iba.
 5. **Verificación:** al terminar cada fichero se comprueba que `len(.part) == expected_size` y, si hay `sha256`, se calcula el SHA256 del `.part` en bloques de 1 MiB dentro de `spawn_blocking` (para no bloquear el runtime de tokio durante minutos), comprobando la cancelación entre bloques, y se compara sin distinguir mayúsculas. La unidad está en `Verifying` y emite progreso con `phase: "Verify"`. No se guarda el estado del hash entre reanudaciones: se hashea entero al final. Si el SHA256 no coincide: se borra ese `.part` y la unidad pasa a `Failed(ChecksumMismatch)`.
 6. **Progreso:** `ProgressTracker` con un `Clock` inyectado. Calcula la velocidad sobre una **ventana deslizante de 5 s** y la ETA como `ceil((total − hechos) / velocidad)` (`None` si la velocidad es 0; `Some(0)` al terminar). `Throttle` deja pasar **como máximo 1 evento de progreso cada 250 ms por unidad**, más el primero y el final forzado. `ProgressReporter` combina los dos. Los cambios de estado se emiten siempre y al momento.
 7. **Espacio en disco:** con la unidad aún en `Queued`, antes de pasar a `Downloading`, `necesario = Σ (expected_size − len(.part))` de los ficheros `Pending`, más `SPACE_MARGIN = 1 GiB` (1073741824). Si `DiskSpace::available(dest)` es menor: `Queued → Failed(InsufficientSpace { needed, available })` sin pasar por `Downloading` y sin abrir ninguna conexión. `u64` en toda la cadena.
@@ -230,9 +233,9 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T1
 - **Cubre:** CA2, CA4, CA9 (lógica pura)
 - **Subtareas:**
-  - [ ] T4.1 `range_header(offset) -> Option<String>` (`None` si es 0).
-  - [ ] T4.2 `parse_content_range(&str) -> Result<ContentRange { start, end, total: Option<u64> }, ()>`.
-  - [ ] T4.3 `classify(ResponseInfo { status, content_range, from_hf_origin }, offset, expected) -> ResponseAction` (`Append`, `RestartFromZero`, `AlreadyComplete`, `Fail(FailureKind)`, `Retry`).
+  - [x] T4.1 `range_header(offset) -> Option<String>` (`None` si es 0).
+  - [x] T4.2 `parse_content_range(&str) -> Result<ContentRange { start, end, total: Option<u64> }, InvalidContentRange>`. `InvalidContentRange` es un struct unitario con `thiserror` (no `()`, para no caer en `clippy::result_unit_err`).
+  - [x] T4.3 `classify(ResponseInfo { status, content_range, from_hf_origin }, offset, expected) -> ResponseAction` (`Append`, `RestartFromZero`, `AlreadyComplete`, `Fail(FailureKind)`, `Retry`). Un `416` con offset 0 da `Fail(UnexpectedContentRange)`, no `RestartFromZero` (Diseño §3).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -249,7 +252,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `classify_200_con_offset` | 200, offset 4 MiB | `RestartFromZero` |
   | `classify_200_sin_offset` | 200, offset 0 | `Append` |
   | `classify_416_completo` | 416, offset == expected | `AlreadyComplete` |
-  | `classify_416_incompleto` | 416, offset != expected | `RestartFromZero` |
+  | `classify_416_incompleto` | 416, offset 500, expected 1000 | `RestartFromZero` |
+  | `classify_416_offset_cero_no_reinicia` | 416, offset 0, expected 1000 | `Fail(UnexpectedContentRange)` |
   | `classify_401_hf` | 401, `from_hf_origin` | `Fail(Unauthorized)` |
   | `classify_403_hf` | 403, `from_hf_origin` | `Fail(Gated)` |
   | `classify_403_cdn_reintenta` | 403, no `from_hf_origin` | `Retry` |
@@ -261,7 +265,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T3, T4
 - **Cubre:** CA2, CA4, CA5 (parte de un fichero), CA8 (exceso de tamaño)
 - **Subtareas:**
-  - [ ] T5.1 `HttpFetcher { client: reqwest::Client, hf_origin: Option<Url> }`. El `Client` lo construye quien llama: en producción, `connect_timeout` 30 s, `read_timeout` 60 s, **sin timeout total** (el cliente de `commands/hf.rs` tiene un timeout total de 30 s y **no** sirve para descargas), redirecciones por defecto (máximo 10).
+  - [ ] T5.1 `HttpFetcher { client: reqwest::Client, hf_origin: Option<Url> }`. El `Client` lo construye quien llama: en producción, `connect_timeout` 30 s, `read_timeout` 60 s, **sin timeout total** (el cliente de `commands/hf.rs` tiene un timeout total de 30 s y **no** sirve para descargas), redirecciones por defecto (máximo 10). `from_hf_origin` se calcula sobre la URL final (`Response::url()`) con valor por defecto seguro (Diseño §3): `true` salvo que `hf_origin` sea `Some` y el origen de la URL final sea distinto y no opaco. Así un `401`/`403` sin origen de HF conocido acaba en `Unauthorized`/`Gated`, nunca en `Failed(Network)` tras 5 reintentos.
   - [ ] T5.2 `transfer_once(fetcher, spec, auth: Option<HeaderValue>, cancel, on_bytes) -> Result<TransferOutcome, DownloadError>`: crea el directorio padre, abre el `.part` en append, manda `Range` según su longitud, aplica `classify`, escribe por bloques con `select!` contra `cancel.cancelled()`, corta antes de superar `expected_size` y hace `flush` al salir, también si se cancela.
   - [ ] T5.3 `TransferOutcome`: `Completed`, `Cancelled`, `Interrupted { bytes_written }`, `Restart` (tras `RestartFromZero`).
   - [ ] T5.4 Conversión única de `reqwest::Error` a `FailureKind`/`DownloadError` según la regla del Diseño §3 ("Errores de `reqwest` sin URL"): llama a `without_url()` antes de formatear o usa un mensaje propio; nunca `to_string()` sobre el error con URL. T6 la reutiliza.
@@ -278,7 +282,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `cancelacion_durante_espera_de_respuesta` | mock con `set_delay(60 s)`; se cancela cuando `received_requests()` tiene 1 | `Cancelled` sin esperar al retraso |
   | `sigue_redireccion` | mock `/a` 302 → `/b` con el cuerpo | descarga correcta desde `/b` |
   | `respuesta_404` | 404 | `Err(Failed(NotFound))` |
-  | `crea_directorio_padre` | `dest` en `tmp/x/y/m.gguf` sin crear | `.part` creado en `tmp/x/y/` |
+  | `sin_origen_hf_401_es_unauthorized` | `HttpFetcher` con `hf_origin: None`, mock 401 | `Err(Failed(Unauthorized))` |
+  | `sin_origen_hf_403_es_gated` | `HttpFetcher` con `hf_origin: None`, mock 403 | `Err(Failed(Gated))` |  | `crea_directorio_padre` | `dest` en `tmp/x/y/m.gguf` sin crear | `.part` creado en `tmp/x/y/` |
   | `error_reqwest_no_filtra_url_firmada` | `reqwest::Error` real obtenido sin red: petición a `http://127.0.0.1:<puerto de un TcpListener soltado>/x?X-Amz-Signature=secreto123`, pasado por la conversión de T5.4 | ni el `Display`/`Debug` del `DownloadError` ni el JSON de `serde_json` del `FailureKind` resultante contienen `Signature`, `secreto123` ni la URL (`127.0.0.1:<puerto>/x`) |
 
 ### T6 — Reintentos ante cortes con backoff inyectado
@@ -287,8 +292,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Cubre:** CA3
 - **Subtareas:**
   - [ ] T6.1 Trait `Sleeper: Send + Sync { async fn sleep(&self, d: Duration) }` (con `async-trait`, como `ArtifactFetcher`), `TokioSleeper` y `FakeSleeper` (registra las duraciones y vuelve al momento).
-  - [ ] T6.2 `RetryPolicy { max_attempts_without_progress: 5, backoff: [1, 2, 4, 8] s }` y `transfer_with_retry(...)`: reintenta `Retry`/`Interrupted`, reinicia el contador si hubo bytes, gestiona `Restart` y el reinicio único por `UnexpectedContentRange`, y la espera compite con `cancel.cancelled()`. El `Failed(Network)` final y cualquier error de `reqwest` se construyen con la conversión de T5.4 (regla del Diseño §3: nunca `reqwest::Error::to_string()`).
-  - [ ] T6.3 `test_support::cutting_server(body, cut_after: Vec<Option<usize>>)`: un `tokio::net::TcpListener` en `127.0.0.1:0` que responde a cada conexión con `Content-Length`/`Content-Range` completos, admite `Range` y cierra el socket tras N bytes (`None` = no corta). Registra las cabeceras `Range` recibidas. Hace falta porque wiremock no puede cortar a mitad del cuerpo.
+  - [ ] T6.2 `RetryPolicy { max_attempts_without_progress: 5, backoff: [1, 2, 4, 8] s }` y `transfer_with_retry(...)`: reintenta `Retry`/`Interrupted`, reinicia el contador solo si hubo progreso (`len(.part)` supera la marca máxima de la llamada, Diseño §4), gestiona `Restart` y el reinicio único por `UnexpectedContentRange`, y la espera compite con `cancel.cancelled()`. **Todo `Restart`** (incluido el reinicio único por `UnexpectedContentRange`) cuenta como intento sin progreso: suma 1 al contador, espera el backoff que toque y no lo pone a 0. Agotados los 5 intentos, `Failed(Network)`, sin bucle infinito. El `Failed(Network)` final y cualquier error de `reqwest` se construyen con la conversión de T5.4 (regla del Diseño §3: nunca `reqwest::Error::to_string()`).
+  - [ ] T6.3 `test_support::cutting_server(body, cut_after: Vec<Option<usize>>)`: un `tokio::net::TcpListener` en `127.0.0.1:0` que responde a cada conexión con `Content-Length`/`Content-Range` completos, admite `Range` y cierra el socket tras N bytes (`None` = no corta). Con la opción `ignore_range: true` responde siempre `200` con el cuerpo desde 0, aunque llegue un `Range`. Registra las cabeceras `Range` recibidas. Hace falta porque wiremock no puede cortar a mitad del cuerpo.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -299,6 +304,10 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `reintenta_503` | 503, 503, 200 | `Completed`, sleeps `[1, 2]` s |
   | `content_range_incoherente_reinicia_una_vez` | 1.ª respuesta 206 incoherente, 2.ª 200 correcta | `Completed`; la 2.ª petición sin `Range` |
   | `content_range_incoherente_dos_veces_falla` | dos 206 incoherentes | `Err(Failed(UnexpectedContentRange))` |
+  | `reinicios_repetidos_acaban_fallando` | `cutting_server` de 3 MiB con `ignore_range: true` que corta cada respuesta tras 1 MiB (siempre `200`) | `Err(Failed(Network))` tras exactamente 6 peticiones (la 1.ª con progreso; después reinicio, re-descarga de 1 MiB sin superar la marca, reinicio…); `FakeSleeper` registra `[1, 2, 4, 8]` s; el test termina sin bucle infinito |
+  | `respuesta_416_tras_reinicio_falla` | `.part` de 100 KiB; mock que responde siempre `416` | 1.ª `Restart` (sleep `[1]`), 2.ª petición sin `Range` → `Err(Failed(UnexpectedContentRange))`; 2 peticiones |
+  | `sin_origen_hf_401_sin_reintento` | `HttpFetcher` con `hf_origin: None`, mock 401 | `Err(Failed(Unauthorized))` con 1 sola petición y `FakeSleeper` vacío |
+  | `cdn_403_tras_redireccion_reintenta` | `hf_origin` = mock A; A 302 → mock B (otro puerto), B siempre `403` | `Err(Failed(Network))` tras 5 peticiones a A (no `Gated`), sleeps `[1, 2, 4, 8]` s |
   | `conexion_rechazada_es_transitoria` | URL a un puerto de un `TcpListener` soltado | `Err(Failed(Network))` tras 5 intentos |
   | `fallo_red_agotado_no_filtra_url_firmada` | URL `http://127.0.0.1:<puerto de un TcpListener soltado>/x?X-Amz-Signature=secreto123`, 5 intentos | `Err(Failed(Network))`; ni el `Display`/`Debug` del error ni el JSON del `FailureKind` contienen `Signature`, `secreto123` ni la URL |
   | `cancel_durante_backoff` | `FakeSleeper` que dispara `cancel` al dormir | `Cancelled`, sin más peticiones |
@@ -637,6 +646,8 @@ _Pendiente (T19)._
 | Antivirus de Windows que bloquea el `rename` del `.part` | Si aparece en T19, issue aparte con reintento del `rename` mediante `Sleeper` |
 | Carrera de #41: guardar y borrar el token a la vez puede dejar el token en memoria distinto del del llavero | La descarga usa el de memoria, igual que el explorador; el comportamiento es coherente con 005. Se arregla en #41 |
 | `fs4` no expone `available_space` en la versión elegida o falla en macOS | El developer lo comprueba en T8 (la CI de macOS lo ejecuta en `fs4_directorio_inexistente_usa_ancestro`). Alternativa: `sysinfo` con la feature de discos |
+| Un servidor que ignora siempre el `Range` (o responde `416` sin motivo) provoca un bucle infinito de reinicios (issue #67) | Todo `Restart` cuenta como intento sin progreso con backoff, el progreso se mide contra la marca máxima del `.part` y un `416` con offset 0 falla (Diseño §3 y §4; tests `reinicios_repetidos_acaban_fallando`, `respuesta_416_tras_reinicio_falla` y `classify_416_offset_cero_no_reinicia`) |
+| Sin origen de HF conocido (`hf_origin: None`, runtime de T18), un `401`/`403` se reintentaría 5 veces y acabaría en `Failed(Network)` | `from_hf_origin` vale `true` por defecto (T5.1); tests `sin_origen_hf_401_es_unauthorized`, `sin_origen_hf_403_es_gated` y `sin_origen_hf_401_sin_reintento`. Coste aceptado: un `403` de la CDN de GitHub en T18 no se reintenta, pero cada intento vuelve a pedir la URL original, así que la firma no caduca a mitad |
 | `wiremock` no puede cortar una respuesta a mitad | Servidor TCP mínimo propio en `test_support` (T6.3) |
 | Tests lentos por tamaños grandes | Los casos de más de 50 GB solo usan tamaños declarados (aritmética y cabeceras); los cuerpos reales son ≤ 10 MiB |
 | Cambiar `ModelInfo`/`ModelDetail` rompe el espejo de la UI | T14 actualiza en el mismo commit `json_model_detail_para_la_ui` y `ui/src/lib/hf/types.ts` |
