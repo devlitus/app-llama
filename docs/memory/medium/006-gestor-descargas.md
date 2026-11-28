@@ -399,3 +399,30 @@ estado: abierto
 ### Errores
 
 - (ninguno)
+
+## T16
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a36bcc9099a5c8461 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a5f01527a6a721861 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T16 UI de descargas: types, api, format y store (funciones puras y DownloadsStore) con tests, gate en verde.
+- C1 · reviewer · T16 ciclo 1, gate verde y tabla de tests completa, pero dos majors en DownloadsStore.start y applyState reproducidos con Vitest
+- C2 · developer · T16 ciclo 2: token de generación en start/stop (#91) y progreso limpiado fuera de ejecución en applyState/mergeList (#92).
+- C2 · reviewer · ciclo 2 de T16; #91 (token generation en start/stop) y #92 (replaceUnit limpia progress fuera de ejecucion) resueltos y cerrados; gate verde
+
+### Decisiones
+
+- **aserto-por-identidad** — las carreras de start/stop se prueban por efecto observable (un emit tras stop no cambia el store), y fallan sin el token (C1, C2)
+- **limitacion-documentada** — conservar progress entre Downloading y Verifying es correcto para CA13; el fallo es arrastrarlo fuera de los estados en ejecucion (C1)
+- **refactor-equivalente** — replaceUnit centraliza la regla de conservar progress solo entre Downloading y Verifying. (C2)
+
+### Errores
+
+- **condicion-sin-test** — la comprobacion de generation tras downloadsList (store.svelte.ts:126) no la ejercita ningun test; el mock devuelve [] y no se puede observar la fusion (minor) (C1, C2 · #91, #92)
+- **estado-obsoleto** — applyState conserva phase Verify y verify tras Paused, Failed y retry, y T17.2 mostraria Verificando #92 (C1 · #92)
