@@ -57,6 +57,8 @@ pub struct ModelInfo {
     pub likes: u64,
     pub gguf: Option<GgufInfo>,
     pub license: Option<String>,
+    /// Commit actual de la rama principal, si HF lo publica.
+    pub sha: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -68,6 +70,7 @@ struct RawModelInfo {
     gguf: Option<GgufInfo>,
     #[serde(rename = "cardData")]
     card_data: Option<RawCardData>,
+    sha: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -84,6 +87,7 @@ impl From<RawModelInfo> for ModelInfo {
             likes: raw.likes,
             gguf: raw.gguf,
             license: raw.card_data.and_then(|card| card.license),
+            sha: raw.sha,
         }
     }
 }
@@ -239,6 +243,23 @@ mod tests {
         assert_eq!(gguf.architecture.as_deref(), Some("qwen35"));
         assert!(gguf.context_length.unwrap() >= 8192);
         assert_eq!(info.license.as_deref(), Some("apache-2.0"));
+    }
+
+    #[test]
+    fn parse_model_info_con_sha() {
+        let mut value: Value = serde_json::from_str(INFO_GGUF).unwrap();
+        value["sha"] = json!("9217f5db79a29953eb74d5343926648285ec7e67");
+        let info: ModelInfo = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            info.sha.as_deref(),
+            Some("9217f5db79a29953eb74d5343926648285ec7e67")
+        );
+    }
+
+    #[test]
+    fn parse_model_info_sin_sha() {
+        let info: ModelInfo = serde_json::from_str(INFO_GGUF).unwrap();
+        assert_eq!(info.sha, None);
     }
 
     #[test]

@@ -17,6 +17,13 @@ pub fn register<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder
         commands::hf::hf_token_status,
         commands::hf::hf_token_save,
         commands::hf::hf_token_delete,
+        commands::downloads::downloads_enqueue_hf,
+        commands::downloads::downloads_list,
+        commands::downloads::downloads_pause,
+        commands::downloads::downloads_resume,
+        commands::downloads::downloads_cancel,
+        commands::downloads::downloads_retry,
+        commands::downloads::downloads_remove,
     ])
 }
 
@@ -26,7 +33,14 @@ pub fn run() -> Result<(), tauri::Error> {
         .setup(|app| {
             let state = commands::runtime::production_state(&app.path().app_data_dir()?)?;
             app.manage(state);
-            app.manage(commands::hf::production_state()?);
+            let hf = commands::hf::production_state()?;
+            let service = hf.service();
+            app.manage(hf);
+            app.manage(commands::downloads::production_state(
+                &app.path().app_local_data_dir()?,
+                service,
+                app.handle().clone(),
+            )?);
             Ok(())
         })
         .run(tauri::generate_context!())

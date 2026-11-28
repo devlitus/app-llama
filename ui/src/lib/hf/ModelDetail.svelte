@@ -63,7 +63,7 @@
     </thead>
     <tbody>
       {#each detail.variants as view (view.variant.parts[0].path)}
-        <VariantRow {view} repoId={detail.info.id} {onDownload} />
+        <VariantRow {view} repoId={detail.info.id} revision={detail.revision} {onDownload} />
       {/each}
     </tbody>
   </table>

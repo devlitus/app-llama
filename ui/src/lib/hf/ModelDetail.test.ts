@@ -1,10 +1,12 @@
-import { render, screen, within } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import ModelDetail from "./ModelDetail.svelte";
-import type { Fit, Gated, MemoryBudget, MemoryEstimate, ModelDetail as Detail, VariantView } from "./types";
+import type { DownloadRequest, Fit, Gated, MemoryBudget, MemoryEstimate, ModelDetail as Detail, VariantView } from "./types";
 
 afterEach(clearMocks);
+
+const REVISION = "9217a1b2c3d4e5f60718293a4b5c6d7e8f901234";
 
 const ESTIMATE: MemoryEstimate = { bytes: 6_530_612_736, kv_included: true };
 
@@ -50,10 +52,12 @@ function detail(variants: VariantView[], overrides: Partial<Detail> = {}, gated:
       likes: 1,
       gguf: { total: null, architecture: "llama", context_length: 32_768 },
       license: "apache-2.0",
+      sha: null,
     },
     ctx: 8192,
     budget: GPU_AND_RAM,
     variants,
+    revision: REVISION,
     ...overrides,
   };
 }
@@ -133,12 +137,31 @@ describe("ModelDetail", () => {
     expect(screen.getByText(/con contexto de 4096 tokens/)).toBeInTheDocument();
   });
 
-  it("ficha_download_button_disabled", async () => {
+  it("variant_row_descargar_habilitado", async () => {
     await renderDetail(detail([variant("Q4_K_M")]));
 
     const button = within(dataRows()[0]).getByRole("button", { name: "Descargar" });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("title", "Disponible próximamente");
+    expect(button).toBeEnabled();
+  });
+
+  it("variant_row_envia_revision_de_la_ficha", async () => {
+    const requests: DownloadRequest[] = [];
+    respondWith(detail([variant("BF16", { partCount: 2 })]));
+    render(ModelDetail, { repoId: "acme/model-GGUF", onDownload: (request) => requests.push(request) });
+    await screen.findByRole("table");
+
+    await fireEvent.click(within(dataRows()[0]).getByRole("button", { name: "Descargar" }));
+
+    expect(requests).toEqual([
+      {
+        repo_id: "acme/model-GGUF",
+        revision: REVISION,
+        parts: [
+          { path: "BF16-0.gguf", size: 2_147_483_648, sha256: null },
+          { path: "BF16-1.gguf", size: 2_147_483_648, sha256: null },
+        ],
+      },
+    ]);
   });
 
   it("ficha_fit_labels", async () => {

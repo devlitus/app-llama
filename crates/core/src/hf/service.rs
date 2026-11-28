@@ -4,6 +4,8 @@ use std::sync::{PoisonError, RwLock};
 use reqwest::Url;
 use serde::{Serialize, Serializer};
 
+use crate::download::TokenProvider;
+
 use super::client::HfClient;
 use super::error::HfError;
 use super::files::{GgufVariant, group_gguf_files};
@@ -12,7 +14,7 @@ use super::hint::{FitHint, fit_hint};
 use super::memory::{MemoryEstimate, estimate_memory, estimation_ctx};
 use super::model::{ModelInfo, ModelSummary, WhoAmI};
 use super::token::{HfToken, SecretStore};
-use super::url::{RepoId, SearchParams};
+use super::url::{DEFAULT_REVISION, RepoId, SearchParams, is_valid_revision};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VariantView {
@@ -28,6 +30,8 @@ pub struct ModelDetail {
     pub ctx: u32,
     pub budget: MemoryBudget,
     pub variants: Vec<VariantView>,
+    /// Revisión en la que se leyó el árbol; las descargas la reutilizan.
+    pub revision: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -127,6 +131,15 @@ impl HfService {
             .clone()
     }
 
+    /// Token en memoria: nunca consulta el almacén (el llavero puede bloquear).
+    fn current_token(&self) -> Option<HfToken> {
+        self.client
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .token()
+            .cloned()
+    }
+
     fn replace_token(&self, token: Option<HfToken>) {
         let client = HfClient::new(self.http.clone(), self.base_url.clone(), token);
         *self.client.write().unwrap_or_else(PoisonError::into_inner) = client;
@@ -140,7 +153,8 @@ impl HfService {
         let repo = RepoId::parse(repo)?;
         let client = self.current_client();
         let info = client.model_info(&repo).await?;
-        let tree = client.tree(&repo).await?;
+        let revision = pinned_revision(&info);
+        let tree = client.tree(&repo, &revision).await?;
         let ctx = estimation_ctx(info.gguf.as_ref().and_then(|gguf| gguf.context_length));
         let params_total = info.gguf.as_ref().and_then(|gguf| gguf.total);
         let variants = variant_views(group_gguf_files(&tree), params_total, ctx, budget);
@@ -149,6 +163,7 @@ impl HfService {
             ctx,
             budget: *budget,
             variants,
+            revision,
         })
     }
 
@@ -171,6 +186,21 @@ impl HfService {
         let page = client.search_next(next).await?;
         Ok(with_hints(page.items, page.next, budget))
     }
+}
+
+impl TokenProvider for HfService {
+    fn token(&self) -> Option<HfToken> {
+        self.current_token()
+    }
+}
+
+/// Fija la ficha al commit publicado; si falta o no es válido, usa `main`.
+fn pinned_revision(info: &ModelInfo) -> String {
+    info.sha
+        .as_deref()
+        .filter(|sha| is_valid_revision(sha))
+        .unwrap_or(DEFAULT_REVISION)
+        .to_owned()
 }
 
 fn with_hints(items: Vec<ModelSummary>, next: Option<Url>, budget: &MemoryBudget) -> SearchResults {
@@ -335,6 +365,66 @@ mod tests {
             .model_detail(REPO, budget)
             .await
             .unwrap()
+    }
+
+    const COMMIT: &str = "9217f5db79a29953eb74d5343926648285ec7e67";
+
+    fn info_with_sha(sha: &str) -> String {
+        let mut value: serde_json::Value = serde_json::from_str(INFO_GGUF).unwrap();
+        value["sha"] = serde_json::json!(sha);
+        value.to_string()
+    }
+
+    async fn requested_tree_paths(server: &MockServer) -> Vec<String> {
+        let requests = server.received_requests().await.unwrap();
+        requests
+            .iter()
+            .map(|request| request.url.path().to_owned())
+            .filter(|path| path.contains("/tree/"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn model_detail_usa_sha_del_commit() {
+        let server = MockServer::start().await;
+        mount_json(
+            &server,
+            &format!("/api/models/{REPO}"),
+            &info_with_sha(COMMIT),
+        )
+        .await;
+        mount_json(&server, &format!("/api/models/{REPO}/tree/{COMMIT}"), TREE).await;
+        let detail = service_for(&server)
+            .model_detail(REPO, &MemoryBudget::unknown())
+            .await
+            .unwrap();
+        assert_eq!(detail.revision, COMMIT);
+        assert_eq!(
+            requested_tree_paths(&server).await,
+            [format!("/api/models/{REPO}/tree/{COMMIT}")]
+        );
+    }
+
+    #[tokio::test]
+    async fn model_detail_sin_sha_usa_main() {
+        let server = MockServer::start().await;
+        mount_json(&server, &format!("/api/models/{REPO}"), INFO_GGUF).await;
+        mount_json(&server, &format!("/api/models/{REPO}/tree/main"), TREE).await;
+        let detail = service_for(&server)
+            .model_detail(REPO, &MemoryBudget::unknown())
+            .await
+            .unwrap();
+        assert_eq!(detail.revision, "main");
+        assert_eq!(
+            requested_tree_paths(&server).await,
+            [format!("/api/models/{REPO}/tree/main")]
+        );
+    }
+
+    #[tokio::test]
+    async fn model_detail_sha_invalido_usa_main() {
+        let detail = detail(&info_with_sha("../x"), TREE, &MemoryBudget::unknown()).await;
+        assert_eq!(detail.revision, "main");
     }
 
     fn names(detail: &ModelDetail) -> Vec<&str> {
@@ -698,5 +788,27 @@ mod tests {
         mount_search_ok(&server).await;
         let service = service_with(&server, FailingStore);
         assert_eq!(search_authorization(&service, &server).await, None);
+    }
+
+    #[test]
+    fn hf_service_token_en_memoria() {
+        let service = HfService::new(
+            reqwest::Client::new(),
+            Url::parse("http://127.0.0.1:1/").unwrap(),
+            Box::new(MemoryStore::with_token(token())),
+        );
+        service.store.delete().unwrap();
+        assert_eq!(service.current_token().unwrap().expose(), raw_token());
+    }
+
+    #[test]
+    fn hf_service_token_tras_borrar() {
+        let service = HfService::new(
+            reqwest::Client::new(),
+            Url::parse("http://127.0.0.1:1/").unwrap(),
+            Box::new(MemoryStore::with_token(token())),
+        );
+        service.delete_token().unwrap();
+        assert!(service.current_token().is_none());
     }
 }

@@ -3,12 +3,20 @@ import { INITIAL_SECTION, SECTIONS, isSectionId, sectionLabel } from "./navigati
 
 describe("navigation", () => {
   it("secciones_en_orden", () => {
-    expect(SECTIONS.map((s) => s.id)).toEqual(["explore", "library", "run", "chat", "settings"]);
+    expect(SECTIONS.map((s) => s.id)).toEqual([
+      "explore",
+      "downloads",
+      "library",
+      "run",
+      "chat",
+      "settings",
+    ]);
   });
 
   it("secciones_con_etiqueta_en_espanol", () => {
     expect(SECTIONS.map((s) => s.label)).toEqual([
       "Explorar",
+      "Descargas",
       "Biblioteca",
       "Ejecutar",
       "Chat",

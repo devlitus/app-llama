@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use app_llama_core::download::TokioSleeper;
 use app_llama_core::runtime::{
     ActiveRuntime, BackendPreference, CancelToken, GitHubReleaseSource, HardwareInfo, NativeProbe,
-    RuntimeDeps, RuntimeError, RuntimeManager, RuntimeStatus, SimpleHttpFetcher, StdDirRemover,
+    ResumableHttpFetcher, RuntimeDeps, RuntimeError, RuntimeManager, RuntimeStatus, StdDirRemover,
     TokioCommandRunner, UpdateInfo,
 };
 use tauri::{AppHandle, Emitter, Runtime, State};
@@ -27,6 +28,7 @@ fn error_code(error: &RuntimeError) -> &'static str {
         RuntimeError::NoCompatibleAsset => "NoCompatibleAsset",
         RuntimeError::BackendUnavailable => "BackendUnavailable",
         RuntimeError::Http(_) => "Http",
+        RuntimeError::Network => "Network",
         RuntimeError::Io(_) => "Io",
         RuntimeError::HttpStatus(_) => "HttpStatus",
         RuntimeError::RateLimited { .. } => "RateLimited",
@@ -140,7 +142,7 @@ pub fn production_state(app_data_dir: &Path) -> Result<RuntimeAppState, reqwest:
         .build()?;
     let deps = RuntimeDeps {
         source: Arc::new(GitHubReleaseSource::new(client.clone(), GITHUB_API)),
-        fetcher: Arc::new(SimpleHttpFetcher::new(client)),
+        fetcher: Arc::new(ResumableHttpFetcher::new(client, Arc::new(TokioSleeper))),
         runner: Arc::new(TokioCommandRunner),
         probe: Arc::new(NativeProbe),
         remover: Arc::new(StdDirRemover),
@@ -227,6 +229,7 @@ mod tests {
                 "VerificationFailed",
             ),
             (RuntimeError::Cancelled, "Cancelled"),
+            (RuntimeError::Network, "Network"),
             (RuntimeError::NoCompatibleAsset, "NoCompatibleAsset"),
             (RuntimeError::AlreadyInstalling, "AlreadyInstalling"),
             (RuntimeError::Io(std::io::Error::other("x")), "Io"),

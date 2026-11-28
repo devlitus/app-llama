@@ -5,7 +5,8 @@ use serde::Deserialize;
 use super::error::HfError;
 
 /// Revisión por defecto de los repositorios, usada en el árbol y en las descargas.
-pub(super) const DEFAULT_REVISION: &str = "main";
+pub const DEFAULT_REVISION: &str = "main";
+const COMMIT_SHA_LEN: usize = 40;
 const MAX_SEGMENT_LEN: usize = 96;
 const SEARCH_EXPANDS: [&str; 6] = [
     "downloads",
@@ -15,8 +16,9 @@ const SEARCH_EXPANDS: [&str; 6] = [
     "pipeline_tag",
     "gguf",
 ];
-const MODEL_INFO_EXPANDS: [&str; 6] = [
+const MODEL_INFO_EXPANDS: [&str; 7] = [
     "gguf",
+    "sha",
     "gated",
     "downloads",
     "likes",
@@ -44,6 +46,16 @@ impl RepoId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// `"main"` o un commit completo (40 hex en minúsculas): nunca altera la ruta
+/// de la URL ni apunta a una rama móvil arbitraria.
+pub fn is_valid_revision(revision: &str) -> bool {
+    revision == DEFAULT_REVISION
+        || (revision.len() == COMMIT_SHA_LEN
+            && revision
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')))
 }
 
 fn is_valid_segment(segment: &str) -> bool {
@@ -99,12 +111,18 @@ pub fn model_info_url(base: &Url, repo: &RepoId) -> Url {
     endpoint(base, &["api", "models", repo.as_str()], &query)
 }
 
-pub fn tree_url(base: &Url, repo: &RepoId) -> Url {
+pub fn tree_url(base: &Url, repo: &RepoId, revision: &str) -> Url {
     endpoint(
         base,
-        &["api", "models", repo.as_str(), "tree", DEFAULT_REVISION],
+        &["api", "models", repo.as_str(), "tree", revision],
         "recursive=true",
     )
+}
+
+/// URL de descarga de `path` en la `revision` del repositorio. Cada segmento
+/// de `path` se codifica por separado y la `/` entre ellos se conserva.
+pub fn resolve_url(base: &Url, repo: &RepoId, revision: &str, path: &str) -> Url {
+    endpoint(base, &[repo.as_str(), "resolve", revision, path], "")
 }
 
 /// Extrae la URL con `rel="next"` y la descarta si no comparte esquema, host y
@@ -129,7 +147,7 @@ fn next_target(link: &str) -> Option<&str> {
 
 /// Un destino es de confianza si comparte origen con `base` y no lleva
 /// credenciales incrustadas.
-pub(super) fn is_trusted_target(url: &Url, base: &Url) -> bool {
+pub(crate) fn is_trusted_target(url: &Url, base: &Url) -> bool {
     same_origin(url, base) && url.username().is_empty() && url.password().is_none()
 }
 
@@ -312,9 +330,11 @@ mod tests {
         assert_eq!(url.query(), None);
     }
 
+    const COMMIT: &str = "9217f5db79a29953eb74d5343926648285ec7e67";
+
     #[test]
     fn tree_url_recursive() {
-        let url = tree_url(&base(), &repo("a/b"));
+        let url = tree_url(&base(), &repo("a/b"), DEFAULT_REVISION);
         assert!(
             url.as_str()
                 .ends_with("/api/models/a/b/tree/main?recursive=true")
@@ -322,9 +342,39 @@ mod tests {
     }
 
     #[test]
-    fn tree_url_uses_default_revision() {
-        let url = tree_url(&base(), &repo("a/b"));
-        assert!(url.path().ends_with(&format!("/tree/{DEFAULT_REVISION}")));
+    fn tree_url_con_revision() {
+        let url = tree_url(&base(), &repo("a/b"), COMMIT);
+        assert!(
+            url.as_str()
+                .ends_with(&format!("/tree/{COMMIT}?recursive=true"))
+        );
+    }
+
+    #[test]
+    fn model_info_url_pide_sha() {
+        let url = model_info_url(&base(), &repo("a/b"));
+        assert!(url.as_str().contains("expand[]=sha"));
+    }
+
+    #[test]
+    fn revision_valida() {
+        assert!(is_valid_revision("main"));
+        assert!(is_valid_revision(COMMIT));
+    }
+
+    #[test]
+    fn revision_invalida() {
+        let with_g = format!("{}G", &COMMIT[..39]);
+        for revision in [
+            "",
+            "Main",
+            &COMMIT[..39],
+            with_g.as_str(),
+            "../main",
+            "main/x",
+        ] {
+            assert!(!is_valid_revision(revision), "{revision:?}");
+        }
     }
 
     #[test]
@@ -392,5 +442,22 @@ mod tests {
     fn parse_next_link_malformed() {
         assert_eq!(parse_next_link("garbage", &base()), None);
         assert_eq!(parse_next_link("<not a url>; rel=\"next\"", &base()), None);
+    }
+
+    #[test]
+    fn resolve_url_codifica() {
+        let url = resolve_url(&base(), &repo("a/b"), "abc123", "sub dir/m#1?.gguf");
+        assert_eq!(url.path(), "/a/b/resolve/abc123/sub%20dir/m%231%3F.gguf");
+        assert_eq!(url.query(), None);
+    }
+
+    #[test]
+    fn resolve_url_conserva_puerto() {
+        let base = Url::parse("http://127.0.0.1:8080/").unwrap();
+        let url = resolve_url(&base, &repo("a/b"), "main", "m.gguf");
+        assert!(
+            url.as_str()
+                .starts_with("http://127.0.0.1:8080/a/b/resolve/")
+        );
     }
 }
