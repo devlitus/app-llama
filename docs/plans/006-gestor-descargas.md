@@ -283,7 +283,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `sigue_redireccion` | mock `/a` 302 → `/b` con el cuerpo | descarga correcta desde `/b` |
   | `respuesta_404` | 404 | `Err(Failed(NotFound))` |
   | `sin_origen_hf_401_es_unauthorized` | `HttpFetcher` con `hf_origin: None`, mock 401 | `Err(Failed(Unauthorized))` |
-  | `sin_origen_hf_403_es_gated` | `HttpFetcher` con `hf_origin: None`, mock 403 | `Err(Failed(Gated))` |  | `crea_directorio_padre` | `dest` en `tmp/x/y/m.gguf` sin crear | `.part` creado en `tmp/x/y/` |
+  | `sin_origen_hf_403_es_gated` | `HttpFetcher` con `hf_origin: None`, mock 403 | `Err(Failed(Gated))` |
+  | `crea_directorio_padre` | `dest` en `tmp/x/y/m.gguf` sin crear | `.part` creado en `tmp/x/y/` |
   | `error_reqwest_no_filtra_url_firmada` | `reqwest::Error` real obtenido sin red: petición a `http://127.0.0.1:<puerto de un TcpListener soltado>/x?X-Amz-Signature=secreto123`, pasado por la conversión de T5.4 | ni el `Display`/`Debug` del `DownloadError` ni el JSON de `serde_json` del `FailureKind` resultante contienen `Signature`, `secreto123` ni la URL (`127.0.0.1:<puerto>/x`) |
 
 ### T6 — Reintentos ante cortes con backoff inyectado
@@ -647,7 +648,7 @@ _Pendiente (T19)._
 | Carrera de #41: guardar y borrar el token a la vez puede dejar el token en memoria distinto del del llavero | La descarga usa el de memoria, igual que el explorador; el comportamiento es coherente con 005. Se arregla en #41 |
 | `fs4` no expone `available_space` en la versión elegida o falla en macOS | El developer lo comprueba en T8 (la CI de macOS lo ejecuta en `fs4_directorio_inexistente_usa_ancestro`). Alternativa: `sysinfo` con la feature de discos |
 | Un servidor que ignora siempre el `Range` (o responde `416` sin motivo) provoca un bucle infinito de reinicios (issue #67) | Todo `Restart` cuenta como intento sin progreso con backoff, el progreso se mide contra la marca máxima del `.part` y un `416` con offset 0 falla (Diseño §3 y §4; tests `reinicios_repetidos_acaban_fallando`, `respuesta_416_tras_reinicio_falla` y `classify_416_offset_cero_no_reinicia`) |
-| Sin origen de HF conocido (`hf_origin: None`, runtime de T18), un `401`/`403` se reintentaría 5 veces y acabaría en `Failed(Network)` | `from_hf_origin` vale `true` por defecto (T5.1); tests `sin_origen_hf_401_es_unauthorized`, `sin_origen_hf_403_es_gated` y `sin_origen_hf_401_sin_reintento`. Coste aceptado: un `403` de la CDN de GitHub en T18 no se reintenta, pero cada intento vuelve a pedir la URL original, así que la firma no caduca a mitad |
+| Sin origen de HF conocido (`hf_origin: None`, runtime de T18), un `401`/`403` se reintentaría 5 veces y acabaría en `Failed(Network)` | `from_hf_origin` vale `true` por defecto (T5.1); tests `sin_origen_hf_401_es_unauthorized`, `sin_origen_hf_403_es_gated` y `sin_origen_hf_401_sin_reintento`. Coste aceptado: un `403` de la CDN de GitHub en T18 no se reintenta. Se conserva así el comportamiento de 004: `SimpleHttpFetcher` ya trataba cualquier respuesta no exitosa como definitiva (`RuntimeError::HttpStatus(403)`, sin reintento), y la URL firmada de `objects.githubusercontent.com` se usa nada más llegar la redirección |
 | `wiremock` no puede cortar una respuesta a mitad | Servidor TCP mínimo propio en `test_support` (T6.3) |
 | Tests lentos por tamaños grandes | Los casos de más de 50 GB solo usan tamaños declarados (aritmética y cabeceras); los cuerpos reales son ≤ 10 MiB |
 | Cambiar `ModelInfo`/`ModelDetail` rompe el espejo de la UI | T14 actualiza en el mismo commit `json_model_detail_para_la_ui` y `ui/src/lib/hf/types.ts` |
