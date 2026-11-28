@@ -6,6 +6,9 @@ import {
   fitHintBadge,
   fitHintTitle,
   fitLabel,
+  isValidTokenFormat,
+  tokenStatusLabel,
+  tokenSaveErrorMessage,
   formatCount,
   formatDate,
   formatGiB,
@@ -126,3 +129,34 @@ describe("budgetLegend", () => {
     expect(budgetLegend(budget({}))).toBe("No se pudo detectar la memoria del equipo");
   });
 });
+
+describe("token", () => {
+  const valid = `hf_${"a1B2".repeat(8).slice(0, 34)}`;
+
+  it("token_format_valid", () => {
+    expect(isValidTokenFormat(`  ${valid} `)).toBe(true);
+  });
+
+  it("token_format_invalid", () => {
+    const spaced = `hf_${"a".repeat(15)} ${"b".repeat(19)}`;
+    for (const token of ["abc", "hf_abc", spaced, ""]) {
+      expect(isValidTokenFormat(token)).toBe(false);
+    }
+  });
+
+  it("token_status_label_cases", () => {
+    expect(tokenStatusLabel(null)).toBe("Sin token");
+    expect(tokenStatusLabel({ present: false, user: null, invalid: false })).toBe("Sin token");
+    expect(tokenStatusLabel({ present: true, user: "ana", invalid: false })).toBe("Conectado como ana");
+    expect(tokenStatusLabel({ present: true, user: null, invalid: true })).toBe("Token no válido");
+    expect(tokenStatusLabel({ present: true, user: null, invalid: false })).toBe(
+      "Token guardado (sin verificar)",
+    );
+  });
+
+  it("token_save_error_message_cases", () => {
+    expect(tokenSaveErrorMessage({ code: "Unauthorized", message: "Acceso denegado" })).toBe("Token no válido");
+    expect(tokenSaveErrorMessage({ code: "Secret", message: "Llavero" })).toBe("Llavero");
+  });
+});
+

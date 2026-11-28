@@ -1,4 +1,5 @@
-import type { Fit, FitHint, MemoryBudget, MemoryEstimate } from "./types";
+import { errorMessage } from "../errors";
+import type { Fit, FitHint, MemoryBudget, MemoryEstimate, TokenStatus } from "./types";
 
 const LOCALE = "es-ES";
 const BYTES_PER_GIB = 1024 ** 3;
@@ -71,4 +72,23 @@ export function budgetLegend(budget: MemoryBudget): string {
     return `Comparado con ${formatGiB(gpu_bytes)} de VRAM utilizables (${share}); RAM desconocida`;
   }
   return "No se pudo detectar la memoria del equipo";
+}
+
+const TOKEN_FORMAT = /^hf_[A-Za-z0-9]{30,}$/;
+const INVALID_TOKEN = "Token no válido";
+
+export function isValidTokenFormat(token: string): boolean {
+  return TOKEN_FORMAT.test(token.trim());
+}
+
+export function tokenStatusLabel(status: TokenStatus | null): string {
+  if (!status?.present) return "Sin token";
+  if (status.invalid) return INVALID_TOKEN;
+  if (status.user) return `Conectado como ${status.user}`;
+  return "Token guardado (sin verificar)";
+}
+
+export function tokenSaveErrorMessage(error: unknown): string {
+  const unauthorized = typeof error === "object" && error !== null && "code" in error && error.code === "Unauthorized";
+  return unauthorized ? INVALID_TOKEN : errorMessage(error);
 }

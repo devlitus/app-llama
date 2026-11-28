@@ -22,6 +22,8 @@ function mockCommands(appInfo: () => unknown): void {
           metal: false,
           ram_bytes: null,
         };
+      case "hf_token_status":
+        return { present: false, user: null, invalid: false };
       default:
         return "NotInstalled";
     }
@@ -53,5 +55,14 @@ describe("Settings", () => {
     render(Settings);
 
     expect(await screen.findByRole("heading", { level: 2, name: "llama.cpp" })).toBeInTheDocument();
+  });
+
+  it("ajustes_incluye_seccion_hugging_face", async () => {
+    mockCommands(() => ({ name: "app-llama", version: "0.1.0" }));
+
+    render(Settings);
+
+    expect(await screen.findByRole("heading", { level: 2, name: "Hugging Face" })).toBeInTheDocument();
+    expect(await screen.findByText("Sin token")).toBeInTheDocument();
   });
 });

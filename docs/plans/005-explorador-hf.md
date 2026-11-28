@@ -1,7 +1,7 @@
 # 005 — Explorador de Hugging Face (búsqueda, ficha de modelo y token)
 
 - **Tipo:** feature
-- **Estado:** aprobado
+- **Estado:** hecho
 - **Rama:** feat/005-explorador-hf
 - **Fase del roadmap:** 2. Hugging Face ([docs/MVP.md](../MVP.md), funcionalidad B sin descargas)
 
@@ -620,9 +620,9 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Depende de:** T11
 - **Cubre:** CA7, CA8
 - **Subtareas:**
-  - [ ] T14.1 Al montarse, `TokenSettings` llama a `hfTokenStatus()`. El estado muestra «Conectado como <user>», «Token no válido» (`invalid`), «Token guardado (sin verificar)» (`present` sin `user` ni `invalid`, p. ej. sin red) o «Sin token».
-  - [ ] T14.2 Campo `type="password"` con los botones «Guardar» y «Borrar» («Borrar» solo si `present`). Con formato inválido muestra «El token debe empezar por hf_ y tener al menos 30 caracteres alfanuméricos más» sin invocar el comando (la misma gramática que en T8, replicada en `isValidTokenFormat` para dar feedback inmediato; la autoridad sigue siendo el backend). Si `hfTokenSave` rechaza con `code === "Unauthorized"` muestra «Token no válido»; con otro código, `errorMessage(error)`. Tras guardar se vacía el campo. El token nunca se guarda en estado global ni en `localStorage`.
-  - [ ] T14.3 Explorar **no** muestra estado ni gestión del token; la ficha solo remite a Ajustes en el aviso de los repos restringidos (T13.1).
+  - [x] T14.1 Al montarse, `TokenSettings` llama a `hfTokenStatus()`. El estado muestra «Conectado como <user>», «Token no válido» (`invalid`), «Token guardado (sin verificar)» (`present` sin `user` ni `invalid`, p. ej. sin red) o «Sin token».
+  - [x] T14.2 Campo `type="password"` con los botones «Guardar» y «Borrar» («Borrar» solo si `present`). Con formato inválido muestra «El token debe empezar por hf_ y tener al menos 30 caracteres alfanuméricos más» sin invocar el comando (la misma gramática que en T8, replicada en `isValidTokenFormat` para dar feedback inmediato; la autoridad sigue siendo el backend). Si `hfTokenSave` rechaza con `code === "Unauthorized"` muestra «Token no válido»; con otro código, `errorMessage(error)`. Tras guardar se vacía el campo. El token nunca se guarda en estado global ni en `localStorage`.
+  - [x] T14.3 Explorar **no** muestra estado ni gestión del token; la ficha solo remite a Ajustes en el aviso de los repos restringidos (T13.1).
 - **Tests unitarios (Vitest + Testing Library, `mockIPC`):**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
