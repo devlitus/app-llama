@@ -450,9 +450,9 @@ hint     = None (sin insignia)                                si falta gguf o gg
 - **Cubre:** CA7, CA8, CA9
 - **Subtareas:**
   - [x] T8.1 `HfToken::parse(&str) -> Result<HfToken, HfError::InvalidToken>`: recorta y exige `^hf_[A-Za-z0-9]{30,}$`. `Debug` y `Display` muestran `hf_***`. `expose()` es solo `pub(crate)`.
-  - [ ] T8.2 `trait SecretStore { fn get(&self) -> Result<Option<HfToken>, HfError>; fn set(&self, &HfToken) -> Result<(), HfError>; fn delete(&self) -> Result<(), HfError>; }`. `delete` sin entrada es `Ok(())`.
-  - [ ] T8.3 `KeyringStore` (servicio `app-llama`, cuenta `huggingface-token`). Los errores del llavero se convierten en `HfError::Secret(msg)` sin el valor del token. **No lleva test unitario** porque toca el llavero real; se cubre con la verificación manual (CA7/CA8).
-  - [ ] T8.4 `MemoryStore` (fake con `Mutex<Option<HfToken>>`) para los tests, y un `FailingStore` que siempre devuelve `Secret`.
+  - [x] T8.2 `trait SecretStore { fn get(&self) -> Result<Option<HfToken>, HfError>; fn set(&self, &HfToken) -> Result<(), HfError>; fn delete(&self) -> Result<(), HfError>; }`. `delete` sin entrada es `Ok(())`.
+  - [x] T8.3 `KeyringStore` (servicio `app-llama`, cuenta `huggingface-token`). Los errores del llavero se convierten en `HfError::Secret(msg)` sin el valor del token. **No lleva test unitario** porque toca el llavero real; se cubre con la verificación manual (CA7/CA8).
+  - [x] T8.4 `MemoryStore` (fake con `Mutex<Option<HfToken>>`) para los tests, y un `FailingStore` que siempre devuelve `Secret`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

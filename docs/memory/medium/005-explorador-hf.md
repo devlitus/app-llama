@@ -166,6 +166,27 @@ estado: abierto
 - **aserto-debil** — search_next_computes_hints no exige cursor=abc en el mock; pasaría aunque search_next ignorase la query (minor). (C1)
 - **fixture-distinto-del-plan** — model_detail_incomplete_variant_no_fit conserva IQ2_XXS y Q4_K_XL en vez de solo BF16 parte 1 + Q4_0; mismo resultado esperado (minor). (C1)
 
+## T8
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a09f86ebec7d3c37b | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · SecretStore, KeyringStore (keyring 3), MemoryStore y FailingStore de test en hf/token.rs
+- C1 · reviewer · SecretStore, KeyringStore (keyring 3.6.3 nativo Win/macOS), MemoryStore y FailingStore correctos; gate verde; solo minors
+
+### Decisiones
+
+- **backend-externo-opcional** — keyring 3.6.3 con windows-native y apple-native aceptado: el plan delega la versión y el Display de keyring::Error no incluye el secreto (C1)
+
+### Errores
+
+- **aserto-debil** — memory_store_with_token_starts_filled solo comprueba is_some y no el valor del token (C1)
+
 ## T15
 
 ### Ciclos
