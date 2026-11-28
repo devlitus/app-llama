@@ -212,6 +212,7 @@ mod tests {
             driver_cuda: None,
             vulkan_available: false,
             metal: os == Os::MacOs && arch == Arch::Aarch64,
+            ram_bytes: None,
         }
     }
 

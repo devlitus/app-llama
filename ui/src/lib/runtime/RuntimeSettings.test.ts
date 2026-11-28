@@ -16,6 +16,7 @@ const HARDWARE: HardwareInfo = {
   driver_cuda: { major: 13, minor: 5 },
   vulkan_available: true,
   metal: false,
+  ram_bytes: 34359738368,
 };
 
 function expectEnabled(name: string): Promise<void> {

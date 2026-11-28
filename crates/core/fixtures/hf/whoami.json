@@ -1,0 +1,13 @@
+{
+  "type": "user",
+  "name": "ejemplo",
+  "fullname": "Usuario de ejemplo",
+  "orgs": [],
+  "auth": {
+    "type": "access_token",
+    "accessToken": {
+      "displayName": "app-llama",
+      "role": "read"
+    }
+  }
+}

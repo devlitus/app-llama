@@ -1,0 +1,18 @@
+{
+  "_id": "6a7d8038d813eea1a14a8db4",
+  "id": "unsloth/Qwen3.8-27B-GGUF",
+  "gated": "manual",
+  "downloads": 8450803,
+  "likes": 7183,
+  "lastModified": "2026-11-12T02:15:52.000Z",
+  "cardData": {
+    "base_model": [
+      "Qwen/Qwen3.8-27B"
+    ],
+    "license": "apache-2.0",
+    "tags": [
+      "unsloth",
+      "qwen"
+    ]
+  }
+}

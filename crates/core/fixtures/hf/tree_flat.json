@@ -1,0 +1,38 @@
+[
+  {
+    "type": "file",
+    "oid": "6d2baf8fc599e207662ad3039f2699efc6688119",
+    "size": 16056478688,
+    "lfs": {
+      "oid": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+      "size": 16056478688,
+      "pointerSize": 136
+    },
+    "xetHash": "e81e1d4bb1028e9b7c12bf32aa675529fede553fac75f3bf9e85f808dd6eaea8",
+    "path": "Qwen3.8-27B-Q4_0.gguf"
+  },
+  {
+    "type": "file",
+    "oid": "aa7210096b00aef6f4745285face3f4a03650dd8",
+    "size": 7206043648,
+    "lfs": {
+      "oid": "f51f7340110329e897623338c9458544a88a76bfbc360808c847b8d8d0277a6c",
+      "size": 7206043648,
+      "pointerSize": 135
+    },
+    "xetHash": "b98cf00bdc23402a9f91610d41eba11d540a5ea02781d1afb4cd85d8515f685e",
+    "path": "Qwen3.8-27B-UD-IQ2_XXS.gguf"
+  },
+  {
+    "type": "file",
+    "oid": "19942ecf7d2c9fc74ee2748a2dc4d6c526229da5",
+    "size": 17659407264,
+    "lfs": {
+      "oid": "2a5f3565f39cf885103da591182c1266da64745737b42b452fd3e675369f1211",
+      "size": 17659407264,
+      "pointerSize": 136
+    },
+    "xetHash": "23a3ef7212a21edadc75b12476e36ee0dc61e6c47c5b6bd4c3b94008b039473a",
+    "path": "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+  }
+]

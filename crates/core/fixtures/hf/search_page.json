@@ -1,0 +1,54 @@
+[
+  {
+    "_id": "669fce02988201fd4f9ceddc",
+    "id": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+    "gated": false,
+    "lastModified": "2024-12-01T04:12:27.000Z",
+    "likes": 437,
+    "downloads": 371263,
+    "gguf": {
+      "total": 8030261312,
+      "architecture": "llama",
+      "context_length": 131072,
+      "bos_token": "<|begin_of_text|>",
+      "eos_token": "<|eot_id|>",
+      "totalFileSize": 32128885888
+    },
+    "pipeline_tag": "text-generation"
+  },
+  {
+    "_id": "66f457ed2dc07e76a1bde8d6",
+    "id": "bartowski/Llama-3.2-1B-Instruct-GGUF",
+    "gated": false,
+    "lastModified": "2024-10-08T14:00:29.000Z",
+    "likes": 194,
+    "downloads": 291982,
+    "gguf": {
+      "total": 1235814432,
+      "architecture": "llama",
+      "context_length": 131072,
+      "bos_token": "<|begin_of_text|>",
+      "eos_token": "<|eot_id|>",
+      "totalFileSize": 2479595360
+    },
+    "pipeline_tag": "text-generation"
+  },
+  {
+    "_id": "675330c35161b68196b65885",
+    "id": "bartowski/Llama-3.3-70B-Instruct-GGUF",
+    "gated": false,
+    "lastModified": "2024-12-07T05:30:11.000Z",
+    "likes": 77,
+    "downloads": 248487,
+    "gguf": {
+      "total": 70553706560,
+      "architecture": "llama",
+      "context_length": 131072,
+      "quantize_imatrix_file": "/models_out/Llama-3.3-70B-Instruct-GGUF/Llama-3.3-70B-Instruct.imatrix",
+      "bos_token": "<|begin_of_text|>",
+      "eos_token": "<|eot_id|>",
+      "totalFileSize": 16751201248
+    },
+    "pipeline_tag": "text-generation"
+  }
+]

@@ -9,8 +9,9 @@ use app_llama_core::runtime::{
     RuntimeDeps, RuntimeError, RuntimeManager, RuntimeStatus, SimpleHttpFetcher, StdDirRemover,
     TokioCommandRunner, UpdateInfo,
 };
-use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
+
+use super::error::ErrorPayload;
 
 const PROGRESS_EVENT: &str = "runtime://progress";
 const GITHUB_API: &str = "https://api.github.com";
@@ -18,12 +19,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 // Sin timeout total (las descargas son largas): este solo corta una conexión colgada, que si
 // no impediría cancelar.
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
-
-#[derive(Debug, Serialize)]
-pub struct ErrorPayload {
-    pub code: &'static str,
-    pub message: String,
-}
 
 fn error_code(error: &RuntimeError) -> &'static str {
     match error {
@@ -91,6 +86,10 @@ impl RuntimeAppState {
         }
     }
 
+    pub async fn hardware(&self) -> Result<HardwareInfo, RuntimeError> {
+        self.manager.hardware().await
+    }
+
     /// Reserva la instalación que empieza; `None` si ya hay una en curso, para no pisar el
     /// token de la que se puede cancelar. La guarda libera la reserva al soltarse, también si
     /// la instalación entra en pánico o se descarta su future.
@@ -156,7 +155,7 @@ pub fn production_state(app_data_dir: &Path) -> Result<RuntimeAppState, reqwest:
 pub async fn runtime_hardware(
     state: State<'_, RuntimeAppState>,
 ) -> Result<HardwareInfo, ErrorPayload> {
-    Ok(state.manager.hardware().await?)
+    Ok(state.hardware().await?)
 }
 
 #[tauri::command]
@@ -368,13 +367,15 @@ mod tests {
             }),
             vulkan_available: true,
             metal: false,
+            ram_bytes: Some(34_359_738_368),
         };
         assert_eq!(
             serde_json::to_string(&hardware).expect("serializa"),
             concat!(
                 r#"{"os":"MacOs","arch":"Aarch64","avx2":true,"avx512":false,"#,
                 r#""gpus":[{"name":"RTX","vram_mib":12282}],"#,
-                r#""driver_cuda":{"major":13,"minor":5},"vulkan_available":true,"metal":false}"#
+                r#""driver_cuda":{"major":13,"minor":5},"vulkan_available":true,"metal":false,"#,
+                r#""ram_bytes":34359738368}"#
             )
         );
 

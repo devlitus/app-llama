@@ -27,6 +27,7 @@ export interface HardwareInfo {
   driver_cuda: { major: number; minor: number } | null;
   vulkan_available: boolean;
   metal: boolean;
+  ram_bytes: number | null;
 }
 
 export type RuntimeSource = { Managed: { tag: string } } | "External";
@@ -59,9 +60,4 @@ export interface ProgressEvent {
   phase: ProgressPhase;
   done: number;
   total: number;
-}
-
-export interface ErrorPayload {
-  code: string;
-  message: string;
 }

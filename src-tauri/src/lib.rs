@@ -11,6 +11,12 @@ pub fn register<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder
         commands::runtime::runtime_install,
         commands::runtime::runtime_cancel_install,
         commands::runtime::runtime_use_external,
+        commands::hf::hf_search,
+        commands::hf::hf_search_next,
+        commands::hf::hf_model_detail,
+        commands::hf::hf_token_status,
+        commands::hf::hf_token_save,
+        commands::hf::hf_token_delete,
     ])
 }
 
@@ -20,6 +26,7 @@ pub fn run() -> Result<(), tauri::Error> {
         .setup(|app| {
             let state = commands::runtime::production_state(&app.path().app_data_dir()?)?;
             app.manage(state);
+            app.manage(commands::hf::production_state()?);
             Ok(())
         })
         .run(tauri::generate_context!())
