@@ -104,26 +104,55 @@ fn digest_blocking(
 /// Motivo de `InvalidRequest` cuando se finaliza una unidad con partes sin verificar.
 pub(super) const UNVERIFIED_PART: &str = "parte sin verificar";
 
+/// Si queda algo en `path`. Un error distinto de «no existe» se toma como que sí:
+/// es la lectura prudente para quien decide qué borrar o dar por hecho.
+fn present(path: &Path) -> bool {
+    !matches!(std::fs::metadata(path), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+}
+
+fn has_final_of_expected_size(file: &FileSpec) -> bool {
+    std::fs::metadata(&file.dest).is_ok_and(|metadata| metadata.len() == file.expected_size)
+}
+
+/// Una parte `Verified` cuyo `.part` ya es su final: sin `.part` y con el
+/// destino del tamaño esperado. Es lo que deja una caída a mitad de `finalize_unit`.
+pub(super) fn is_already_renamed(file: &FileSpec) -> bool {
+    file.status == FileStatus::Verified
+        && !present(&part_path(&file.dest))
+        && has_final_of_expected_size(file)
+}
+
+/// Una parte `Verified` de la que no queda ni el `.part` ni su final, por
+/// ejemplo porque el usuario los borró mientras la unidad estaba en pausa.
+pub(super) fn is_lost(file: &FileSpec) -> bool {
+    file.status == FileStatus::Verified
+        && !present(&part_path(&file.dest))
+        && !has_final_of_expected_size(file)
+}
+
 /// Renombra los `.part` verificados a su nombre final, en orden. Una parte
 /// `Pending` se rechaza antes de tocar nada. Los destinos se comprueban antes
 /// de renombrar y, si un renombrado falla, los ya hechos se revierten: nunca
 /// queda a la vista un conjunto incompleto de `.gguf`. En Windows `rename`
 /// sobreescribiría un destino existente, por eso la comprobación es explícita.
+///
+/// Es idempotente: las partes que ya están renombradas se saltan, así que una
+/// unidad que se quedó a medias tras una caída se puede finalizar de nuevo.
 pub fn finalize_unit(files: &[FileSpec]) -> Result<(), DownloadError> {
     if files.iter().any(|file| file.status == FileStatus::Pending) {
         return Err(DownloadError::InvalidRequest(UNVERIFIED_PART));
     }
-    let verified: Vec<&FileSpec> = files
+    let (already, to_rename): (Vec<&FileSpec>, Vec<&FileSpec>) = files
         .iter()
         .filter(|file| file.status == FileStatus::Verified)
-        .collect();
-    for file in &verified {
-        if file.dest.try_exists()? {
+        .partition(|file| is_already_renamed(file));
+    for file in &to_rename {
+        if present(&part_path(&file.dest)) && file.dest.try_exists()? {
             return Err(DownloadError::DestinationExists);
         }
     }
-    let mut renamed: Vec<&Path> = Vec::with_capacity(verified.len());
-    for file in verified {
+    let mut renamed: Vec<&Path> = already.iter().map(|file| file.dest.as_path()).collect();
+    for file in to_rename {
         if let Err(error) = std::fs::rename(part_path(&file.dest), &file.dest) {
             revert(&renamed);
             return Err(error.into());
@@ -390,6 +419,94 @@ mod tests {
             );
             assert!(!file.dest.exists());
         }
+    }
+
+    /// Simula la caída a mitad de `finalize_unit`: la parte ya renombrada.
+    fn rename_to_final(file: &FileSpec) {
+        std::fs::rename(part_path(&file.dest), &file.dest).expect("renombrar");
+    }
+
+    #[test]
+    fn finalize_reanuda_tras_caida_a_mitad() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let files = verified_unit(&dir, &["a.gguf", "b.gguf"]);
+        rename_to_final(&files[0]);
+
+        finalize_unit(&files).expect("finalizar");
+
+        for file in &files {
+            let expected = file.dest.file_name().expect("nombre").as_encoded_bytes();
+            assert_eq!(std::fs::read(&file.dest).expect("final"), expected);
+            assert!(!part_path(&file.dest).exists());
+        }
+        finalize_unit(&files).expect("segunda llamada");
+    }
+
+    #[test]
+    fn finalize_final_de_otro_tamano_no_cuenta_como_renombrada() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let files = verified_unit(&dir, &["a.gguf"]);
+        std::fs::remove_file(part_path(&files[0].dest)).expect("quitar .part");
+        std::fs::write(&files[0].dest, [0u8; 3]).expect("destino de otro tamaño");
+
+        let result = finalize_unit(&files);
+
+        assert!(matches!(result, Err(DownloadError::Io(_))), "{result:?}");
+        assert_eq!(std::fs::read(&files[0].dest).expect("leer"), [0u8; 3]);
+    }
+
+    #[test]
+    fn finalize_revierte_tambien_las_ya_renombradas() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let files = verified_unit(&dir, &["a.gguf", "b.gguf", "c.gguf"]);
+        rename_to_final(&files[0]);
+        std::fs::remove_file(part_path(&files[2].dest)).expect("quitar .part");
+
+        let result = finalize_unit(&files);
+
+        assert!(matches!(result, Err(DownloadError::Io(_))), "{result:?}");
+        for file in &files {
+            assert!(!file.dest.exists());
+        }
+        for file in &files[..2] {
+            let expected = file.dest.file_name().expect("nombre").as_encoded_bytes();
+            assert_eq!(
+                std::fs::read(part_path(&file.dest)).expect("leer"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn renombrada_exige_verified_sin_part_y_final_del_tamano() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let mut files = verified_unit(&dir, &["a.gguf"]);
+        assert!(!is_already_renamed(&files[0]));
+
+        rename_to_final(&files[0]);
+        assert!(is_already_renamed(&files[0]));
+
+        files[0].expected_size += 1;
+        assert!(!is_already_renamed(&files[0]));
+        files[0].expected_size -= 1;
+        files[0].status = FileStatus::Pending;
+        assert!(!is_already_renamed(&files[0]));
+    }
+
+    #[test]
+    fn perdida_es_verified_sin_part_ni_final_del_tamano() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let mut files = verified_unit(&dir, &["a.gguf"]);
+        assert!(!is_lost(&files[0]));
+
+        std::fs::remove_file(part_path(&files[0].dest)).expect("quitar .part");
+        assert!(is_lost(&files[0]));
+
+        std::fs::write(&files[0].dest, [0u8; 3]).expect("final de otro tamaño");
+        assert!(is_lost(&files[0]));
+
+        files[0].status = FileStatus::Pending;
+        assert!(!is_lost(&files[0]));
     }
 
     #[test]

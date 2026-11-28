@@ -75,6 +75,14 @@ impl UnitState {
         )
     }
 
+    /// «Quitar» solo saca de la lista las unidades que ya no van a ejecutarse.
+    pub fn can_remove(&self) -> bool {
+        matches!(
+            self,
+            UnitState::Completed | UnitState::Failed(_) | UnitState::Cancelled
+        )
+    }
+
     /// Una unidad así reserva sus destinos: no se puede encolar otra sobre ellos.
     /// Solo `Completed` y `Cancelled` los liberan.
     pub fn blocks_destination(&self) -> bool {
@@ -140,6 +148,17 @@ mod tests {
         assert!(UnitState::Failed(FailureKind::Network).blocks_destination());
         assert!(!UnitState::Completed.blocks_destination());
         assert!(!UnitState::Cancelled.blocks_destination());
+    }
+
+    #[test]
+    fn solo_las_terminales_se_pueden_quitar() {
+        assert!(UnitState::Completed.can_remove());
+        assert!(UnitState::Cancelled.can_remove());
+        assert!(UnitState::Failed(FailureKind::Network).can_remove());
+        assert!(!UnitState::Queued.can_remove());
+        assert!(!UnitState::Downloading.can_remove());
+        assert!(!UnitState::Verifying.can_remove());
+        assert!(!UnitState::Paused.can_remove());
     }
 
     #[test]

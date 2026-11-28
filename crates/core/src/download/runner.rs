@@ -13,7 +13,7 @@ use super::paths::part_path;
 use super::progress::{Progress, ProgressReporter};
 use super::retry::{RetryPolicy, TransferObserver, transfer_with_retry};
 use super::transfer::{TransferOutcome, part_len, remove_if_exists};
-use super::verify::{UNVERIFIED_PART, finalize_unit, verify_file};
+use super::verify::{UNVERIFIED_PART, finalize_unit, is_lost, verify_file};
 
 /// Ejecuta la unidad hasta dejarla en un estado final y libera su hueco en la
 /// cola. Si la tarea se cancela, el estado lo decide quien la canceló.
@@ -34,9 +34,10 @@ pub(super) async fn run_unit(
     manager.finish_run(id).await;
 }
 
-/// Orden de una unidad (Diseño §7 y §9): clasificar las candidatas a
-/// `Preexisting`, comprobar el espacio, descargar y verificar cada parte,
-/// verificar las candidatas ya en `Verifying` y finalizar.
+/// Orden de una unidad (Diseño §7 y §9): devolver a `Pending` las partes
+/// perdidas, clasificar las candidatas a `Preexisting`, comprobar el espacio,
+/// descargar y verificar cada parte, verificar las candidatas ya en `Verifying`
+/// y finalizar.
 async fn execute(
     manager: &DownloadManager,
     id: DownloadId,
@@ -77,17 +78,20 @@ impl<'a> UnitRun<'a> {
         unit: DownloadUnit,
         cancel: &'a CancellationToken,
     ) -> Result<Self, DownloadError> {
-        let candidates: Vec<bool> = unit.files.iter().map(is_preexisting_candidate).collect();
-        let mut initial = Vec::with_capacity(unit.files.len());
-        for (file, candidate) in unit.files.iter().zip(&candidates) {
+        let id = unit.id;
+        let mut files = unit.files;
+        reset_lost_parts(manager, id, &mut files).await;
+        let candidates: Vec<bool> = files.iter().map(is_preexisting_candidate).collect();
+        let mut initial = Vec::with_capacity(files.len());
+        for (file, candidate) in files.iter().zip(&candidates) {
             initial.push(available_bytes(file, *candidate).await?);
         }
-        let progress = ProgressEmitter::new(manager, unit.id, &unit.files, &candidates, &initial);
+        let progress = ProgressEmitter::new(manager, id, &files, &candidates, &initial);
         Ok(Self {
             manager,
             cancel,
-            id: unit.id,
-            files: unit.files,
+            id,
+            files,
             candidates,
             initial,
             progress,
@@ -233,6 +237,19 @@ impl<'a> UnitRun<'a> {
     async fn settle(&mut self, index: usize, status: FileStatus) {
         self.files[index].status = status;
         self.manager.mark_file(self.id, index, status).await;
+    }
+}
+
+/// Paso (0) de la ejecución (Diseño §7): las partes `Verified` de las que no
+/// queda ni el `.part` ni el final, porque se borraron mientras la unidad estaba
+/// en pausa, vuelven a `Pending`. Va antes de clasificar las candidatas y de
+/// comprobar el espacio, para que se descarguen y cuenten como cualquier otra.
+async fn reset_lost_parts(manager: &DownloadManager, id: DownloadId, files: &mut [FileSpec]) {
+    for (index, file) in files.iter_mut().enumerate() {
+        if is_lost(file) {
+            file.status = FileStatus::Pending;
+            manager.mark_file(id, index, FileStatus::Pending).await;
+        }
     }
 }
 
@@ -407,223 +424,22 @@ fn io_failure(message: &str) -> FailureKind {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
-    use reqwest::Url;
-    use sha2::{Digest, Sha256};
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::MockServer;
 
     use super::*;
-    use crate::download::events::{
-        DownloadProgress, DownloadSnapshot, EventSink, ProgressPhase, RecordingSink,
-    };
+    use crate::download::events::{DownloadProgress, ProgressPhase};
     use crate::download::paths::part_path;
-    use crate::download::request::{PartRequest, UnitRequest};
-    use crate::download::test_support::{FakeTokens, cutting_server, pattern_bytes};
-    use crate::download::{
-        Clock, DownloadId, DownloadManager, FakeClock, FakeDiskSpace, FakeSleeper, FileStatus,
-        HttpFetcher, ManagerDeps, RecordingStore, SteppingClock, UnitState,
+    use crate::download::test_harness::{
+        GIB, Harness, HookFactory, KIB, MIB, Options, SinkEvent, part, part_without_sha,
+        request_count, serve, sha_hex,
     };
-    use crate::hf::RepoId;
-
-    const KIB: usize = 1024;
-    const MIB: usize = 1024 * KIB;
-    const GIB: u64 = 1024 * 1024 * 1024;
-    const REVISION: &str = "9217f5db79a29953eb74d5343926648285ec7e67";
-    /// Cota de seguridad de las esperas activas: solo se agota si el test falla.
-    const WAIT_LIMIT: Duration = Duration::from_secs(30);
-
-    enum SinkEvent<'a> {
-        State(&'a DownloadSnapshot),
-        Progress(&'a DownloadProgress),
-    }
-
-    type Hook = Arc<dyn Fn(SinkEvent<'_>) + Send + Sync>;
-    type HookFactory = Box<dyn FnOnce(&Path) -> Hook>;
-
-    /// Registra los eventos y deja que un test reaccione a cada uno.
-    struct HookedSink {
-        recorder: Arc<RecordingSink>,
-        hook: Hook,
-    }
-
-    impl EventSink for HookedSink {
-        fn state(&self, snapshot: &DownloadSnapshot) {
-            EventSink::state(self.recorder.as_ref(), snapshot);
-            (self.hook)(SinkEvent::State(snapshot));
-        }
-
-        fn progress(&self, progress: &DownloadProgress) {
-            EventSink::progress(self.recorder.as_ref(), progress);
-            (self.hook)(SinkEvent::Progress(progress));
-        }
-    }
-
-    struct Options {
-        disk: u64,
-        clock: Arc<dyn Clock>,
-        hook: Option<HookFactory>,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Self {
-                disk: u64::MAX,
-                clock: Arc::new(FakeClock::new()),
-                hook: None,
-            }
-        }
-    }
-
-    struct Harness {
-        dir: tempfile::TempDir,
-        store: Arc<RecordingStore>,
-        sink: Arc<RecordingSink>,
-        manager: Arc<DownloadManager>,
-    }
-
-    impl Harness {
-        fn new(base: &str) -> Self {
-            Self::configured(base, Options::default())
-        }
-
-        fn configured(base: &str, options: Options) -> Self {
-            let dir = tempfile::tempdir().expect("tmp");
-            let store = Arc::new(RecordingStore::default());
-            let recorder = Arc::new(RecordingSink::default());
-            let hook: Hook = match options.hook {
-                Some(factory) => factory(dir.path()),
-                None => Arc::new(|_| {}),
-            };
-            let base_url = Url::parse(base).expect("url base");
-            let manager = DownloadManager::new(ManagerDeps {
-                fetcher: Arc::new(HttpFetcher::new(
-                    reqwest::Client::new(),
-                    Some(base_url.clone()),
-                )),
-                clock: options.clock,
-                sleeper: Arc::new(FakeSleeper::new()),
-                disk: Arc::new(FakeDiskSpace(Some(options.disk))),
-                tokens: Arc::new(FakeTokens::new(None)),
-                store: store.clone(),
-                sink: Arc::new(HookedSink {
-                    recorder: recorder.clone(),
-                    hook,
-                }),
-                models_dir: dir.path().to_path_buf(),
-                hf_base_url: base_url,
-                max_active: 1,
-            })
-            .expect("gestor");
-            Self {
-                dir,
-                store,
-                sink: recorder,
-                manager,
-            }
-        }
-
-        fn dest(&self, relative: &str) -> PathBuf {
-            self.dir.path().join("org").join("model").join(relative)
-        }
-
-        fn write_final(&self, relative: &str, bytes: &[u8]) {
-            let dest = self.dest(relative);
-            fs::create_dir_all(dest.parent().expect("padre")).expect("directorio");
-            fs::write(dest, bytes).expect("final");
-        }
-
-        fn write_part(&self, relative: &str, bytes: &[u8]) {
-            let dest = part_path(&self.dest(relative));
-            fs::create_dir_all(dest.parent().expect("padre")).expect("directorio");
-            fs::write(dest, bytes).expect("parcial");
-        }
-
-        async fn enqueue(&self, parts: Vec<PartRequest>) -> DownloadId {
-            let request = UnitRequest {
-                repo: RepoId::parse("org/model").expect("repo"),
-                revision: REVISION.to_string(),
-                parts,
-            };
-            self.manager.enqueue(request).await.expect("alta")
-        }
-
-        async fn state_of(&self, id: DownloadId) -> UnitState {
-            let units = self.manager.list().await;
-            units
-                .into_iter()
-                .find(|unit| unit.id == id)
-                .map(|unit| unit.state)
-                .expect("unidad")
-        }
-
-        /// Espera, cediendo el turno, a que la unidad llegue a un estado en reposo.
-        async fn finished(&self, id: DownloadId) -> UnitState {
-            let deadline = Instant::now() + WAIT_LIMIT;
-            while Instant::now() < deadline {
-                let state = self.state_of(id).await;
-                if !matches!(
-                    state,
-                    UnitState::Queued | UnitState::Downloading | UnitState::Verifying
-                ) {
-                    return state;
-                }
-                tokio::task::yield_now().await;
-            }
-            panic!("la unidad {id:?} no terminó");
-        }
-
-        fn states(&self, id: DownloadId) -> Vec<UnitState> {
-            self.sink
-                .states()
-                .into_iter()
-                .filter(|snapshot| snapshot.id == id)
-                .map(|snapshot| snapshot.state)
-                .collect()
-        }
-
-        async fn file_status(&self, id: DownloadId, index: usize) -> FileStatus {
-            let units = self.manager.list().await;
-            let unit = units.iter().find(|unit| unit.id == id).expect("unidad");
-            unit.files[index].status
-        }
-    }
-
-    fn sha_hex(bytes: &[u8]) -> String {
-        hex::encode(Sha256::digest(bytes))
-    }
-
-    fn part(name: &str, body: &[u8]) -> PartRequest {
-        PartRequest {
-            relative_path: name.to_string(),
-            size: body.len() as u64,
-            sha256: Some(sha_hex(body)),
-        }
-    }
-
-    fn part_without_sha(name: &str, size: u64) -> PartRequest {
-        PartRequest {
-            relative_path: name.to_string(),
-            size,
-            sha256: None,
-        }
-    }
-
-    async fn serve(server: &MockServer, name: &str, body: &[u8]) {
-        Mock::given(method("GET"))
-            .and(path(format!("/org/model/resolve/{REVISION}/{name}")))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.to_vec()))
-            .mount(server)
-            .await;
-    }
-
-    async fn request_count(server: &MockServer) -> usize {
-        server.received_requests().await.expect("peticiones").len()
-    }
+    use crate::download::test_support::{cutting_server, pattern_bytes};
+    use crate::download::{Clock, DownloadId, FileStatus, PartRequest, SteppingClock, UnitState};
 
     fn count_gguf(dir: &Path) -> usize {
         fs::read_dir(dir).map_or(0, |entries| {

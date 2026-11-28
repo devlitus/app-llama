@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 
 use reqwest::Url;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use super::auth::TokenProvider;
@@ -24,6 +25,9 @@ use super::store::{QueueFile, QueuePersistence};
 use super::transfer::HttpFetcher;
 use crate::hf::url::resolve_url;
 
+mod cleanup;
+mod orders;
+
 /// Todo lo que el gestor necesita del exterior, inyectado para poder probarlo.
 pub struct ManagerDeps {
     pub fetcher: Arc<HttpFetcher>,
@@ -38,12 +42,35 @@ pub struct ManagerDeps {
     pub max_active: usize,
 }
 
+/// Una ejecución lanzada: el token que la cancela y su tarea, para que quien la
+/// cancele pueda esperar a que termine. La toma (`take`) la orden que la espera.
+struct ActiveRun {
+    cancel: CancellationToken,
+    handle: Option<JoinHandle<()>>,
+}
+
+/// Unidad sobre la que actúa una orden: `start_waiting` no la lanza mientras
+/// dure, aunque esté en `Queued` y sin ejecución. Al soltarse deja de estar reservada.
+struct Reservation<'a> {
+    reserved: &'a StdMutex<HashSet<DownloadId>>,
+    id: DownloadId,
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        self.reserved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.id);
+    }
+}
+
 struct QueueState {
     units: Vec<DownloadUnit>,
     next_id: u64,
     version: u64,
-    /// Unidades con una ejecución lanzada, con el token que la cancela.
-    active: HashMap<DownloadId, CancellationToken>,
+    /// Unidades con una ejecución lanzada.
+    active: HashMap<DownloadId, ActiveRun>,
 }
 
 impl QueueState {
@@ -63,10 +90,14 @@ impl QueueState {
     }
 
     /// La `Queued` de menor id que aún no tiene ejecución lanzada.
-    fn next_waiting(&self) -> Option<DownloadId> {
+    fn next_waiting(&self, reserved: &HashSet<DownloadId>) -> Option<DownloadId> {
         self.units
             .iter()
-            .filter(|unit| unit.state == UnitState::Queued && !self.active.contains_key(&unit.id))
+            .filter(|unit| {
+                unit.state == UnitState::Queued
+                    && !self.active.contains_key(&unit.id)
+                    && !reserved.contains(&unit.id)
+            })
             .map(|unit| unit.id)
             .min()
     }
@@ -76,6 +107,12 @@ pub struct DownloadManager {
     pub(super) deps: ManagerDeps,
     // El cerrojo se mantiene durante `save`: las escrituras del almacén deben ir serializadas.
     queue: Mutex<QueueState>,
+    /// Las órdenes del usuario se ejecutan de una en una: algunas esperan a una
+    /// tarea y borran ficheros, y no deben solaparse con otra orden.
+    orders: Mutex<()>,
+    /// Unidades con una orden en curso. Cerrojo `std`: solo se toma un instante,
+    /// nunca a través de un `await`, y siempre después del de la cola.
+    reserved: StdMutex<HashSet<DownloadId>>,
 }
 
 impl DownloadManager {
@@ -90,6 +127,8 @@ impl DownloadManager {
         Ok(Arc::new(Self {
             deps,
             queue: Mutex::new(queue),
+            orders: Mutex::new(()),
+            reserved: StdMutex::new(HashSet::new()),
         }))
     }
 
@@ -128,12 +167,38 @@ impl DownloadManager {
     /// Lanza las unidades en cola, por orden de id, mientras quede hueco.
     fn start_waiting(self: &Arc<Self>, queue: &mut QueueState) {
         while queue.active.len() < self.deps.max_active {
-            let Some(id) = queue.next_waiting() else {
+            let Some(id) = queue.next_waiting(&self.reserved_ids()) else {
                 break;
             };
             let cancel = CancellationToken::new();
-            queue.active.insert(id, cancel.clone());
-            tokio::spawn(run_unit(Arc::clone(self), id, cancel));
+            let handle = tokio::spawn(run_unit(Arc::clone(self), id, cancel.clone()));
+            queue.active.insert(
+                id,
+                ActiveRun {
+                    cancel,
+                    handle: Some(handle),
+                },
+            );
+        }
+    }
+
+    fn reserved_ids(&self) -> HashSet<DownloadId> {
+        self.reserved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Reserva `id`. Se llama con el cerrojo de la cola tomado, para que la
+    /// reserva y la consulta de `active` sean atómicas frente a `start_waiting`.
+    fn reserve(&self, id: DownloadId) -> Reservation<'_> {
+        self.reserved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id);
+        Reservation {
+            reserved: &self.reserved,
+            id,
         }
     }
 
@@ -158,6 +223,15 @@ impl DownloadManager {
         to: UnitState,
     ) -> Result<(), DownloadError> {
         let mut queue = self.queue.lock().await;
+        self.transition_locked(&mut queue, id, to)
+    }
+
+    fn transition_locked(
+        &self,
+        queue: &mut QueueState,
+        id: DownloadId,
+        to: UnitState,
+    ) -> Result<(), DownloadError> {
         let unit = queue.unit_mut(id)?;
         if !unit.state.can_transition(&to) {
             return Err(DownloadError::InvalidTransition);

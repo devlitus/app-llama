@@ -83,8 +83,9 @@ pub async fn cutting_server(
     CuttingServer { port, ranges, task }
 }
 
+/// Responde a la petición y cierra la conexión.
 async fn serve_connection(
-    mut stream: tokio::net::TcpStream,
+    stream: tokio::net::TcpStream,
     body: &[u8],
     cut: Option<usize>,
     ignore_range: bool,
@@ -92,9 +93,22 @@ async fn serve_connection(
 ) {
     use tokio::io::AsyncWriteExt;
 
-    let Some(request) = read_request_head(&mut stream).await else {
-        return;
-    };
+    if let Some(mut stream) = answer(stream, body, cut, ignore_range, log).await {
+        let _ = stream.shutdown().await;
+    }
+}
+
+/// Responde a la petición sin cerrar la conexión, que se devuelve.
+async fn answer(
+    mut stream: tokio::net::TcpStream,
+    body: &[u8],
+    cut: Option<usize>,
+    ignore_range: bool,
+    log: &std::sync::Mutex<Vec<Option<String>>>,
+) -> Option<tokio::net::TcpStream> {
+    use tokio::io::AsyncWriteExt;
+
+    let request = read_request_head(&mut stream).await?;
     let range = request_range(&request);
     log.lock().expect("registro de Range").push(range.clone());
     let offset = if ignore_range {
@@ -107,7 +121,36 @@ async fn serve_connection(
     // Los fallos de escritura son el cliente cerrando: no son del test.
     let _ = stream.write_all(head.as_bytes()).await;
     let _ = stream.write_all(&payload[..sent]).await;
-    let _ = stream.shutdown().await;
+    Some(stream)
+}
+
+/// Como `cutting_server`, pero las conexiones cuyo número (desde 0) está en
+/// `stalled` envían `stall_after` bytes del cuerpo y se quedan abiertas sin
+/// enviar más, como una red parada. Las demás se atienden enteras, con `Range`.
+pub async fn stalling_server(
+    body: Vec<u8>,
+    stalled: Vec<usize>,
+    stall_after: usize,
+) -> CuttingServer {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("puerto efímero");
+    let port = listener.local_addr().expect("dirección local").port();
+    let ranges = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = std::sync::Arc::clone(&ranges);
+    let task = tokio::spawn(async move {
+        let mut held = Vec::new();
+        let mut connection = 0;
+        while let Ok((stream, _)) = listener.accept().await {
+            if stalled.contains(&connection) {
+                held.extend(answer(stream, &body, Some(stall_after), false, &log).await);
+            } else {
+                serve_connection(stream, &body, None, false, &log).await;
+            }
+            connection += 1;
+        }
+    });
+    CuttingServer { port, ranges, task }
 }
 
 async fn read_request_head(stream: &mut tokio::net::TcpStream) -> Option<String> {

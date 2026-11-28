@@ -16,6 +16,8 @@ mod runner;
 mod split;
 mod store;
 #[cfg(test)]
+mod test_harness;
+#[cfg(test)]
 mod test_support;
 mod transfer;
 mod verify;

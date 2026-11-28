@@ -312,3 +312,35 @@ estado: abierto
 
 - **condicion-sin-test** — minor: progreso_un_solo_limitador detecta un limitador doble solo si el primer Verify cae a menos de 250 ms del último Download (depende de los trozos de red) (C1, C2 · #82)
 - **dato-inventado** — minor: la ventana de velocidad mezcla muestras de hash y de red; tras verificar una parte grande, bytes_per_sec y eta de Download son irreales unos 5 s (C2)
+
+## T13
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | aed712c38cccea952 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | aec599d6a6ee0ab72 | verde | CHANGES_REQUESTED |
+| 3 | 2026-11-28 | 1 | a0fa8e07bb0027f60 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T13 hecha: pause/resume/cancel/retry/remove con JoinHandle en active, borrado protegido (#72/#75), #76 revalidado, finalize idempotente y paso (0) del runner.
+- C1 · reviewer · T13 casi correcta (borrado protegido, #76 resuelta y cerrada, T13.4 bien), pero pausar o cancelar una Queued sin ejecución tiene una carrera con finish_run/start_waiting (#85)
+- C2 · developer · T13 ciclo 2: reserva atómica de la unidad bajo el cerrojo de la cola en stop_run; start_waiting no relanza unidades reservadas (#85)
+- C2 · reviewer · la reserva de #85 es correcta (sin atascos, interbloqueos ni envenenamiento; los tests de download:: son estables en 8 ejecuciones), pero ningún test fija que pause/cancel conserven el guard: la mutación let _ = sobrevive
+- C3 · developer · T13 C3: tests de regresión que sondean la reserva de B al emitir Paused/Cancelled; renombrados los dos tests de stop_run.
+- C3 · reviewer · T13 C3 aprobada; la sonda en transition_locked fija que pause/cancel conservan la reserva, la mutación let _ = falla 2 de 258, #85 cerrada, gate verde
+
+### Decisiones
+
+- **aserto-por-identidad** — la sonda comprueba reserved_ids() de forma síncrona en el sink dentro de transition_locked, con el guard vivo; sin sleep y estable en 6 ejecuciones (C1, C2, C3)
+- **limitacion-documentada** — remove sin evento y fallo de borrado en cancel con la unidad ya Cancelled: el plan no lo define, se pasa al planner como minor (C1)
+- **limpieza-best-effort** — ninguna orden deja la unidad reservada en Queued: transition_locked cambia el estado en memoria aunque falle save, y cancel no corta en el borrado (C2)
+- **refactor-equivalente** — resume/retry no necesitan reserva (transición y start_waiting bajo el mismo cerrojo) y remove solo actúa sobre estados terminales (C1, C2)
+
+### Errores
+
+- **condicion-sin-test** — stop_run no reserva una Queued sin ejecución: finish_run->start_waiting la relanza con un token vivo durante pause/cancel #85 (C1 · #85)
+- **fixture-distinto-del-plan** — pausa_conserva_part y los cancel "desde on_bytes" usan stalling_server; con el servidor parado la aserción del .part queda vacía (C1)
+- **reserva-sin-test** — Mutación let _ = stop_run hacía pasar los 58 tests; ahora fallan 2 nuevos (#85). (C2, C3 · #85)
