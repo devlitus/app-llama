@@ -155,3 +155,29 @@ estado: abierto
 
 - **condicion-sin-test** — Ningun test comprueba que el reinicio unico por UnexpectedContentRange espera su backoff (sleep [1]) (C1)
 - **reserva-sin-test** — La duracion de 10 s viene del connect a puerto cerrado en Windows (~2 s por intento), no de sleeps reales (C1)
+
+## T7
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a9433f397d8e1f321 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T7 verify.rs: sha256_file, verify_file y finalize_unit con tests en rojo y luego en verde; gate verde.
+- C1 · reviewer · T7 verify.rs (sha256_file, verify_file, finalize_unit) cumple CA8 y los 11 tests del plan mas 5 extra; gate verde; solo hallazgos minor
+
+### Decisiones
+
+- **hash-en-spawn-blocking** — on_bytes es FnMut+Send+'static para moverlo a spawn_blocking; la cancelacion se comprueba entre bloques de 1 MiB. (C1)
+- **limitacion-documentada** — la carrera comprobacion-rename solo es explotable por un proceso externo; AlreadyQueued cubre la interna y hard_link no es portable a FAT/exFAT (C1)
+- **renombrado-final-atomico** — finalize_unit comprueba todos los destinos antes de renombrar (en Windows rename sobrescribe) y revierte los ya renombrados si uno falla. (C1)
+- **validacion-hex-estricta** — InvalidRequest en verify_file es defensa en profundidad; T14.3 ya rechaza el sha laxo en la entrada (C1)
+
+### Errores
+
+- **comentario-inexacto** — verify.rs:107 atribuye solo a Windows la sobrescritura de rename, pero POSIX rename tambien sobrescribe (C1)
+- **pending-ignorado** — finalize_unit ignora en silencio los Pending; un fallo del runner dejaria a la vista un conjunto incompleto (C1)
+- **recuperacion-renombrado-parcial** — si el proceso muere a mitad de finalize_unit, al reintentar da DestinationExists y no hay recuperacion prevista en T12/T13 (C1)
