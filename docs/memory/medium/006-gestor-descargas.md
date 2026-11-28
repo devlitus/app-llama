@@ -57,3 +57,26 @@ estado: abierto
 - **codigo-muerto** — parse_split_suffix queda pub(crate) pero solo se usa dentro de quant.rs (minor) (C2)
 - **condicion-sin-test** — falta un test con dos ficheros únicos distintos (IncompleteSplit) (C1)
 - **criterio-divergente** — split.rs no filtra con is_valid_split: rechaza variantes únicas que la ficha ofrece (x-00000-of-00002) y acepta un split sin prefijo; #63 (C1 · #63)
+
+## T3
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | ab576a4752fcba3ed | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T3 reloj inyectable, ProgressTracker (ventana 5 s, ETA), Throttle 250 ms y ProgressReporter con tests en verde
+- C1 · reviewer · T3 reloj, ProgressTracker, Throttle y ProgressReporter correctos; 12 tests del plan cubiertos, gate verde, solo minors
+
+### Decisiones
+
+- **aritmetica-u128-sin-desborde** — velocidad en u128 por diferencia de muestras de la ventana; already_done no puede inflarla por construcción (C1)
+- **refactor-equivalente** — Throttle::force(now) -> bool aceptado: reinicia el intervalo y T5/T11/T12 solo usan el reporter (C1)
+
+### Errores
+
+- **aserto-debil** — un test con MIB/10 no era entero y falló; se cambió a bloques de 1 MiB cada 1 s (C1)
+- **codigo-muerto** — minor: force siempre devuelve true y finish ignora el valor; el plan sigue diciendo force() sin argumentos (C1)

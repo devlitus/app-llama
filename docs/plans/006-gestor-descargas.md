@@ -205,10 +205,10 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T1
 - **Cubre:** CA1
 - **Subtareas:**
-  - [ ] T3.1 Trait `Clock: Send + Sync { fn now(&self) -> Duration }` (monotónico desde un origen), `SystemClock` (`Instant`), y en `cfg(test)`: `FakeClock` (avanza con `advance(d)`) y `SteppingClock` (avanza un paso fijo en cada `now()`).
-  - [ ] T3.2 `ProgressTracker::new(total, already_done)`, `record(now, bytes)` y `snapshot(now) -> Progress { downloaded, total, bytes_per_sec, eta_secs: Option<u64> }`. Ventana deslizante de 5 s. Los bytes `already_done` no cuentan para la velocidad.
-  - [ ] T3.3 `Throttle::new(250 ms)`, `should_emit(now) -> bool` (el primero siempre) y `force()` para el evento final.
-  - [ ] T3.4 `ProgressReporter { tracker, throttle, clock }` con `record(bytes) -> Option<Progress>` y `finish() -> Progress`.
+  - [x] T3.1 Trait `Clock: Send + Sync { fn now(&self) -> Duration }` (monotónico desde un origen), `SystemClock` (`Instant`), y en `cfg(test)`: `FakeClock` (avanza con `advance(d)`) y `SteppingClock` (avanza un paso fijo en cada `now()`).
+  - [x] T3.2 `ProgressTracker::new(total, already_done)`, `record(now, bytes)` y `snapshot(now) -> Progress { downloaded, total, bytes_per_sec, eta_secs: Option<u64> }`. Ventana deslizante de 5 s. Los bytes `already_done` no cuentan para la velocidad.
+  - [x] T3.3 `Throttle::new(250 ms)`, `should_emit(now) -> bool` (el primero siempre) y `force()` para el evento final.
+  - [x] T3.4 `ProgressReporter { tracker, throttle, clock }` con `record(bytes) -> Option<Progress>` y `finish() -> Progress`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
