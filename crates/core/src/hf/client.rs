@@ -1,11 +1,16 @@
 //! Cliente HTTP de la API de Hugging Face: búsqueda paginada y mapeo de errores.
 use reqwest::header::{LINK, RETRY_AFTER};
 use reqwest::{Response, StatusCode, Url};
+use serde::de::DeserializeOwned;
 
 use super::error::HfError;
-use super::model::ModelSummary;
+use super::model::{ModelInfo, ModelSummary, TreeEntry};
 use super::token::HfToken;
-use super::url::{SearchParams, is_trusted_target, parse_next_link, search_url};
+use super::url::{
+    RepoId, SearchParams, is_trusted_target, model_info_url, parse_next_link, search_url, tree_url,
+};
+
+pub const MAX_TREE_PAGES: usize = 20;
 
 #[derive(Debug, Clone)]
 pub struct HfClient {
@@ -38,12 +43,37 @@ impl HfClient {
         self.fetch_search_page(next).await
     }
 
+    pub async fn model_info(&self, repo: &RepoId) -> Result<ModelInfo, HfError> {
+        let (info, _) = self.get_json(&model_info_url(&self.base_url, repo)).await?;
+        Ok(info)
+    }
+
+    /// Sigue `Link rel="next"` hasta `MAX_TREE_PAGES` páginas.
+    pub async fn tree(&self, repo: &RepoId) -> Result<Vec<TreeEntry>, HfError> {
+        let mut entries = Vec::new();
+        let mut url = tree_url(&self.base_url, repo);
+        for _ in 0..MAX_TREE_PAGES {
+            let (page, next): (Vec<TreeEntry>, _) = self.get_json(&url).await?;
+            entries.extend(page);
+            match next {
+                Some(next_url) => url = next_url,
+                None => return Ok(entries),
+            }
+        }
+        Err(HfError::TooManyPages)
+    }
+
     async fn fetch_search_page(&self, url: &Url) -> Result<SearchPage, HfError> {
+        let (items, next) = self.get_json(url).await?;
+        Ok(SearchPage { items, next })
+    }
+
+    async fn get_json<T: DeserializeOwned>(&self, url: &Url) -> Result<(T, Option<Url>), HfError> {
         let response = self.get(url).await?;
         let next = next_page_url(&response, &self.base_url);
         let body = response.bytes().await.map_err(|_| HfError::Network)?;
-        let items = serde_json::from_slice(&body).map_err(|e| HfError::Parse(e.to_string()))?;
-        Ok(SearchPage { items, next })
+        let value = serde_json::from_slice(&body).map_err(|e| HfError::Parse(e.to_string()))?;
+        Ok((value, next))
     }
 
     /// Es el único punto que envía peticiones: el token solo viaja a destinos
@@ -101,6 +131,8 @@ fn retry_after_secs(response: &Response) -> Option<u64> {
 mod tests {
     use super::*;
     use crate::hf::url::SortBy;
+
+    const INFO_GGUF: &str = include_str!("../../fixtures/hf/model_info_gguf.json");
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -315,6 +347,94 @@ mod tests {
             search_status(response).await,
             Err(HfError::Parse(_))
         ));
+    }
+
+    fn repo() -> RepoId {
+        RepoId::parse("a/b").unwrap()
+    }
+
+    fn tree_page(name: &str) -> String {
+        format!(r#"[{{"type":"file","path":"{name}.gguf","size":10}}]"#)
+    }
+
+    fn next_link(server: &MockServer, cursor: &str) -> String {
+        format!(
+            "<{}/api/models/a/b/tree/main?recursive=true&cursor={cursor}>; rel=\"next\"",
+            server.uri()
+        )
+    }
+
+    async fn mount_tree(server: &MockServer, response: ResponseTemplate) {
+        Mock::given(method("GET"))
+            .and(path("/api/models/a/b/tree/main"))
+            .and(query_param("recursive", "true"))
+            .respond_with(response)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn tree_requests_recursive() {
+        let server = MockServer::start().await;
+        mount_tree(&server, ResponseTemplate::new(200).set_body_string("[]")).await;
+        let entries = client_for(&server, None).tree(&repo()).await.unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tree_follows_pagination() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/models/a/b/tree/main"))
+            .and(query_param("cursor", "p2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(tree_page("second")))
+            .mount(&server)
+            .await;
+        let link = next_link(&server, "p2");
+        Mock::given(method("GET"))
+            .and(path("/api/models/a/b/tree/main"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(tree_page("first"))
+                    .insert_header("Link", link.as_str()),
+            )
+            .with_priority(10)
+            .mount(&server)
+            .await;
+        let entries = client_for(&server, None).tree(&repo()).await.unwrap();
+        let paths: Vec<_> = entries.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["first.gguf", "second.gguf"]);
+    }
+
+    #[tokio::test]
+    async fn tree_too_many_pages() {
+        let server = MockServer::start().await;
+        let link = next_link(&server, "more");
+        mount_tree(
+            &server,
+            ResponseTemplate::new(200)
+                .set_body_string("[]")
+                .insert_header("Link", link.as_str()),
+        )
+        .await;
+        let result = client_for(&server, None).tree(&repo()).await;
+        assert!(matches!(result, Err(HfError::TooManyPages)));
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), MAX_TREE_PAGES);
+    }
+
+    #[tokio::test]
+    async fn model_info_requests_expands_and_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/models/a/b"))
+            .and(query_param("expand[]", "gguf"))
+            .and(query_param("expand[]", "gated"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(INFO_GGUF))
+            .mount(&server)
+            .await;
+        let info = client_for(&server, None).model_info(&repo()).await.unwrap();
+        assert_eq!(info.id, "unsloth/Qwen3.8-27B-GGUF");
     }
 
     #[tokio::test]

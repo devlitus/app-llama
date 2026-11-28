@@ -144,6 +144,28 @@ estado: abierto
 - **aserto-debil** — search_sends_expected_query solo exige 2 de los 6 expand[] de CA1 y no comprueba que haya una unica peticion (minor) (C1)
 - **fixture-distinto-del-plan** — el token de los tests tiene hf_ + 36 caracteres y el plan dice 34 (minor) (C1)
 
+## T7
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a2a745e66429288da | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T7 hecha: HfClient::model_info/tree paginado (MAX_TREE_PAGES=20) y HfService con model_detail/search/search_next con encaje e insignias.
+- C1 · reviewer · T7 aprobada; gate verde, CA4/5/6/12/16/17 de T7 cubiertos; 3 hallazgos minor sin issue.
+
+### Decisiones
+
+- **limitacion-documentada** — Se aceptan HfService::new(client) provisional, Url serializada con serialize_with (la cubrirá json_search_page_para_la_ui) e info antes que árbol en secuencia. (C1)
+
+### Errores
+
+- **aserto-debil** — search_next_computes_hints no exige cursor=abc en el mock; pasaría aunque search_next ignorase la query (minor). (C1)
+- **fixture-distinto-del-plan** — model_detail_incomplete_variant_no_fit conserva IQ2_XXS y Q4_K_XL en vez de solo BF16 parte 1 + Q4_0; mismo resultado esperado (minor). (C1)
+
 ## T15
 
 ### Ciclos

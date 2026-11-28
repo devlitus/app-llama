@@ -8,6 +8,7 @@ pub mod hint;
 pub mod memory;
 pub mod model;
 pub mod quant;
+pub mod service;
 pub mod token;
 pub mod url;
 
@@ -22,6 +23,7 @@ pub use model::{
     Gated, GgufInfo, LfsInfo, ModelInfo, ModelSummary, TreeEntry, TreeEntryKind, WhoAmI,
 };
 pub use quant::extract_quant;
+pub use service::{HfService, ModelDetail, SearchItem, SearchResults, VariantView};
 pub use token::HfToken;
 pub use url::{
     RepoId, SearchParams, SortBy, model_info_url, parse_next_link, search_url, tree_url,
