@@ -53,8 +53,8 @@ mod tests {
     use super::*;
     use crate::download::test_support::{FakeTokens, file_spec, hf_token, pattern_bytes};
     use crate::download::{
-        DownloadError, FailureKind, FakeSleeper, HttpFetcher, RetryPolicy, TransferOutcome,
-        transfer_with_retry,
+        DownloadError, FailureKind, FakeSleeper, HttpFetcher, RetryPolicy, TransferObserver,
+        TransferOutcome, transfer_with_retry,
     };
 
     const KIB: usize = 1024;
@@ -152,7 +152,10 @@ mod tests {
             &RetryPolicy::default(),
             &FakeSleeper::new(),
             &CancellationToken::new(),
-            &mut |_| {},
+            TransferObserver {
+                on_bytes: &mut |_| {},
+                on_restart: &mut || {},
+            },
         )
         .await;
         (outcome, dir)

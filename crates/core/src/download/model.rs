@@ -64,7 +64,7 @@ impl UnitState {
         use UnitState::*;
         matches!(
             (self, to),
-            (Queued, Downloading | Paused | Cancelled)
+            (Queued, Downloading | Paused | Cancelled | Failed(_))
                 | (
                     Downloading,
                     Verifying | Paused | Cancelled | Failed(_) | Queued
@@ -120,6 +120,15 @@ mod tests {
     #[test]
     fn transicion_paused_a_cancelled() {
         assert!(UnitState::Paused.can_transition(&UnitState::Cancelled));
+    }
+
+    #[test]
+    fn transicion_queued_a_failed() {
+        let failure = FailureKind::InsufficientSpace {
+            needed: 2,
+            available: 1,
+        };
+        assert!(UnitState::Queued.can_transition(&UnitState::Failed(failure)));
     }
 
     #[test]

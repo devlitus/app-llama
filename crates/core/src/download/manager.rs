@@ -1,5 +1,5 @@
 //! Gestor de la cola de descargas: alta de unidades y consulta de su estado.
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use reqwest::Url;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use super::auth::TokenProvider;
 use super::clock::Clock;
@@ -17,6 +18,7 @@ use super::model::{DownloadId, DownloadUnit, FileSpec, FileStatus, UnitState};
 use super::paths::safe_join;
 use super::request::UnitRequest;
 use super::retry::Sleeper;
+use super::runner::run_unit;
 use super::split::{display_name, validate_parts};
 use super::store::{QueueFile, QueuePersistence};
 use super::transfer::HttpFetcher;
@@ -40,6 +42,8 @@ struct QueueState {
     units: Vec<DownloadUnit>,
     next_id: u64,
     version: u64,
+    /// Unidades con una ejecución lanzada, con el token que la cancela.
+    active: HashMap<DownloadId, CancellationToken>,
 }
 
 impl QueueState {
@@ -50,10 +54,26 @@ impl QueueState {
             ..QueueFile::default()
         }
     }
+
+    fn unit_mut(&mut self, id: DownloadId) -> Result<&mut DownloadUnit, DownloadError> {
+        self.units
+            .iter_mut()
+            .find(|unit| unit.id == id)
+            .ok_or(DownloadError::UnknownDownload)
+    }
+
+    /// La `Queued` de menor id que aún no tiene ejecución lanzada.
+    fn next_waiting(&self) -> Option<DownloadId> {
+        self.units
+            .iter()
+            .filter(|unit| unit.state == UnitState::Queued && !self.active.contains_key(&unit.id))
+            .map(|unit| unit.id)
+            .min()
+    }
 }
 
 pub struct DownloadManager {
-    deps: ManagerDeps,
+    pub(super) deps: ManagerDeps,
     // El cerrojo se mantiene durante `save`: las escrituras del almacén deben ir serializadas.
     queue: Mutex<QueueState>,
 }
@@ -65,6 +85,7 @@ impl DownloadManager {
             units: saved.units,
             next_id: saved.next_id,
             version: 0,
+            active: HashMap::new(),
         };
         Ok(Arc::new(Self {
             deps,
@@ -81,7 +102,10 @@ impl DownloadManager {
             .collect()
     }
 
-    pub async fn enqueue(&self, request: UnitRequest) -> Result<DownloadId, DownloadError> {
+    pub async fn enqueue(
+        self: &Arc<Self>,
+        request: UnitRequest,
+    ) -> Result<DownloadId, DownloadError> {
         let files = self.build_files(&request)?;
         reject_repeated_destinations(&files)?;
         reject_conflicting_finals(&files)?;
@@ -97,7 +121,68 @@ impl DownloadManager {
         };
         let id = unit.id;
         self.append_and_persist(&mut queue, unit)?;
+        self.start_waiting(&mut queue);
         Ok(id)
+    }
+
+    /// Lanza las unidades en cola, por orden de id, mientras quede hueco.
+    fn start_waiting(self: &Arc<Self>, queue: &mut QueueState) {
+        while queue.active.len() < self.deps.max_active {
+            let Some(id) = queue.next_waiting() else {
+                break;
+            };
+            let cancel = CancellationToken::new();
+            queue.active.insert(id, cancel.clone());
+            tokio::spawn(run_unit(Arc::clone(self), id, cancel));
+        }
+    }
+
+    /// Libera el hueco de una ejecución terminada y arranca la siguiente.
+    pub(super) async fn finish_run(self: &Arc<Self>, id: DownloadId) {
+        let mut queue = self.queue.lock().await;
+        queue.active.remove(&id);
+        self.start_waiting(&mut queue);
+    }
+
+    pub(super) async fn unit(&self, id: DownloadId) -> Result<DownloadUnit, DownloadError> {
+        let mut queue = self.queue.lock().await;
+        queue.unit_mut(id).map(|unit| unit.clone())
+    }
+
+    /// Cambia el estado de una unidad si la tabla de transiciones lo permite.
+    /// Se persiste y se emite siempre, con los estados de sus ficheros. Si el
+    /// guardado falla, el nuevo estado sigue en memoria y se devuelve el error.
+    pub(super) async fn transition(
+        &self,
+        id: DownloadId,
+        to: UnitState,
+    ) -> Result<(), DownloadError> {
+        let mut queue = self.queue.lock().await;
+        let unit = queue.unit_mut(id)?;
+        if !unit.state.can_transition(&to) {
+            return Err(DownloadError::InvalidTransition);
+        }
+        unit.state = to;
+        let changed = unit.clone();
+        queue.version += 1;
+        let saved = self.deps.store.save(&queue.to_file());
+        self.deps
+            .sink
+            .state(&DownloadSnapshot::of(&changed, queue.version));
+        saved
+    }
+
+    /// Anota el estado de un fichero. Se persiste con el siguiente cambio de
+    /// estado de la unidad, nunca por sí solo.
+    pub(super) async fn mark_file(&self, id: DownloadId, index: usize, status: FileStatus) {
+        let mut queue = self.queue.lock().await;
+        if let Some(file) = queue
+            .unit_mut(id)
+            .ok()
+            .and_then(|unit| unit.files.get_mut(index))
+        {
+            file.status = status;
+        }
     }
 
     fn build_files(&self, request: &UnitRequest) -> Result<Vec<FileSpec>, DownloadError> {
@@ -313,7 +398,8 @@ mod tests {
             sink,
             models_dir: models_dir.to_path_buf(),
             hf_base_url: Url::parse("https://huggingface.co").unwrap(),
-            max_active: 1,
+            // Sin planificador: estos tests solo miran el alta, no la ejecución.
+            max_active: 0,
         }
     }
 

@@ -42,6 +42,22 @@ impl ProgressTracker {
         self.drop_samples_outside_window(now);
     }
 
+    /// Como `record`, pero deja los bytes hechos en un valor absoluto: sirve
+    /// cuando el avance no es la suma de los bloques (p. ej. la verificación).
+    pub fn record_at(&mut self, now: Duration, bytes: u64, downloaded: u64) {
+        self.record(now, bytes);
+        self.downloaded = downloaded.min(self.total);
+    }
+
+    /// Fija los bytes hechos a un valor absoluto (nunca más que el total) y
+    /// olvida las muestras de velocidad: lo que se vuelve a descargar tras un
+    /// reinicio no cuenta como velocidad nueva hasta que lleguen muestras.
+    pub fn rewind(&mut self, _now: Duration, downloaded: u64) {
+        self.downloaded = downloaded.min(self.total);
+        self.samples.clear();
+        self.received = 0;
+    }
+
     pub fn snapshot(&self, now: Duration) -> Progress {
         let bytes_per_sec = self.speed(now);
         Progress {
@@ -143,8 +159,35 @@ impl ProgressReporter {
             .then(|| self.tracker.snapshot(now))
     }
 
+    /// Registra un bloque que deja el progreso en `downloaded`; devuelve el
+    /// progreso solo si toca emitir evento.
+    pub fn record_at(&mut self, bytes: u64, downloaded: u64) -> Option<Progress> {
+        let now = self.clock.now();
+        self.tracker.record_at(now, bytes, downloaded);
+        self.throttle
+            .should_emit(now)
+            .then(|| self.tracker.snapshot(now))
+    }
+
+    /// Rebobina el progreso a `downloaded` y devuelve el evento, sin pasar por
+    /// el limitador: la barra de la UI debe bajar al momento.
+    pub fn rewind(&mut self, downloaded: u64) -> Progress {
+        let now = self.clock.now();
+        self.tracker.rewind(now, downloaded);
+        self.throttle.force(now);
+        self.tracker.snapshot(now)
+    }
+
     pub fn finish(&mut self) -> Progress {
         let now = self.clock.now();
+        self.throttle.force(now);
+        self.tracker.snapshot(now)
+    }
+
+    /// Evento final forzado con el progreso en `downloaded`.
+    pub fn finish_at(&mut self, downloaded: u64) -> Progress {
+        let now = self.clock.now();
+        self.tracker.record_at(now, 0, downloaded);
         self.throttle.force(now);
         self.tracker.snapshot(now)
     }
@@ -309,6 +352,65 @@ mod tests {
         assert_eq!(last.total, total);
         assert!(last.bytes_per_sec.abs_diff(1_310_720) <= 13_107);
         assert_eq!(last.eta_secs, Some(0));
+    }
+
+    #[test]
+    fn tracker_rewind_fija_absoluto() {
+        let mut tracker = ProgressTracker::new(262_144, 102_400);
+        tracker.record(ms(100), 50 * 1024);
+
+        tracker.rewind(ms(200), 0);
+
+        let progress = tracker.snapshot(ms(200));
+        assert_eq!(progress.downloaded, 0);
+        assert_eq!(progress.total, 262_144);
+    }
+
+    #[test]
+    fn tracker_rewind_vacia_ventana() {
+        let mut tracker = ProgressTracker::new(100 * MIB, 0);
+        let end = feed(&mut tracker, 0, 20, 100, MIB / 10);
+        assert!(tracker.snapshot(ms(end)).bytes_per_sec > 0);
+
+        tracker.rewind(ms(end), 0);
+
+        let progress = tracker.snapshot(ms(end));
+        assert_eq!(progress.bytes_per_sec, 0);
+        assert_eq!(progress.eta_secs, None);
+    }
+
+    #[test]
+    fn tracker_rewind_no_supera_el_total() {
+        let mut tracker = ProgressTracker::new(MIB, 0);
+
+        tracker.rewind(ms(0), 2 * MIB);
+
+        assert_eq!(tracker.snapshot(ms(0)).downloaded, MIB);
+    }
+
+    #[test]
+    fn reporter_rewind_no_se_limita() {
+        let clock = Arc::new(FakeClock::new());
+        let mut reporter = ProgressReporter::new(MIB, 0, clock);
+        assert!(reporter.record(1024).is_some());
+        assert!(reporter.record(1024).is_none());
+
+        let progress = reporter.rewind(0);
+
+        assert_eq!(progress.downloaded, 0);
+        assert_eq!(progress.total, MIB);
+    }
+
+    #[test]
+    fn reporter_record_at_fija_el_absoluto_y_limita() {
+        let clock = Arc::new(FakeClock::new());
+        let mut reporter = ProgressReporter::new(MIB, 0, clock);
+
+        let first = reporter.record_at(1024, 4096).expect("primer evento");
+        assert_eq!(first.downloaded, 4096);
+        assert!(reporter.record_at(1024, 8192).is_none());
+
+        assert_eq!(reporter.finish_at(2 * MIB).downloaded, MIB);
     }
 
     #[test]

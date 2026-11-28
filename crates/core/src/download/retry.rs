@@ -73,6 +73,14 @@ impl RetryPolicy {
     }
 }
 
+/// Avisos de una transferencia hacia quien la lanza.
+pub struct TransferObserver<'a> {
+    /// Bytes nuevos escritos en el `.part`: solo deltas.
+    pub on_bytes: &'a mut (dyn FnMut(u64) + Send),
+    /// Una sola vez por reinicio, ya con el `.part` truncado y antes de la espera.
+    pub on_restart: &'a mut (dyn FnMut() + Send),
+}
+
 /// `auth` se evalúa antes de cada intento: el token puede cambiar entre dos.
 pub async fn transfer_with_retry(
     fetcher: &HttpFetcher,
@@ -81,8 +89,12 @@ pub async fn transfer_with_retry(
     policy: &RetryPolicy,
     sleeper: &dyn Sleeper,
     cancel: &CancellationToken,
-    on_bytes: &mut (dyn FnMut(u64) + Send),
+    observer: TransferObserver<'_>,
 ) -> Result<TransferOutcome, DownloadError> {
+    let TransferObserver {
+        on_bytes,
+        on_restart,
+    } = observer;
     let part = part_path(&spec.dest);
     let mut attempts = Attempts {
         without_progress: 0,
@@ -92,7 +104,8 @@ pub async fn transfer_with_retry(
     loop {
         let attempt = transfer_once(fetcher, spec, auth(), cancel, on_bytes).await;
         match resolve_attempt(attempt, &part, &mut attempts).await? {
-            TransferOutcome::Interrupted { .. } | TransferOutcome::Restart => {}
+            TransferOutcome::Interrupted { .. } => {}
+            TransferOutcome::Restart => on_restart(),
             done => return Ok(done),
         }
         attempts.record(part_len(&part).await?);
@@ -182,7 +195,7 @@ mod fakes {
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use reqwest::Url;
     use wiremock::matchers::{header_exists, method};
@@ -226,7 +239,10 @@ mod tests {
             &policy,
             sleeper,
             cancel,
-            &mut |_| {},
+            TransferObserver {
+                on_bytes: &mut |_| {},
+                on_restart: &mut || {},
+            },
         )
         .await
     }
@@ -577,7 +593,10 @@ mod tests {
             &RetryPolicy::default(),
             &sleeper,
             &CancellationToken::new(),
-            &mut |_| {},
+            TransferObserver {
+                on_bytes: &mut |_| {},
+                on_restart: &mut || {},
+            },
         )
         .await;
 
@@ -610,5 +629,106 @@ mod tests {
         let seen = authorizations_after_503_then_swap(None).await;
 
         assert_eq!(seen, [bearer('A'), None]);
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        Restart,
+        Bytes(u64),
+    }
+
+    /// Ejecuta la transferencia anotando, en orden, los bytes y los avisos de reinicio.
+    async fn run_recording(
+        spec: &FileSpec,
+    ) -> (Result<TransferOutcome, DownloadError>, Vec<Event>) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let bytes_log = Arc::clone(&events);
+        let restart_log = Arc::clone(&events);
+        let outcome = transfer_with_retry(
+            &fetcher(),
+            spec,
+            &|| None,
+            &RetryPolicy::default(),
+            &FakeSleeper::new(),
+            &CancellationToken::new(),
+            TransferObserver {
+                on_bytes: &mut move |bytes| {
+                    bytes_log
+                        .lock()
+                        .expect("registro")
+                        .push(Event::Bytes(bytes));
+                },
+                on_restart: &mut move || {
+                    restart_log.lock().expect("registro").push(Event::Restart);
+                },
+            },
+        )
+        .await;
+        let events = std::mem::take(&mut *events.lock().expect("registro"));
+        (outcome, events)
+    }
+
+    fn restarts(events: &[Event]) -> usize {
+        events
+            .iter()
+            .filter(|event| **event == Event::Restart)
+            .count()
+    }
+
+    #[tokio::test]
+    async fn restart_avisa_on_restart() {
+        let body = pattern_bytes(256 * KIB);
+        let server = cutting_server(body.clone(), Vec::new(), true).await;
+        let dir = tempfile::tempdir().expect("tmp");
+        let dest = dest_in(&dir);
+        seed_part(&dest, &body[..100 * KIB]);
+        let spec = file_spec(server.url(), &dest, body.len());
+
+        let (outcome, events) = run_recording(&spec).await;
+
+        assert!(matches!(outcome, Ok(TransferOutcome::Completed)));
+        assert_eq!(restarts(&events), 1);
+        let notice = events
+            .iter()
+            .position(|e| *e == Event::Restart)
+            .expect("aviso");
+        let after: u64 = events[notice + 1..]
+            .iter()
+            .map(|event| match event {
+                Event::Bytes(bytes) => *bytes,
+                Event::Restart => 0,
+            })
+            .sum();
+        assert!(events[..notice].iter().all(|e| *e == Event::Restart));
+        assert_eq!(after, 262_144);
+    }
+
+    #[tokio::test]
+    async fn restart_por_content_range_avisa() {
+        let body = pattern_bytes(256 * KIB);
+        let server =
+            serve_incoherent_then(ResponseTemplate::new(200).set_body_bytes(body.clone())).await;
+        let dir = tempfile::tempdir().expect("tmp");
+        let dest = dest_in(&dir);
+        seed_part(&dest, &body[..100 * KIB]);
+        let spec = file_spec(format!("{}/f", server.uri()), &dest, body.len());
+
+        let (outcome, events) = run_recording(&spec).await;
+
+        assert!(matches!(outcome, Ok(TransferOutcome::Completed)));
+        assert_eq!(restarts(&events), 1);
+    }
+
+    #[tokio::test]
+    async fn interrupcion_no_avisa_restart() {
+        let body = pattern_bytes(3 * MIB);
+        let server = cutting_server(body.clone(), vec![Some(MIB), Some(MIB), None], false).await;
+        let dir = tempfile::tempdir().expect("tmp");
+        let spec = file_spec(server.url(), &dest_in(&dir), body.len());
+
+        let (outcome, events) = run_recording(&spec).await;
+
+        assert!(matches!(outcome, Ok(TransferOutcome::Completed)));
+        assert_eq!(restarts(&events), 0);
     }
 }

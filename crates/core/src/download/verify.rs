@@ -101,12 +101,18 @@ fn digest_blocking(
     }
 }
 
-/// Renombra los `.part` verificados a su nombre final, en orden. Los destinos
-/// se comprueban antes de tocar nada y, si un renombrado falla, los ya hechos
-/// se revierten: nunca queda a la vista un conjunto incompleto de `.gguf`.
-/// En Windows `rename` sobreescribiría un destino existente, por eso la
-/// comprobación es explícita.
+/// Motivo de `InvalidRequest` cuando se finaliza una unidad con partes sin verificar.
+pub(super) const UNVERIFIED_PART: &str = "parte sin verificar";
+
+/// Renombra los `.part` verificados a su nombre final, en orden. Una parte
+/// `Pending` se rechaza antes de tocar nada. Los destinos se comprueban antes
+/// de renombrar y, si un renombrado falla, los ya hechos se revierten: nunca
+/// queda a la vista un conjunto incompleto de `.gguf`. En Windows `rename`
+/// sobreescribiría un destino existente, por eso la comprobación es explícita.
 pub fn finalize_unit(files: &[FileSpec]) -> Result<(), DownloadError> {
+    if files.iter().any(|file| file.status == FileStatus::Pending) {
+        return Err(DownloadError::InvalidRequest(UNVERIFIED_PART));
+    }
     let verified: Vec<&FileSpec> = files
         .iter()
         .filter(|file| file.status == FileStatus::Verified)
@@ -362,6 +368,28 @@ mod tests {
         assert!(matches!(result, Err(DownloadError::Io(_))));
         assert!(!files[0].dest.exists());
         assert!(part_path(&files[0].dest).is_file());
+    }
+
+    #[test]
+    fn finalize_rechaza_parte_pendiente() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let mut files = verified_unit(&dir, &["a.gguf", "b.gguf", "c.gguf"]);
+        files[1].status = FileStatus::Pending;
+
+        let result = finalize_unit(&files);
+
+        assert!(matches!(
+            result,
+            Err(DownloadError::InvalidRequest("parte sin verificar"))
+        ));
+        for file in &files {
+            let expected = file.dest.file_name().expect("nombre").as_encoded_bytes();
+            assert_eq!(
+                std::fs::read(part_path(&file.dest)).expect("leer"),
+                expected
+            );
+            assert!(!file.dest.exists());
+        }
     }
 
     #[test]

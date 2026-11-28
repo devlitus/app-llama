@@ -160,7 +160,7 @@ pub(super) async fn part_len(part: &Path) -> Result<u64, DownloadError> {
     }
 }
 
-async fn remove_if_exists(part: &Path) -> Result<(), DownloadError> {
+pub(super) async fn remove_if_exists(part: &Path) -> Result<(), DownloadError> {
     match tokio::fs::remove_file(part).await {
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
         _ => Ok(()),

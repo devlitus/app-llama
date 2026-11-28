@@ -38,7 +38,12 @@ pub struct CuttingServer {
 
 impl CuttingServer {
     pub fn url(&self) -> String {
-        format!("http://127.0.0.1:{}/f", self.port)
+        format!("{}/f", self.base_url())
+    }
+
+    /// Origen del servidor, para usarlo como base de HF.
+    pub fn base_url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
     }
 
     /// Cabecera `Range` de cada petición recibida, en orden de llegada.

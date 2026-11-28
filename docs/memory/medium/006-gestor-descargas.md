@@ -285,3 +285,30 @@ estado: abierto
 - **dato-inventado** — minor: la fila de Riesgos pone ſ/s como par que dest_key no iguala, pero to_uppercase('ſ') da 'S' y sí lo iguala (C2)
 - **fixture-distinto-del-plan** — minor: dest_key_sigma_final no incluye qς ni la clave literal "QΣ/M.GGUF", y dest_key_normaliza no comprueba "A/B.GGUF", como pide la tabla del plan (C2)
 - **normalizacion-unicode** — dest_key usa str::to_lowercase como pide el plan, pero la regla de la sigma final da claves distintas para QΣ y qσ, que en NTFS son el mismo fichero (#79) (C1 · #79)
+
+## T12
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a1b1cb63c60f6a537 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a70cd6dab28db08c7 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T12 planificador FIFO, runner de unidades, rewind de progreso, unit_failure y finalize que rechaza Pending
+- C1 · reviewer · T12 correcto en orden, FIFO, cancelación por token, unit_failure y borrado del .part; el progreso de la fase Verify usa un reporter aparte y salta (#82)
+- C2 · developer · T12 C2: un solo ProgressReporter por unidad con total constante y un unico limitador para Download y Verify (#82)
+- C2 · reviewer · T12 C2 aprobada; #82 cerrada con un reporter y un limitador por unidad y total constante; el salto entre fases exige cambiar el plan antes de T16/T17
+
+### Decisiones
+
+- **aritmetica-u128-sin-desborde** — la base del rebobinado cuenta el inicial de las otras Pending, coherente con el already_done del reporter; downloaded_bytes nunca supera total_bytes (C1)
+- **limitacion-documentada** — contrato de progreso por fase: total constante, cada phase monótona, Download y Verify se intercalan en Downloading; la UI (T16.3/T17.2) debe guardar y pintar el progreso por fase (C1, C2)
+- **refactor-equivalente** — record_at y finish_at fijan el absoluto con el mismo Throttle; Mutex de std sin await dentro, emisión fuera del cerrojo (C1, C2)
+
+### Errores
+
+- **condicion-sin-test** — minor: progreso_un_solo_limitador detecta un limitador doble solo si el primer Verify cae a menos de 250 ms del último Download (depende de los trozos de red) (C1, C2 · #82)
+- **dato-inventado** — minor: la ventana de velocidad mezcla muestras de hash y de red; tras verificar una parte grande, bytes_per_sec y eta de Download son irreales unos 5 s (C2)

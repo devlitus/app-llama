@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::model::{DownloadId, DownloadUnit, FileStatus, UnitState};
+use super::progress::Progress;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileSnapshot {
@@ -61,6 +62,19 @@ pub struct DownloadProgress {
     pub bytes_per_sec: u64,
     pub eta_secs: Option<u64>,
     pub phase: ProgressPhase,
+}
+
+impl DownloadProgress {
+    pub fn new(id: DownloadId, progress: &Progress, phase: ProgressPhase) -> Self {
+        Self {
+            id,
+            downloaded_bytes: progress.downloaded,
+            total_bytes: progress.total,
+            bytes_per_sec: progress.bytes_per_sec,
+            eta_secs: progress.eta_secs,
+            phase,
+        }
+    }
 }
 
 pub trait EventSink: Send + Sync {

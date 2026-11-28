@@ -12,6 +12,7 @@ mod paths;
 mod progress;
 mod request;
 mod retry;
+mod runner;
 mod split;
 mod store;
 #[cfg(test)]
@@ -39,7 +40,7 @@ pub use progress::{Progress, ProgressReporter, ProgressTracker, Throttle};
 pub use request::{PartRequest, UnitRequest};
 #[cfg(test)]
 pub use retry::FakeSleeper;
-pub use retry::{RetryPolicy, Sleeper, TokioSleeper, transfer_with_retry};
+pub use retry::{RetryPolicy, Sleeper, TokioSleeper, TransferObserver, transfer_with_retry};
 pub use split::{display_name, validate_parts};
 #[cfg(test)]
 pub use store::RecordingStore;
