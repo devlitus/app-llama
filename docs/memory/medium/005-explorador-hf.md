@@ -236,6 +236,27 @@ estado: abierto
 
 - **aserto-debil** — json_search_item_without_hint compara solo gguf y hint en vez del JSON exacto que pide el plan (minor) (C1)
 
+## T11
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a42cbaa51489fb9d3 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T11 cliente tipado HF, utilidades de formato es-ES y errors.ts movido desde runtime
+- C1 · reviewer · T11 aprobada; tipos HF coinciden campo a campo con los json_* de T10 y el refactor de errors.ts es equivalente
+
+### Decisiones
+
+- **refactor-equivalente** — errorMessage y ErrorPayload movidos a lib/errors.ts sin cambio de forma ni de comportamiento (C1)
+
+### Errores
+
+- **condicion-sin-test** — formatCount muestra "1000 mil" entre 999950 y 999999 al redondear sin pasar a millones (minor) (C1)
+
 ## T15
 
 ### Ciclos

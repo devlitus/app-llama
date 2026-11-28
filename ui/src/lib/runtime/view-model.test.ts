@@ -12,7 +12,6 @@ import {
   backendOptions,
   describeHardware,
   describeStatus,
-  errorMessage,
   externalBinaryFilters,
   primaryAction,
   progressLabel,
@@ -278,22 +277,6 @@ describe("progreso", () => {
   it("progreso_porcentaje", () => {
     expect(progressPercent(fetching("main", 42, 100))).toBe(42);
     expect(progressPercent(fetching("main", 5, 0))).toBeNull();
-  });
-});
-
-describe("errorMessage", () => {
-  it("mensaje_error_rate_limit", () => {
-    const message = errorMessage({
-      code: "RateLimited",
-      message: "Se alcanzó el límite de GitHub. Inténtalo más tarde.",
-    });
-
-    expect(message).toContain("Inténtalo más tarde");
-  });
-
-  it("mensaje_error_desconocido", () => {
-    expect(errorMessage(new Error("ipc"))).toBe("Ha ocurrido un error inesperado.");
-    expect(errorMessage(undefined)).toBe("Ha ocurrido un error inesperado.");
   });
 });
 

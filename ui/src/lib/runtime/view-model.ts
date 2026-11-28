@@ -1,7 +1,6 @@
 import type {
   Backend,
   BackendChoice,
-  ErrorPayload,
   HardwareInfo,
   Os,
   ProgressEvent,
@@ -27,8 +26,6 @@ export interface FileFilter {
   extensions: string[];
 }
 
-
-const UNKNOWN_ERROR = "Ha ocurrido un error inesperado.";
 const GIBIBYTE_IN_MIB = 1024;
 
 function backendKind(backend: Backend): Exclude<BackendChoice, "auto"> {
@@ -147,20 +144,6 @@ export function progressLabel(event: ProgressEvent): string {
     case "done":
       return "Instalación completada";
   }
-}
-
-function isErrorPayload(error: unknown): error is ErrorPayload {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    "message" in error &&
-    typeof error.message === "string"
-  );
-}
-
-export function errorMessage(error: unknown): string {
-  return isErrorPayload(error) ? error.message : UNKNOWN_ERROR;
 }
 
 export function externalBinaryFilters(os: Os | undefined): FileFilter[] | undefined {

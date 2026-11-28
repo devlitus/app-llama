@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { errorMessage } from "../errors";
   import * as api from "./api";
   import type { BackendChoice, HardwareInfo, ProgressEvent, RuntimeStatus, UpdateInfo } from "./types";
   import {
@@ -7,7 +8,6 @@
     backendOptions,
     describeHardware,
     describeStatus,
-    errorMessage,
     externalBinaryFilters,
     primaryAction,
     progressLabel,

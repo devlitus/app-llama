@@ -61,8 +61,3 @@ export interface ProgressEvent {
   done: number;
   total: number;
 }
-
-export interface ErrorPayload {
-  code: string;
-  message: string;
-}
