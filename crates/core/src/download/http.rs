@@ -19,6 +19,7 @@ pub struct InvalidContentRange;
 pub struct ResponseInfo<'a> {
     pub status: u16,
     pub content_range: Option<&'a str>,
+    pub content_length: Option<u64>,
     pub from_hf_origin: bool,
 }
 
@@ -60,16 +61,28 @@ fn parse_digits(text: &str) -> Result<u64, InvalidContentRange> {
     text.parse().map_err(|_| InvalidContentRange)
 }
 
+/// Acepta solo `bytes */<total>` (cuerpo de un `416`), con dígitos ASCII.
+pub fn parse_unsatisfied_range(value: &str) -> Option<u64> {
+    parse_digits(value.strip_prefix("bytes */")?).ok()
+}
+
+fn size_mismatch(expected: u64, actual: u64) -> ResponseAction {
+    ResponseAction::Fail(FailureKind::SizeMismatch { expected, actual })
+}
+
 pub fn classify(info: ResponseInfo<'_>, offset: u64, expected: u64) -> ResponseAction {
     match info.status {
         200 if offset > 0 => ResponseAction::RestartFromZero,
-        200 => ResponseAction::Append,
+        // Es seguro comparar `Content-Length` porque `reqwest` no tiene activada
+        // la descompresión (features `json` y `stream`): si se activa
+        // (`gzip`, `brotli`…), `Content-Length` mide el cuerpo comprimido y esta
+        // regla daría `SizeMismatch` falsos; hay que revisarla.
+        200 => match info.content_length {
+            Some(length) if length != expected => size_mismatch(expected, length),
+            _ => ResponseAction::Append,
+        },
         206 => classify_partial(info.content_range, offset, expected),
-        416 if offset == expected => ResponseAction::AlreadyComplete,
-        // Con offset 0 no se envía `Range`: reiniciar desde cero repetiría la
-        // misma petición y el 416 se encadenaría sin fin.
-        416 if offset == 0 => ResponseAction::Fail(FailureKind::UnexpectedContentRange),
-        416 => ResponseAction::RestartFromZero,
+        416 => classify_unsatisfied(info.content_range, offset, expected),
         401 if info.from_hf_origin => ResponseAction::Fail(FailureKind::Unauthorized),
         403 if info.from_hf_origin => ResponseAction::Fail(FailureKind::Gated),
         // Fuera del origen de HF es la firma caducada de la CDN: el siguiente
@@ -78,6 +91,25 @@ pub fn classify(info: ResponseInfo<'_>, offset: u64, expected: u64) -> ResponseA
         404 => ResponseAction::Fail(FailureKind::NotFound),
         _ => ResponseAction::Fail(FailureKind::Network),
     }
+}
+
+fn classify_unsatisfied(content_range: Option<&str>, offset: u64, expected: u64) -> ResponseAction {
+    // El tamaño anunciado manda sobre el `.part`: si el fichero del servidor
+    // es otro, los bytes previos no sirven aunque coincidan con `expected`.
+    if let Some(total) = content_range.and_then(parse_unsatisfied_range)
+        && total != expected
+    {
+        return size_mismatch(expected, total);
+    }
+    if offset == expected {
+        return ResponseAction::AlreadyComplete;
+    }
+    // Con offset 0 no se envía `Range`: reiniciar desde cero repetiría la
+    // misma petición y el 416 se encadenaría sin fin.
+    if offset == 0 {
+        return ResponseAction::Fail(FailureKind::UnexpectedContentRange);
+    }
+    ResponseAction::RestartFromZero
 }
 
 fn classify_partial(content_range: Option<&str>, offset: u64, expected: u64) -> ResponseAction {
@@ -94,10 +126,7 @@ fn classify_partial(content_range: Option<&str>, offset: u64, expected: u64) -> 
         return ResponseAction::Fail(FailureKind::UnexpectedContentRange);
     }
     if total != expected {
-        return ResponseAction::Fail(FailureKind::SizeMismatch {
-            expected,
-            actual: total,
-        });
+        return size_mismatch(expected, total);
     }
     ResponseAction::Append
 }
@@ -110,11 +139,98 @@ mod tests {
         ResponseInfo {
             status,
             content_range,
+            content_length: None,
             from_hf_origin,
         }
     }
 
+    fn info_200(content_length: Option<u64>) -> ResponseInfo<'static> {
+        ResponseInfo {
+            content_length,
+            ..info(200, None, true)
+        }
+    }
+
     const MIB: u64 = 1024 * 1024;
+
+    #[test]
+    fn classify_200_content_length_distinto() {
+        let action = classify(info_200(Some(900)), 0, 1000);
+        assert_eq!(action, size_mismatch(1000, 900));
+    }
+
+    #[test]
+    fn classify_200_content_length_mayor() {
+        let action = classify(info_200(Some(1200)), 0, 1000);
+        assert_eq!(action, size_mismatch(1000, 1200));
+    }
+
+    #[test]
+    fn classify_200_content_length_igual() {
+        let action = classify(info_200(Some(1000)), 0, 1000);
+        assert_eq!(action, ResponseAction::Append);
+    }
+
+    #[test]
+    fn classify_200_sin_content_length() {
+        let action = classify(info_200(None), 0, 1000);
+        assert_eq!(action, ResponseAction::Append);
+    }
+
+    #[test]
+    fn classify_200_offset_mayor_ignora_content_length() {
+        let action = classify(info_200(Some(900)), 500, 1000);
+        assert_eq!(action, ResponseAction::RestartFromZero);
+    }
+
+    #[test]
+    fn classify_416_total_distinto() {
+        let action = classify(info(416, Some("bytes */2000"), true), 500, 1000);
+        assert_eq!(action, size_mismatch(1000, 2000));
+    }
+
+    #[test]
+    fn classify_416_total_distinto_part_completo() {
+        let action = classify(info(416, Some("bytes */2000"), true), 1000, 1000);
+        assert_eq!(action, size_mismatch(1000, 2000));
+    }
+
+    #[test]
+    fn classify_416_total_distinto_offset_cero() {
+        let action = classify(info(416, Some("bytes */900"), true), 0, 1000);
+        assert_eq!(action, size_mismatch(1000, 900));
+    }
+
+    #[test]
+    fn classify_416_total_igual_reinicia() {
+        let action = classify(info(416, Some("bytes */1000"), true), 500, 1000);
+        assert_eq!(action, ResponseAction::RestartFromZero);
+    }
+
+    #[test]
+    fn classify_416_total_invalido_se_ignora() {
+        let action = classify(info(416, Some("bytes */abc"), true), 500, 1000);
+        assert_eq!(action, ResponseAction::RestartFromZero);
+    }
+
+    #[test]
+    fn unsatisfied_range_valido() {
+        assert_eq!(parse_unsatisfied_range("bytes */1234"), Some(1234));
+    }
+
+    #[test]
+    fn unsatisfied_range_invalido() {
+        for value in [
+            "bytes */",
+            "bytes */-1",
+            "bytes * /5",
+            "bytes 0-1/5",
+            "bytes */99999999999999999999",
+            "",
+        ] {
+            assert_eq!(parse_unsatisfied_range(value), None, "{value:?}");
+        }
+    }
 
     #[test]
     fn range_offset_cero() {

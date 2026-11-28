@@ -1,13 +1,13 @@
-//! Descarga de artefactos con verificación de tamaño y SHA256.
-use std::path::{Path, PathBuf};
+//! Descarga de artefactos con reintentos, reanudación y verificación de tamaño y SHA256.
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use futures_util::StreamExt;
-use sha2::{Digest, Sha256};
-use tokio::io::AsyncWriteExt;
+use tokio_util::sync::CancellationToken;
 
+use crate::download::{
+    DownloadError, FailureKind, HttpFetcher, SingleRequest, Sleeper, download_one, part_path,
+};
 use crate::runtime::RuntimeError;
 
 #[derive(Debug, Clone)]
@@ -19,8 +19,6 @@ pub struct FetchRequest {
 }
 
 /// Descarga un artefacto a `req.dest`; el fichero final solo existe si la descarga es íntegra.
-///
-/// El plan 006 aportará una implementación con reanudación.
 #[async_trait]
 pub trait ArtifactFetcher: Send + Sync {
     async fn fetch(
@@ -31,16 +29,17 @@ pub trait ArtifactFetcher: Send + Sync {
     ) -> Result<(), RuntimeError>;
 }
 
+/// La cancelación llega también a una espera de reintento o a una conexión parada.
 #[derive(Debug, Clone, Default)]
-pub struct CancelToken(Arc<AtomicBool>);
+pub struct CancelToken(CancellationToken);
 
 impl CancelToken {
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.0.cancel();
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.0.is_cancelled()
     }
 
     pub(super) fn check(&self) -> Result<(), RuntimeError> {
@@ -50,68 +49,29 @@ impl CancelToken {
             Ok(())
         }
     }
-}
 
-pub struct SimpleHttpFetcher {
-    client: reqwest::Client,
-}
-
-impl SimpleHttpFetcher {
-    pub fn new(client: reqwest::Client) -> Self {
-        Self { client }
+    pub(crate) fn as_cancellation(&self) -> &CancellationToken {
+        &self.0
     }
+}
 
-    async fn download(
-        &self,
-        req: &FetchRequest,
-        part: &Path,
-        progress: &(dyn Fn(u64, u64) + Send + Sync),
-        cancel: &CancelToken,
-    ) -> Result<(), RuntimeError> {
-        cancel.check()?;
-        let response = self.client.get(&req.url).send().await?;
-        if !response.status().is_success() {
-            return Err(RuntimeError::HttpStatus(response.status().as_u16()));
+pub struct ResumableHttpFetcher {
+    http: HttpFetcher,
+    sleeper: Arc<dyn Sleeper>,
+}
+
+impl ResumableHttpFetcher {
+    /// Sin origen de HF ni token: los artefactos del runtime no son de Hugging Face.
+    pub fn new(client: reqwest::Client, sleeper: Arc<dyn Sleeper>) -> Self {
+        Self {
+            http: HttpFetcher::new(client, None),
+            sleeper,
         }
-        if let Some(announced) = response
-            .content_length()
-            .filter(|n| *n != req.expected_size)
-        {
-            return Err(RuntimeError::SizeMismatch {
-                expected: req.expected_size,
-                actual: announced,
-            });
-        }
-        let mut file = tokio::fs::File::create(part).await?;
-        let mut hasher = Sha256::new();
-        let mut done = 0u64;
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            cancel.check()?;
-            let chunk = chunk?;
-            file.write_all(&chunk).await?;
-            hasher.update(&chunk);
-            done += chunk.len() as u64;
-            // Corta antes de llenar el disco con un servidor que envía de más.
-            if done > req.expected_size {
-                return Err(RuntimeError::SizeMismatch {
-                    expected: req.expected_size,
-                    actual: done,
-                });
-            }
-            progress(done, req.expected_size);
-        }
-        // `progress` puede cancelar tras el último bloque.
-        cancel.check()?;
-        file.flush().await?;
-        verify(req, done, hasher.finalize().into())?;
-        tokio::fs::rename(part, &req.dest).await?;
-        Ok(())
     }
 }
 
 #[async_trait]
-impl ArtifactFetcher for SimpleHttpFetcher {
+impl ArtifactFetcher for ResumableHttpFetcher {
     async fn fetch(
         &self,
         req: FetchRequest,
@@ -119,31 +79,43 @@ impl ArtifactFetcher for SimpleHttpFetcher {
         cancel: &CancelToken,
     ) -> Result<(), RuntimeError> {
         let part = part_path(&req.dest);
-        let result = self.download(&req, &part, progress, cancel).await;
+        let single = SingleRequest {
+            url: req.url,
+            dest: req.dest,
+            expected_size: req.expected_size,
+            sha256: req.sha256.map(hex::encode),
+        };
+        let result = download_one(
+            &self.http,
+            single,
+            self.sleeper.as_ref(),
+            cancel.as_cancellation(),
+            progress,
+        )
+        .await;
         if result.is_err() {
             // Si el `.part` no llegó a crearse no hay nada que limpiar.
             let _ = tokio::fs::remove_file(&part).await;
         }
-        result
+        result.map_err(runtime_error)
     }
 }
 
-fn part_path(dest: &Path) -> PathBuf {
-    let mut name = dest.as_os_str().to_owned();
-    name.push(".part");
-    PathBuf::from(name)
-}
-
-fn verify(req: &FetchRequest, actual_size: u64, actual_hash: [u8; 32]) -> Result<(), RuntimeError> {
-    if actual_size != req.expected_size {
-        return Err(RuntimeError::SizeMismatch {
-            expected: req.expected_size,
-            actual: actual_size,
-        });
-    }
-    match req.sha256 {
-        Some(expected) if expected != actual_hash => Err(RuntimeError::IntegrityMismatch),
-        _ => Ok(()),
+fn runtime_error(error: DownloadError) -> RuntimeError {
+    match error {
+        DownloadError::Failed(FailureKind::SizeMismatch { expected, actual }) => {
+            RuntimeError::SizeMismatch { expected, actual }
+        }
+        DownloadError::Failed(FailureKind::ChecksumMismatch) => RuntimeError::IntegrityMismatch,
+        DownloadError::Cancelled => RuntimeError::Cancelled,
+        DownloadError::Failed(FailureKind::NotFound) => RuntimeError::HttpStatus(404),
+        DownloadError::Failed(FailureKind::Unauthorized) => RuntimeError::HttpStatus(401),
+        DownloadError::Failed(FailureKind::Gated) => RuntimeError::HttpStatus(403),
+        DownloadError::Failed(FailureKind::Network | FailureKind::UnexpectedContentRange) => {
+            RuntimeError::Network
+        }
+        DownloadError::Io(error) => RuntimeError::Io(error),
+        other => RuntimeError::Io(std::io::Error::other(other.to_string())),
     }
 }
 
@@ -157,6 +129,8 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+    use crate::download::FakeSleeper;
+    use crate::download::test_support::closed_port;
 
     const MIB: usize = 1024 * 1024;
 
@@ -220,10 +194,16 @@ mod tests {
         format!("http://{addr}/asset")
     }
 
+    fn fetcher_with(sleeper: Arc<FakeSleeper>) -> ResumableHttpFetcher {
+        ResumableHttpFetcher::new(reqwest::Client::new(), sleeper)
+    }
+
+    fn fetcher() -> ResumableHttpFetcher {
+        fetcher_with(Arc::new(FakeSleeper::new()))
+    }
+
     async fn run(req: FetchRequest, cancel: &CancelToken) -> Result<(), RuntimeError> {
-        SimpleHttpFetcher::new(reqwest::Client::new())
-            .fetch(req, &|_, _| {}, cancel)
-            .await
+        fetcher().fetch(req, &|_, _| {}, cancel).await
     }
 
     #[tokio::test]
@@ -271,8 +251,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("a.zip");
         let req = request(&server, dest.clone(), MIB as u64 + 1, None);
+        let sleeper = Arc::new(FakeSleeper::new());
 
-        let result = run(req, &CancelToken::default()).await;
+        let result = fetcher_with(sleeper.clone())
+            .fetch(req, &|_, _| {}, &CancelToken::default())
+            .await;
 
         assert!(matches!(
             result,
@@ -280,6 +263,8 @@ mod tests {
                 if expected == MIB as u64 + 1 && actual == MIB as u64
         ));
         assert_no_files(&dest);
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+        assert!(sleeper.slept_secs().is_empty());
     }
 
     #[tokio::test]
@@ -322,7 +307,7 @@ mod tests {
         let req = request(&server, dest, MIB as u64, None);
         let calls = Mutex::new(Vec::new());
 
-        SimpleHttpFetcher::new(reqwest::Client::new())
+        fetcher()
             .fetch(
                 req,
                 &|done, total| calls.lock().unwrap().push((done, total)),
@@ -400,12 +385,40 @@ mod tests {
         let req = request(&server, dest.clone(), MIB as u64, None);
         let cancel = CancelToken::default();
 
-        let result = SimpleHttpFetcher::new(reqwest::Client::new())
-            .fetch(req, &|_, _| cancel.cancel(), &cancel)
-            .await;
+        let result = fetcher().fetch(req, &|_, _| cancel.cancel(), &cancel).await;
 
         assert!(matches!(result, Err(RuntimeError::Cancelled)));
         assert_no_files(&dest);
+    }
+
+    #[tokio::test]
+    async fn fetch_corte_persistente_es_network() {
+        let sleeper = Arc::new(FakeSleeper::new());
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("a.zip");
+        let req = FetchRequest {
+            url: format!("http://127.0.0.1:{}/asset", closed_port()),
+            dest: dest.clone(),
+            expected_size: MIB as u64,
+            sha256: None,
+        };
+
+        let result = fetcher_with(Arc::clone(&sleeper))
+            .fetch(req, &|_, _| {}, &CancelToken::default())
+            .await;
+
+        assert!(matches!(result, Err(RuntimeError::Network)));
+        assert_eq!(sleeper.slept_secs(), [1, 2, 4, 8]);
+        assert_no_files(&dest);
+    }
+
+    #[test]
+    fn cancel_token_corta_la_espera() {
+        let token = CancelToken::default();
+
+        token.cancel();
+
+        assert!(token.as_cancellation().is_cancelled());
     }
 
     #[test]

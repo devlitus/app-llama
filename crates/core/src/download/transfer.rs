@@ -136,6 +136,7 @@ fn classify_response(
     let info = ResponseInfo {
         status: response.status().as_u16(),
         content_range,
+        content_length: response.content_length(),
         from_hf_origin: fetcher.is_hf_origin(response.url()),
     };
     classify(info, offset, expected)
@@ -412,6 +413,34 @@ mod tests {
             FailureKind::SizeMismatch { expected: 1000, .. }
         ));
         assert!(peak <= 1000);
+        assert!(!part_path(&dest).exists());
+    }
+
+    #[tokio::test]
+    async fn servidor_416_total_distinto_falla() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(416).insert_header("content-range", "bytes */2000"))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().expect("tmp");
+        let dest = dest_in(&dir);
+        seed_part(&dest, &pattern_bytes(100));
+        let spec = file_spec(format!("{}/f", server.uri()), &dest, 1000);
+
+        let outcome = run(&fetcher(), &spec, &CancellationToken::new()).await;
+
+        assert_eq!(
+            failure(outcome),
+            FailureKind::SizeMismatch {
+                expected: 1000,
+                actual: 2000
+            }
+        );
+        assert_eq!(
+            server.received_requests().await.expect("peticiones").len(),
+            1
+        );
         assert!(!part_path(&dest).exists());
     }
 

@@ -453,3 +453,32 @@ estado: abierto
 ### Errores
 
 - **aserto-debil** — El test de Explore solo comprobaba el callback, no que App cambiara de seccion; cubierto con test de extremo a extremo. (C1, C2)
+
+## T18
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a489f9fb62d62a4c7 | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a4c6a2ec9b108cc27 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T18 hecha: download_one, CancelToken sobre CancellationToken, ResumableHttpFetcher (+RuntimeError::Network) y SimpleHttpFetcher eliminado.
+- C1 · reviewer · T18 bien migrado y gate verde, pero fetch_tamano_distinto cambia su aserción a Network (incumple CA14) por un hueco de transfer.rs que también rompe CA8
+- C2 · developer · T18.5 implementada: tamaño anunciado (200 Content-Length y 416 */N) falla con SizeMismatch sin reintento; gate verde
+- C2 · reviewer · T18.5 resuelve #95; 200 con Content-Length distinto y 416 */N distinto fallan en SizeMismatch sin reintento y borran el .part; mutaciones detectadas por tests de integración; gate verde
+
+### Decisiones
+
+- **aserto-por-identidad** — fetch_tamano_distinto recupera SizeMismatch exacto con 1 petición y sin esperas (#95) (C2)
+- **condicion-sin-test** — verificadas con mutaciones las dos comprobaciones nuevas de classify: fallan 5 y 4 tests, incluidos retry, transfer, runner y fetch (C2)
+- **limitacion-documentada** — la regla de Content-Length depende de que reqwest no tenga la descompresión activada; documentado en http.rs y en Riesgos, sin async-compression en Cargo.lock (C1, C2)
+- **limpieza-best-effort** — el fetcher borra el .part ante cualquier error; los mensajes de Io son fijos y no filtran rutas ni URLs (C1)
+- **refactor-equivalente** — ramas 416 de classify extraídas a classify_unsatisfied con el mismo orden de reglas (C1, C2)
+
+### Errores
+
+- **aserto-debil** — fetch_tamano_distinto pasa de SizeMismatch a Network: un 200 con Content-Length menor que expected_size se reintenta 5 veces en vez de fallar (#95) (C1 · #95)
+- **fixture-distinto-del-plan** — fetch_tamano_distinto no puede dar SizeMismatch con la descarga reanudable: un cuerpo corto 200 se reintenta y acaba en Network. (C1)

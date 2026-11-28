@@ -326,6 +326,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn servidor_anuncia_menos_falla_sin_reintentar() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(pattern_bytes(900)))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().expect("tmp");
+        let dest = dest_in(&dir);
+        let spec = file_spec(format!("{}/f", server.uri()), &dest, 1000);
+        let sleeper = FakeSleeper::new();
+
+        let outcome = run(&spec, &sleeper).await;
+
+        assert_eq!(
+            failure(outcome),
+            FailureKind::SizeMismatch {
+                expected: 1000,
+                actual: 900
+            }
+        );
+        assert_eq!(request_count(&server).await, 1);
+        assert!(sleeper.slept_secs().is_empty());
+        assert!(!part_path(&dest).exists());
+    }
+
+    #[tokio::test]
     async fn no_reintenta_401() {
         let server = serve_status(401).await;
         let dir = tempfile::tempdir().expect("tmp");

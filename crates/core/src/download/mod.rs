@@ -13,12 +13,13 @@ mod progress;
 mod request;
 mod retry;
 mod runner;
+mod single;
 mod split;
 mod store;
 #[cfg(test)]
 mod test_harness;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 mod transfer;
 mod verify;
 
@@ -43,6 +44,7 @@ pub use request::{PartRequest, UnitRequest};
 #[cfg(test)]
 pub use retry::FakeSleeper;
 pub use retry::{RetryPolicy, Sleeper, TokioSleeper, TransferObserver, transfer_with_retry};
+pub use single::{SingleRequest, download_one};
 pub use split::{display_name, validate_parts};
 #[cfg(test)]
 pub use store::RecordingStore;

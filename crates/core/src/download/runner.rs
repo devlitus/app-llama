@@ -666,6 +666,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tamano_corto_borra_part() {
+        let server = MockServer::start().await;
+        serve(&server, "m.gguf", &pattern_bytes(MIB - 1)).await;
+        let h = Harness::new(&server.uri());
+
+        let id = h
+            .enqueue(vec![part_without_sha("m.gguf", MIB as u64)])
+            .await;
+
+        assert_eq!(
+            h.finished(id).await,
+            UnitState::Failed(FailureKind::SizeMismatch {
+                expected: MIB as u64,
+                actual: MIB as u64 - 1
+            })
+        );
+        assert_eq!(request_count(&server).await, 1);
+        assert!(!part_path(&h.dest("m.gguf")).exists());
+        assert!(!h.dest("m.gguf").exists());
+    }
+
+    #[tokio::test]
     async fn preexistente_no_se_descarga() {
         let body = pattern_bytes(MIB);
         let server = MockServer::start().await;

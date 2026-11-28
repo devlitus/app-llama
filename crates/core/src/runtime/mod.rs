@@ -18,7 +18,7 @@ pub use asset::{
     Arch, ArchiveFormat, AssetDescriptor, AssetKind, Backend, CpuIsa, Os, classify_asset,
 };
 pub use extract::{extract_archive, find_server_binary};
-pub use fetch::{ArtifactFetcher, CancelToken, FetchRequest, SimpleHttpFetcher};
+pub use fetch::{ArtifactFetcher, CancelToken, FetchRequest, ResumableHttpFetcher};
 pub use github::{GitHubReleaseSource, ReleaseSource};
 pub use hardware::{CudaVersion, GpuInfo, HardwareInfo, NativeProbe, SystemProbe, detect};
 pub use install::{ProgressEvent, ProgressPhase};
@@ -46,6 +46,8 @@ pub enum RuntimeError {
     BackendUnavailable,
     #[error("fallo de red")]
     Http(#[from] reqwest::Error),
+    #[error("la descarga no se pudo completar por un fallo de red")]
+    Network,
     #[error("fallo de entrada/salida")]
     Io(#[from] std::io::Error),
     #[error("el servidor respondió con el estado HTTP {0}")]
