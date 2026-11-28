@@ -132,3 +132,26 @@ estado: abierto
 
 - **aserto-debil** — error_reqwest_no_filtra_url_firmada no comprueba que el error crudo contenga la URL antes de convertirlo (minor) (C1)
 - **condicion-sin-test** — rama is_builder de transport_error sin test (minor) (C1)
+
+## T6
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a90a7a56ed834af7e | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T6 reintentos con backoff inyectado (Sleeper, RetryPolicy, transfer_with_retry) y cutting_server de test
+- C1 · reviewer · T6 reintentos con backoff inyectado correcto; trazas a mano de los tests coinciden con el plan; solo hallazgos minor
+
+### Decisiones
+
+- **limitacion-documentada** — Releer el token por intento y reajustar el progreso tras un Restart interno no tienen tarea duena; se asignan a T9/T12 via orchestrator (C1)
+- **refactor-equivalente** — Politica sin progreso verificada: Restart siempre suma, marca maxima inicial = len(.part), sin espera tras progreso, acotado por expected_size (C1)
+
+### Errores
+
+- **condicion-sin-test** — Ningun test comprueba que el reinicio unico por UnexpectedContentRange espera su backoff (sleep [1]) (C1)
+- **reserva-sin-test** — La duracion de 10 s viene del connect a puerto cerrado en Windows (~2 s por intento), no de sleeps reales (C1)

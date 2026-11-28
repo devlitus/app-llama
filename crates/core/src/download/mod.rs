@@ -6,6 +6,7 @@ mod http;
 mod model;
 mod paths;
 mod progress;
+mod retry;
 mod split;
 #[cfg(test)]
 mod test_support;
@@ -22,5 +23,8 @@ pub use http::{
 pub use model::{DownloadId, DownloadUnit, FailureKind, FileSpec, FileStatus, UnitState};
 pub use paths::{part_path, safe_join};
 pub use progress::{Progress, ProgressReporter, ProgressTracker, Throttle};
+#[cfg(test)]
+pub use retry::FakeSleeper;
+pub use retry::{RetryPolicy, Sleeper, TokioSleeper, transfer_with_retry};
 pub use split::{display_name, validate_parts};
 pub use transfer::{HttpFetcher, TransferOutcome, network_failure, reset_part, transfer_once};

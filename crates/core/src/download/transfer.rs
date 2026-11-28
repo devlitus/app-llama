@@ -152,7 +152,7 @@ fn transport_error(
     Ok(TransferOutcome::Interrupted { bytes_written })
 }
 
-async fn part_len(part: &Path) -> Result<u64, DownloadError> {
+pub(super) async fn part_len(part: &Path) -> Result<u64, DownloadError> {
     match tokio::fs::metadata(part).await {
         Ok(metadata) => Ok(metadata.len()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
