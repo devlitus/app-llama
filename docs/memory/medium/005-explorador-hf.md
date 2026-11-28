@@ -283,6 +283,32 @@ estado: abierto
 - **carrera-paginacion-duplicados** — loadMore añadía duplicados y rompía el each con clave; corregido, ver #49 (C1, C2 · #49)
 - **condicion-sin-test** — la invalidación de un loadMore en curso por un search nuevo no tiene test propio (C1)
 
+## T13
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a0b05ffdab0a966fb | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a63c698cf1da1159a | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T13 ficha del modelo (ModelDetail, VariantRow) y navegación lista-ficha en Explore, gate verde
+- C1 · reviewer · T13 con el gate en verde y los 15 tests del plan; la clave del each por variant.name no es única y rompe la ficha (#52)
+- C2 · developer · T13 C2 clave del each de variantes cambiada a parts[0].path, con test de nombres duplicados
+- C2 · reviewer · T13 C2 verificada, #52 resuelta con clave parts[0].path, gate verde, sin hallazgos nuevos
+
+### Decisiones
+
+- **aserto-por-identidad** — clave del each de variantes = parts[0].path, única porque cada fichero del árbol cae en un solo grupo y todo grupo tiene al menos una parte (C1, C2)
+- **refactor-equivalente** — Fila de variante extraída a VariantRow.svelte; clave del each por variant.name (C1)
+
+### Errores
+
+- **clave-each-no-unica** — variant.name no es único y rompía la ficha con each_key_duplicate (#52) (C1, C2 · #52)
+- **condicion-sin-test** — la fila recomendada lleva la clase recommended pero no hay regla CSS, así que no se destaca (C1)
+
 ## T15
 
 ### Ciclos

@@ -62,6 +62,12 @@ export interface GgufVariant {
   complete: boolean;
 }
 
+export interface DownloadRequest {
+  repo_id: string;
+  revision: string;
+  parts: GgufPart[];
+}
+
 export interface VariantView {
   variant: GgufVariant;
   estimate: MemoryEstimate;

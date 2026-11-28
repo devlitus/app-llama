@@ -178,6 +178,30 @@ describe("Explore", () => {
     expect(searches[1].args).toEqual(searches[0].args);
   });
 
+  it("explorar_open_detail_and_back", async () => {
+    const detail = {
+      info: { id: "a/open", gated: "Open", downloads: 1, likes: 1, gguf: null, license: null },
+      ctx: 4096,
+      budget: { gpu_bytes: null, ram_bytes: null, unified: false, usable_percent: 80 },
+      variants: [],
+    };
+    const calls = record((cmd) => (cmd === "hf_model_detail" ? detail : page([item("a/open"), item("b/other")])));
+    render(Explore);
+
+    await search("llama");
+    await fireEvent.click(await screen.findByRole("button", { name: /a\/open/ }));
+
+    await screen.findByRole("button", { name: "Volver" });
+    expect(callsTo(calls, "hf_model_detail")[0].args).toEqual({ repoId: "a/open" });
+    expect(screen.queryByRole("searchbox")).toBeNull();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+
+    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("searchbox")).toHaveValue("llama");
+    expect(callsTo(calls, "hf_search")).toHaveLength(1);
+  });
+
   it("explorar_enter_triggers_search", async () => {
     const calls = record(() => page([item("a/1")]));
     render(Explore);
