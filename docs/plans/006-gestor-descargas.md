@@ -73,10 +73,11 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
    - `206` con un total distinto de `expected_size`, o un cuerpo que supera `expected_size`: `Failed(SizeMismatch)` y se borra el `.part`. Se corta **antes** de escribir el exceso (lección de `SimpleHttpFetcher`: un servidor que envía de más no debe llenar el disco).
    - `401`/`403` cuya URL final (`Response::url()`) tiene el origen de HF: `Unauthorized`/`Gated`, sin reintento. `403` desde otro origen (la CDN con la firma caducada): transitorio, con reintento, porque el siguiente intento vuelve a pedir `/resolve/`. `404`: `NotFound`, sin reintento.
    - `5xx`, `429`, conexión cortada o timeout de lectura: transitorio, con reintento.
+   - **Errores de `reqwest` sin URL:** el `Display` de `reqwest::Error` incluye la URL, que puede ser la URL firmada de la CDN (`?X-Amz-Signature=…`), y `FailureKind` se guarda en `downloads.json` y llega a la UI. Regla: **nunca se construye `FailureKind::Io { message }`, `FailureKind::Network` ni `DownloadError::Io` con `reqwest::Error::to_string()`** (tampoco envolviéndolo en un `std::io::Error`). Se usa `reqwest::Error::without_url()` antes de formatearlo o un mensaje propio. La conversión vive en un único punto (T5.4) y la usan T5 y T6.
 4. **Reintentos:** hasta 5 intentos consecutivos **sin progreso** por fichero, con esperas de 1, 2, 4 y 8 s entre ellos mediante un `Sleeper` inyectado (la espera también compite con `cancel.cancelled()`). Si un intento escribe bytes, el contador vuelve a 0. Agotados los intentos: `Failed(Network)`. El `.part` se conserva, así que "Reintentar" continúa desde donde iba.
 5. **Verificación:** al terminar cada fichero se comprueba que `len(.part) == expected_size` y, si hay `sha256`, se calcula el SHA256 del `.part` en bloques de 1 MiB dentro de `spawn_blocking` (para no bloquear el runtime de tokio durante minutos), comprobando la cancelación entre bloques, y se compara sin distinguir mayúsculas. La unidad está en `Verifying` y emite progreso con `phase: "Verify"`. No se guarda el estado del hash entre reanudaciones: se hashea entero al final. Si el SHA256 no coincide: se borra ese `.part` y la unidad pasa a `Failed(ChecksumMismatch)`.
 6. **Progreso:** `ProgressTracker` con un `Clock` inyectado. Calcula la velocidad sobre una **ventana deslizante de 5 s** y la ETA como `ceil((total − hechos) / velocidad)` (`None` si la velocidad es 0; `Some(0)` al terminar). `Throttle` deja pasar **como máximo 1 evento de progreso cada 250 ms por unidad**, más el primero y el final forzado. `ProgressReporter` combina los dos. Los cambios de estado se emiten siempre y al momento.
-7. **Espacio en disco:** antes de pasar a `Downloading`, `necesario = Σ (expected_size − len(.part))` de los ficheros `Pending`, más `SPACE_MARGIN = 1 GiB` (1073741824). Si `DiskSpace::available(dest)` es menor: `Failed(InsufficientSpace { needed, available })` sin abrir ninguna conexión. `u64` en toda la cadena.
+7. **Espacio en disco:** con la unidad aún en `Queued`, antes de pasar a `Downloading`, `necesario = Σ (expected_size − len(.part))` de los ficheros `Pending`, más `SPACE_MARGIN = 1 GiB` (1073741824). Si `DiskSpace::available(dest)` es menor: `Queued → Failed(InsufficientSpace { needed, available })` sin pasar por `Downloading` y sin abrir ninguna conexión. `u64` en toda la cadena.
 8. **Cola:** FIFO con un máximo de **1 unidad activa** (`max_active`, parámetro del constructor; en producción, 1, sin UI para cambiarlo). Las partes de una unidad se descargan en orden. Órdenes y estados de origen válidos:
 
    | Orden | Desde | Efecto |
@@ -86,6 +87,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
    | Cancelar | `Queued`, `Downloading`, `Verifying`, `Paused` | Aborta y borra los `.part` y los finales que haya creado la unidad (nunca los `Preexisting`). → `Cancelled` |
    | Reintentar | `Failed` | → `Queued` (los `.part` se conservan) |
    | Quitar | `Completed`, `Failed`, `Cancelled` | La saca de la lista. En `Failed` borra además sus `.part`. Nunca borra ficheros finales |
+
+   Transiciones internas (sin orden del usuario): `Queued → Downloading → Verifying → Completed`, `Queued → Failed(_)` (comprobación de espacio, §7), `Downloading|Verifying → Failed(_)` y `Downloading → Queued` (devolver la unidad activa a la cola sin pausarla; ninguna orden de esta tabla la usa).
 
    La cancelación usa `tokio_util::sync::CancellationToken`.
 9. **Alta (`enqueue`):** valida la petición (Contexto, #55), construye los `FileSpec` y rechaza un destino que ya esté en una unidad no terminal (`AlreadyQueued`). Si el fichero final ya existe **con el tamaño esperado**, la parte se marca candidata a `Preexisting` y se verifica su hash al ejecutarse (sin descargarla ni tocarla; si el hash no coincide, `Failed(DestinationExists)`). Si existe con otro tamaño: `Err(DestinationExists)` en el alta.
@@ -153,7 +156,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   - [x] T1.1 `DownloadId(u64)`, `FileSpec`, `FileStatus` (`Pending`, `Verified`, `Preexisting`), `DownloadUnit`, `UnitState` y `FailureKind` (`Network`, `Unauthorized`, `Gated`, `NotFound`, `ChecksumMismatch`, `SizeMismatch { expected, actual }`, `InsufficientSpace { needed, available }`, `UnexpectedContentRange`, `DestinationExists`, `Io { message }`), con `Serialize`/`Deserialize` por defecto.
   - [x] T1.2 `DownloadError` con `thiserror`: `Failed(FailureKind)`, `Cancelled`, `UnsafePath`, `IncompleteSplit`, `InvalidRequest(&'static str)`, `AlreadyQueued`, `DestinationExists`, `InvalidTransition`, `UnknownDownload`, `Io(std::io::Error)`. Su `Display` nunca incluye cabeceras, URLs firmadas ni el token.
   - [x] T1.3 `safe_join(base, relative) -> Result<PathBuf, DownloadError>` y `part_path(final) -> PathBuf` (añade `.part` al nombre completo, como `runtime/fetch.rs`).
-  - [x] T1.4 `UnitState::can_transition(&self, to) -> bool` según la tabla del Diseño §8, más las transiciones internas `Queued → Downloading → Verifying → Completed`, `Downloading|Verifying → Failed` y `Downloading → Queued` (al reanudar tras una pausa).
+  - [x] T1.4 `UnitState::can_transition(&self, to) -> bool` según la tabla del Diseño §8, más las transiciones internas `Queued → Downloading → Verifying → Completed`, `Downloading|Verifying → Failed` y `Downloading → Queued` (devolver la unidad activa a la cola sin pausarla; reanudar tras una pausa es `Paused → Queued`, §8). `Queued → Failed` no está en T1: la añade T12.3.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -261,6 +264,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   - [ ] T5.1 `HttpFetcher { client: reqwest::Client, hf_origin: Option<Url> }`. El `Client` lo construye quien llama: en producción, `connect_timeout` 30 s, `read_timeout` 60 s, **sin timeout total** (el cliente de `commands/hf.rs` tiene un timeout total de 30 s y **no** sirve para descargas), redirecciones por defecto (máximo 10).
   - [ ] T5.2 `transfer_once(fetcher, spec, auth: Option<HeaderValue>, cancel, on_bytes) -> Result<TransferOutcome, DownloadError>`: crea el directorio padre, abre el `.part` en append, manda `Range` según su longitud, aplica `classify`, escribe por bloques con `select!` contra `cancel.cancelled()`, corta antes de superar `expected_size` y hace `flush` al salir, también si se cancela.
   - [ ] T5.3 `TransferOutcome`: `Completed`, `Cancelled`, `Interrupted { bytes_written }`, `Restart` (tras `RestartFromZero`).
+  - [ ] T5.4 Conversión única de `reqwest::Error` a `FailureKind`/`DownloadError` según la regla del Diseño §3 ("Errores de `reqwest` sin URL"): llama a `without_url()` antes de formatear o usa un mensaje propio; nunca `to_string()` sobre el error con URL. T6 la reutiliza.
 - **Tests unitarios** (wiremock):
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -275,6 +279,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `sigue_redireccion` | mock `/a` 302 → `/b` con el cuerpo | descarga correcta desde `/b` |
   | `respuesta_404` | 404 | `Err(Failed(NotFound))` |
   | `crea_directorio_padre` | `dest` en `tmp/x/y/m.gguf` sin crear | `.part` creado en `tmp/x/y/` |
+  | `error_reqwest_no_filtra_url_firmada` | `reqwest::Error` real obtenido sin red: petición a `http://127.0.0.1:<puerto de un TcpListener soltado>/x?X-Amz-Signature=secreto123`, pasado por la conversión de T5.4 | ni el `Display`/`Debug` del `DownloadError` ni el JSON de `serde_json` del `FailureKind` resultante contienen `Signature`, `secreto123` ni la URL (`127.0.0.1:<puerto>/x`) |
 
 ### T6 — Reintentos ante cortes con backoff inyectado
 - **Ficheros/módulos:** `crates/core/src/download/retry.rs`, `transfer.rs`, `test_support.rs` (servidor TCP que corta)
@@ -282,7 +287,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Cubre:** CA3
 - **Subtareas:**
   - [ ] T6.1 Trait `Sleeper: Send + Sync { async fn sleep(&self, d: Duration) }` (con `async-trait`, como `ArtifactFetcher`), `TokioSleeper` y `FakeSleeper` (registra las duraciones y vuelve al momento).
-  - [ ] T6.2 `RetryPolicy { max_attempts_without_progress: 5, backoff: [1, 2, 4, 8] s }` y `transfer_with_retry(...)`: reintenta `Retry`/`Interrupted`, reinicia el contador si hubo bytes, gestiona `Restart` y el reinicio único por `UnexpectedContentRange`, y la espera compite con `cancel.cancelled()`.
+  - [ ] T6.2 `RetryPolicy { max_attempts_without_progress: 5, backoff: [1, 2, 4, 8] s }` y `transfer_with_retry(...)`: reintenta `Retry`/`Interrupted`, reinicia el contador si hubo bytes, gestiona `Restart` y el reinicio único por `UnexpectedContentRange`, y la espera compite con `cancel.cancelled()`. El `Failed(Network)` final y cualquier error de `reqwest` se construyen con la conversión de T5.4 (regla del Diseño §3: nunca `reqwest::Error::to_string()`).
   - [ ] T6.3 `test_support::cutting_server(body, cut_after: Vec<Option<usize>>)`: un `tokio::net::TcpListener` en `127.0.0.1:0` que responde a cada conexión con `Content-Length`/`Content-Range` completos, admite `Range` y cierra el socket tras N bytes (`None` = no corta). Registra las cabeceras `Range` recibidas. Hace falta porque wiremock no puede cortar a mitad del cuerpo.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
@@ -295,6 +300,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `content_range_incoherente_reinicia_una_vez` | 1.ª respuesta 206 incoherente, 2.ª 200 correcta | `Completed`; la 2.ª petición sin `Range` |
   | `content_range_incoherente_dos_veces_falla` | dos 206 incoherentes | `Err(Failed(UnexpectedContentRange))` |
   | `conexion_rechazada_es_transitoria` | URL a un puerto de un `TcpListener` soltado | `Err(Failed(Network))` tras 5 intentos |
+  | `fallo_red_agotado_no_filtra_url_firmada` | URL `http://127.0.0.1:<puerto de un TcpListener soltado>/x?X-Amz-Signature=secreto123`, 5 intentos | `Err(Failed(Network))`; ni el `Display`/`Debug` del error ni el JSON del `FailureKind` contienen `Signature`, `secreto123` ni la URL |
   | `cancel_durante_backoff` | `FakeSleeper` que dispara `cancel` al dormir | `Cancelled`, sin más peticiones |
 
 ### T7 — Verificación de tamaño y SHA256 y renombrado final
@@ -389,6 +395,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   - [ ] T11.2 `UnitRequest { repo: RepoId, revision, parts: Vec<PartRequest { relative_path, size, sha256 }> }` y `ManagerDeps { fetcher, clock, sleeper, disk, tokens, store, sink, models_dir, hf_base_url, max_active }`.
   - [ ] T11.3 `hf::url::resolve_url(base, repo, revision, path) -> Url` con `endpoint` (cada segmento de `path` codificado, `/` conservada).
   - [ ] T11.4 `DownloadManager::new(deps) -> Result<Arc<Self>, DownloadError>` (carga la cola con `store.load()`) y `enqueue(UnitRequest) -> Result<DownloadId, DownloadError>`: valida las partes (T2) y las rutas (T1), construye la URL con `resolve_url` sobre `hf_base_url` y el destino, rechaza `AlreadyQueued`/`DestinationExists` (Diseño §9), persiste y emite `Queued`. `list() -> Vec<DownloadSnapshot>`.
+  - [ ] T11.5 `AlreadyQueued` no compara `PathBuf` en bruto, sino una clave normalizada `dest_key(&Path) -> String` (en todas las plataformas, también en la CI de Linux/macOS): cada componente en minúsculas (`str::to_lowercase`) y sin los puntos ni espacios finales, porque Windows y macOS no distinguen mayúsculas y Windows quita `.` y ` ` finales (`x.gguf.` acaba en `x.gguf`). La comprobación se aplica entre las partes de la propia petición y frente a las unidades no terminales.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -398,6 +405,9 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `enqueue_split_incompleto` | partes 1 y 3 de 3 | `Err(IncompleteSplit)`, `list()` vacía, 0 `save` |
   | `enqueue_ruta_insegura` | `relative_path` `"../x.gguf"` | `Err(UnsafePath)` |
   | `enqueue_duplicado_rechazado` | el mismo destino dos veces (la 1.ª en `Queued`) | 2.ª `Err(AlreadyQueued)` |
+  | `enqueue_duplicado_mayusculas_rechazado` | 1.ª `"Q4/M.gguf"` en `Queued`; 2.ª `"q4/m.GGUF"` del mismo repo | 2.ª `Err(AlreadyQueued)` |
+  | `enqueue_duplicado_punto_final_rechazado` | 1.ª `"Q4/m.gguf"` en `Queued`; 2.ª `"Q4./m.gguf"` y 3.ª `"Q4 /m.gguf"` (en la carpeta, porque `"m.gguf."` ya lo rechaza T2 por no acabar en `.gguf`) | 2.ª y 3.ª `Err(AlreadyQueued)` |
+  | `dest_key_normaliza` | `a/B.gguf`, `A/b.gguf.`, `a /b.gguf ` | las tres claves iguales |
   | `enqueue_tras_completed_permitido` | mismo destino con la 1.ª `Completed` y el final borrado | `Ok` |
   | `enqueue_final_otro_tamano` | final en disco con 10 bytes, `size` 20 | `Err(DestinationExists)`, fichero intacto |
   | `enqueue_final_mismo_tamano_candidato` | final en disco con el tamaño esperado | `Ok`; la parte queda candidata a `Preexisting` |
@@ -414,6 +424,7 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Subtareas:**
   - [ ] T12.1 Planificador: tras cada cambio, si hay hueco (`max_active`), toma la siguiente `Queued` (FIFO por id) y lanza su ejecución en una tarea de tokio con su `CancellationToken`.
   - [ ] T12.2 Ejecución: comprueba el espacio (T8), descarga las partes `Pending` en orden (T6) con el token del provider (T9), verifica cada una (T7) y las candidatas a `Preexisting`, finaliza la unidad (T7) y emite el progreso con `ProgressReporter` (T3). Persiste y emite `downloads://state` en cada cambio de estado. `Failed(SizeMismatch)` y `Failed(ChecksumMismatch)` borran el `.part` de esa parte.
+  - [ ] T12.3 La comprobación de espacio se hace con la unidad en `Queued` (Diseño §7). Para ello `UnitState::can_transition` (`crates/core/src/download/model.rs`) admite `Queued → Failed(_)` (una línea) y se añade el test `transicion_queued_a_failed` junto a los de T1.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|
@@ -421,7 +432,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
   | `progreso_limitado_en_frecuencia` | 10 MiB, `SteppingClock` de 50 ms | eventos de progreso ≤ `ceil(t_final / 250 ms) + 2`; el último con `downloaded == total` |
   | `dividido_agrega_progreso` | 3 partes de 1 MiB | último progreso `total_bytes == 3145728`; ningún final en disco al emitirse `Verifying` de la tercera |
   | `fifo_y_un_activo` | 3 unidades, `max_active` 1 | `Downloading` en orden 1, 2, 3; nunca 2 activas a la vez en la secuencia del `RecordingSink` |
-  | `sin_espacio_no_pide_nada` | 60 GiB declarados, disco falso con 40 GiB | `Failed(InsufficientSpace { needed: 65498251264, available: 42949672960 })`; wiremock con 0 peticiones |
+  | `sin_espacio_no_pide_nada` | 60 GiB declarados, disco falso con 40 GiB | estados emitidos exactamente `Queued → Failed(InsufficientSpace { needed: 65498251264, available: 42949672960 })` (nunca `Downloading`); wiremock con 0 peticiones |
+  | `transicion_queued_a_failed` (en `model.rs`) | `Queued → Failed(InsufficientSpace { needed: 2, available: 1 })` | `true` |
   | `checksum_malo_borra_part` | sha incorrecto | `Failed(ChecksumMismatch)`, ni `.part` ni final |
   | `tamano_malo_borra_part` | servidor envía 1 byte de más | `Failed(SizeMismatch { .. })`, sin `.part` |
   | `preexistente_no_se_descarga` | final ya en disco con tamaño y hash correctos | `Completed`, 0 peticiones, `status == Preexisting` |
@@ -620,6 +632,8 @@ _Pendiente (T19)._
 | Reutilizar por error el cliente HTTP de `commands/hf.rs`, con timeout total de 30 s, cortaría toda descarga larga | T15 crea un cliente propio sin timeout total; queda escrito en T5.1 |
 | El espacio libre cambia durante la descarga | El error de escritura se mapea a `Failed(Io { message })` con el mensaje del sistema. El `.part` se conserva para reintentar |
 | Rutas largas en Windows (>260 caracteres) o nombres reservados (`CON`, `NUL`) en repositorios anidados | `safe_join` + `Path`; se documenta en T19 si aparece. Si se reproduce, issue aparte (prefijo `\\?\`, filtrado de nombres reservados) |
+| Una URL firmada de la CDN acaba en `downloads.json` o en la UI a través del `Display` de `reqwest::Error` | Regla del Diseño §3: nunca `reqwest::Error::to_string()` para `Io`/`Network`; `without_url()` o mensaje propio en un único punto (T5.4). Tests `error_reqwest_no_filtra_url_firmada` (T5) y `fallo_red_agotado_no_filtra_url_firmada` (T6) |
+| Dos peticiones distintas en texto (`M.gguf` / `m.gguf`, `x.gguf.` / `x.gguf`) acaban en el mismo fichero en Windows o macOS y se descargan a la vez | `AlreadyQueued` compara la clave normalizada `dest_key` (minúsculas, sin `.`/` ` finales), T11.5 |
 | Antivirus de Windows que bloquea el `rename` del `.part` | Si aparece en T19, issue aparte con reintento del `rename` mediante `Sleeper` |
 | Carrera de #41: guardar y borrar el token a la vez puede dejar el token en memoria distinto del del llavero | La descarga usa el de memoria, igual que el explorador; el comportamiento es coherente con 005. Se arregla en #41 |
 | `fs4` no expone `available_space` en la versión elegida o falla en macOS | El developer lo comprueba en T8 (la CI de macOS lo ejecuta en `fs4_directorio_inexistente_usa_ancestro`). Alternativa: `sysinfo` con la feature de discos |
