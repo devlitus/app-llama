@@ -129,7 +129,7 @@ fn next_target(link: &str) -> Option<&str> {
 
 /// Un destino es de confianza si comparte origen con `base` y no lleva
 /// credenciales incrustadas.
-pub(super) fn is_trusted_target(url: &Url, base: &Url) -> bool {
+pub(crate) fn is_trusted_target(url: &Url, base: &Url) -> bool {
     same_origin(url, base) && url.username().is_empty() && url.password().is_none()
 }
 

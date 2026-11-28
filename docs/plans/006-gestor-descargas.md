@@ -379,10 +379,10 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T5, T6 (T9.4 cambia la firma de `transfer_with_retry`)
 - **Cubre:** CA9
 - **Subtareas:**
-  - [ ] T9.1 Trait `TokenProvider: Send + Sync { fn token(&self) -> Option<HfToken> }`. `HfService::current_token()` clona el token del `HfClient` en memoria (lectura del `RwLock`, sin `await` y sin tocar el `SecretStore`).
-  - [ ] T9.2 `auth_header_for(url, hf_origin, provider) -> Option<HeaderValue>` con `is_trusted_target(url, hf_origin)`, `Bearer <token>` y `set_sensitive(true)`.
-  - [ ] T9.3 Test de que la redirección a otro origen no reenvía `Authorization`. Si fallara con `reqwest 0.13`, se añade una política de redirección propia que la quite.
-  - [ ] T9.4 **Token leído en cada intento (Diseño §11).** `transfer_with_retry` (`retry.rs`) cambia `auth: Option<HeaderValue>` por `auth: &(dyn Fn() -> Option<HeaderValue> + Send + Sync)` y lo evalúa justo antes de **cada** llamada a `transfer_once` (también tras un `Restart` o un backoff), nunca una sola vez por fichero. `transfer_once` sigue recibiendo `Option<HeaderValue>`. `auth.rs` añade `auth_source(url, hf_origin, provider) -> impl Fn() -> Option<HeaderValue> + Send + Sync`, que llama a `auth_header_for` en cada invocación: es lo que usa T12.2. Los tests existentes de `retry.rs` pasan `&|| None` (o el closure que corresponda) sin cambiar sus asertos, y T18 (`download_one`, sin token) pasa `&|| None`.
+  - [x] T9.1 Trait `TokenProvider: Send + Sync { fn token(&self) -> Option<HfToken> }`. `HfService::current_token()` clona el token del `HfClient` en memoria (lectura del `RwLock`, sin `await` y sin tocar el `SecretStore`).
+  - [x] T9.2 `auth_header_for(url, hf_origin, provider) -> Option<HeaderValue>` con `is_trusted_target(url, hf_origin)`, `Bearer <token>` y `set_sensitive(true)`.
+  - [x] T9.3 Test de que la redirección a otro origen no reenvía `Authorization`. Si fallara con `reqwest 0.13`, se añade una política de redirección propia que la quite.
+  - [x] T9.4 **Token leído en cada intento (Diseño §11).** `transfer_with_retry` (`retry.rs`) cambia `auth: Option<HeaderValue>` por `auth: &(dyn Fn() -> Option<HeaderValue> + Send + Sync)` y lo evalúa justo antes de **cada** llamada a `transfer_once` (también tras un `Restart` o un backoff), nunca una sola vez por fichero. `transfer_once` sigue recibiendo `Option<HeaderValue>`. `auth.rs` añade `auth_source(url, hf_origin, provider) -> impl Fn() -> Option<HeaderValue> + Send + Sync`, que llama a `auth_header_for` en cada invocación: es lo que usa T12.2. Los tests existentes de `retry.rs` pasan `&|| None` (o el closure que corresponda) sin cambiar sus asertos, y T18 (`download_one`, sin token) pasa `&|| None`.
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

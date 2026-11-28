@@ -1,5 +1,6 @@
 //! Cola de descargas, reanudación y progreso (fase 3).
 
+mod auth;
 mod clock;
 mod disk;
 mod error;
@@ -14,6 +15,7 @@ mod test_support;
 mod transfer;
 mod verify;
 
+pub use auth::{TokenProvider, auth_header_for, auth_source};
 pub use clock::{Clock, SystemClock};
 #[cfg(test)]
 pub use clock::{FakeClock, SteppingClock};

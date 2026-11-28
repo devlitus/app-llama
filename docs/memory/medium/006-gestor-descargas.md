@@ -210,3 +210,25 @@ estado: abierto
 - **dato-inventado** — el riesgo de T13.5 da por hecho que AlreadyQueued protege destinos de unidades Failed; Quitar puede borrar el Preexisting de otra unidad #72 (C1 · #72)
 - **orden-sin-especificar** — T13.1 no dice qué hace cancel si la tarea activa termina en Completed mientras espera (cancelar en Verifying justo antes de finalize_unit) (minor) (C2, C3)
 - **reserva-sin-test** — rama unwrap_or(path) de Fs4DiskSpace sin ancestro existente sin test; TDD sin rojo confirmado (C1)
+
+## T9
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a0ac52949ee618296 | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T9 token de HF: TokenProvider, auth_header_for/auth_source por origen, transfer_with_retry con closure de auth (T9.4), HfService como provider en memoria
+- C1 · reviewer · T9 token de HF aprobado: origen estricto via is_trusted_target, closure de auth por intento, token en memoria sin llavero; gate verde
+
+### Decisiones
+
+- **limitacion-documentada** — HfService::token usa el token en memoria del HfClient y nunca el llavero (riesgo #45) (C1)
+- **origen-estricto-link** — auth_header_for usa la URL de la peticion; reqwest 0.13.5 (redirect.rs:241) quita Authorization si cambia host, puerto o esquema (C1)
+
+### Errores
+
+- **aserto-debil** — redireccion_no_filtra_token solo cubre cambio de puerto (127.0.0.1 a 127.0.0.1); falta el cambio de host, caso real de la CDN (minor) (C1)

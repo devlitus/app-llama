@@ -35,6 +35,10 @@ impl HfClient {
         }
     }
 
+    pub(crate) fn token(&self) -> Option<&HfToken> {
+        self.token.as_ref()
+    }
+
     pub async fn search(&self, params: &SearchParams) -> Result<SearchPage, HfError> {
         self.fetch_search_page(&search_url(&self.base_url, params))
             .await

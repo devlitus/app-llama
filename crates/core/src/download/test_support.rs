@@ -1,8 +1,11 @@
 //! Utilidades compartidas por los tests del gestor de descargas.
 
 use std::path::Path;
+use std::sync::Mutex;
 
+use super::auth::TokenProvider;
 use super::model::{FileSpec, FileStatus};
+use crate::hf::HfToken;
 
 pub fn pattern_bytes(len: usize) -> Vec<u8> {
     (0..len).map(|i| (i % 251) as u8).collect()
@@ -154,5 +157,29 @@ fn response_parts(body: &[u8], offset: Option<usize>) -> (String, &[u8]) {
             );
             (head, body)
         }
+    }
+}
+
+/// Token válido cuyo cuerpo empieza por `tag`, para distinguir uno de otro.
+pub fn hf_token(tag: char) -> HfToken {
+    HfToken::parse(&format!("hf_{tag}{}", "a1B2".repeat(9))).expect("token de prueba")
+}
+
+/// Proveedor de tokens en memoria cuyo valor se puede cambiar en mitad de un test.
+pub struct FakeTokens(Mutex<Option<HfToken>>);
+
+impl FakeTokens {
+    pub fn new(token: Option<HfToken>) -> Self {
+        Self(Mutex::new(token))
+    }
+
+    pub fn set(&self, token: Option<HfToken>) {
+        *self.0.lock().expect("token de prueba") = token;
+    }
+}
+
+impl TokenProvider for FakeTokens {
+    fn token(&self) -> Option<HfToken> {
+        self.0.lock().expect("token de prueba").clone()
     }
 }

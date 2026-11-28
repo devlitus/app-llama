@@ -73,10 +73,11 @@ impl RetryPolicy {
     }
 }
 
+/// `auth` se evalúa antes de cada intento: el token puede cambiar entre dos.
 pub async fn transfer_with_retry(
     fetcher: &HttpFetcher,
     spec: &FileSpec,
-    auth: Option<HeaderValue>,
+    auth: &(dyn Fn() -> Option<HeaderValue> + Send + Sync),
     policy: &RetryPolicy,
     sleeper: &dyn Sleeper,
     cancel: &CancellationToken,
@@ -89,7 +90,7 @@ pub async fn transfer_with_retry(
         restarted_after_bad_range: false,
     };
     loop {
-        let attempt = transfer_once(fetcher, spec, auth.clone(), cancel, on_bytes).await;
+        let attempt = transfer_once(fetcher, spec, auth(), cancel, on_bytes).await;
         match resolve_attempt(attempt, &part, &mut attempts).await? {
             TransferOutcome::Interrupted { .. } | TransferOutcome::Restart => {}
             done => return Ok(done),
@@ -181,15 +182,20 @@ mod fakes {
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
 
     use reqwest::Url;
     use wiremock::matchers::{header_exists, method};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+    use crate::download::auth::auth_source;
     use crate::download::model::FailureKind;
     use crate::download::paths::part_path;
-    use crate::download::test_support::{closed_port, cutting_server, file_spec, pattern_bytes};
+    use crate::download::test_support::{
+        FakeTokens, closed_port, cutting_server, file_spec, hf_token, pattern_bytes,
+    };
+    use crate::hf::HfToken;
 
     const KIB: usize = 1024;
     const MIB: usize = 1024 * KIB;
@@ -213,7 +219,16 @@ mod tests {
         cancel: &CancellationToken,
     ) -> Result<TransferOutcome, DownloadError> {
         let policy = RetryPolicy::default();
-        transfer_with_retry(fetcher, spec, None, &policy, sleeper, cancel, &mut |_| {}).await
+        transfer_with_retry(
+            fetcher,
+            spec,
+            &|| None,
+            &policy,
+            sleeper,
+            cancel,
+            &mut |_| {},
+        )
+        .await
     }
 
     async fn run(spec: &FileSpec, sleeper: &FakeSleeper) -> Result<TransferOutcome, DownloadError> {
@@ -515,5 +530,85 @@ mod tests {
 
         assert!(matches!(outcome, Ok(TransferOutcome::Cancelled)));
         assert_eq!(request_count(&server).await, 1);
+    }
+
+    /// Cambia el token del proveedor cada vez que el reintento duerme.
+    struct TokenSwappingSleeper {
+        tokens: Arc<FakeTokens>,
+        replacement: Option<HfToken>,
+    }
+
+    #[async_trait]
+    impl Sleeper for TokenSwappingSleeper {
+        async fn sleep(&self, _duration: Duration) {
+            self.tokens.set(self.replacement.clone());
+        }
+    }
+
+    async fn authorizations_after_503_then_swap(
+        replacement: Option<HfToken>,
+    ) -> Vec<Option<String>> {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(pattern_bytes(KIB)))
+            .mount(&server)
+            .await;
+        let tokens = Arc::new(FakeTokens::new(Some(hf_token('A'))));
+        let sleeper = TokenSwappingSleeper {
+            tokens: Arc::clone(&tokens),
+            replacement,
+        };
+        let dir = tempfile::tempdir().expect("tmp");
+        let url = format!("{}/f", server.uri());
+        let spec = file_spec(url.clone(), &dest_in(&dir), KIB);
+        let hf_origin = Url::parse(&server.uri()).expect("url");
+        let fetcher = HttpFetcher::new(reqwest::Client::new(), Some(hf_origin.clone()));
+        let auth = auth_source(&url, &hf_origin, tokens.as_ref());
+
+        let outcome = transfer_with_retry(
+            &fetcher,
+            &spec,
+            &auth,
+            &RetryPolicy::default(),
+            &sleeper,
+            &CancellationToken::new(),
+            &mut |_| {},
+        )
+        .await;
+
+        assert!(matches!(outcome, Ok(TransferOutcome::Completed)));
+        let requests = server.received_requests().await.expect("peticiones");
+        requests
+            .iter()
+            .map(|request| {
+                request
+                    .headers
+                    .get("authorization")
+                    .map(|value| value.to_str().expect("ascii").to_string())
+            })
+            .collect()
+    }
+
+    fn bearer(tag: char) -> Option<String> {
+        Some(format!("Bearer {}", hf_token(tag).expose()))
+    }
+
+    #[tokio::test]
+    async fn token_se_relee_en_cada_intento() {
+        let seen = authorizations_after_503_then_swap(Some(hf_token('B'))).await;
+
+        assert_eq!(seen, [bearer('A'), bearer('B')]);
+    }
+
+    #[tokio::test]
+    async fn token_borrado_entre_intentos() {
+        let seen = authorizations_after_503_then_swap(None).await;
+
+        assert_eq!(seen, [bearer('A'), None]);
     }
 }

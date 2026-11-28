@@ -4,6 +4,8 @@ use std::sync::{PoisonError, RwLock};
 use reqwest::Url;
 use serde::{Serialize, Serializer};
 
+use crate::download::TokenProvider;
+
 use super::client::HfClient;
 use super::error::HfError;
 use super::files::{GgufVariant, group_gguf_files};
@@ -127,6 +129,15 @@ impl HfService {
             .clone()
     }
 
+    /// Token en memoria: nunca consulta el almacén (el llavero puede bloquear).
+    fn current_token(&self) -> Option<HfToken> {
+        self.client
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .token()
+            .cloned()
+    }
+
     fn replace_token(&self, token: Option<HfToken>) {
         let client = HfClient::new(self.http.clone(), self.base_url.clone(), token);
         *self.client.write().unwrap_or_else(PoisonError::into_inner) = client;
@@ -170,6 +181,12 @@ impl HfService {
         let client = self.current_client();
         let page = client.search_next(next).await?;
         Ok(with_hints(page.items, page.next, budget))
+    }
+}
+
+impl TokenProvider for HfService {
+    fn token(&self) -> Option<HfToken> {
+        self.current_token()
     }
 }
 
@@ -698,5 +715,27 @@ mod tests {
         mount_search_ok(&server).await;
         let service = service_with(&server, FailingStore);
         assert_eq!(search_authorization(&service, &server).await, None);
+    }
+
+    #[test]
+    fn hf_service_token_en_memoria() {
+        let service = HfService::new(
+            reqwest::Client::new(),
+            Url::parse("http://127.0.0.1:1/").unwrap(),
+            Box::new(MemoryStore::with_token(token())),
+        );
+        service.store.delete().unwrap();
+        assert_eq!(service.current_token().unwrap().expose(), raw_token());
+    }
+
+    #[test]
+    fn hf_service_token_tras_borrar() {
+        let service = HfService::new(
+            reqwest::Client::new(),
+            Url::parse("http://127.0.0.1:1/").unwrap(),
+            Box::new(MemoryStore::with_token(token())),
+        );
+        service.delete_token().unwrap();
+        assert!(service.current_token().is_none());
     }
 }
