@@ -181,3 +181,32 @@ estado: abierto
 - **comentario-inexacto** — verify.rs:107 atribuye solo a Windows la sobrescritura de rename, pero POSIX rename tambien sobrescribe (C1)
 - **pending-ignorado** — finalize_unit ignora en silencio los Pending; un fallo del runner dejaria a la vista un conjunto incompleto (C1)
 - **recuperacion-renombrado-parcial** — si el proceso muere a mitad de finalize_unit, al reintentar da DestinationExists y no hay recuperacion prevista en T12/T13 (C1)
+
+## T8
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | acc7607bd94e228aa | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 0 | a3359950fc086d535 | verde | CHANGES_REQUESTED |
+| 3 | 2026-11-28 | 0 | a5e5338118e220a4e | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T8 comprobación de espacio en disco (DiskSpace, Fs4DiskSpace, required_bytes, check_space) con quality gate verde
+- C1 · reviewer · código de T8 correcto y gate verde; dos major en el plan (T13.5 y candidatas a Preexisting en el cálculo de espacio)
+- C2 · reviewer · plan corrige #72 y #73 (cerradas); la defensa de borrado de #72 es demasiado amplia y rompe CA5 (#75)
+- C3 · reviewer · plan corrige #75 (cerrada) con protected_keys coherente en §8, T13.2, T13.5, CA5 y Riesgos; código de T8 válido y gate verde
+
+### Decisiones
+
+- **aritmetica-u128-sin-desborde** — check_space y required_bytes saturan; needed incluye el margen y los límites justos están cubiertos (C1)
+- **limitacion-documentada** — excepción de CA5 por caída a mitad de finalize_unit aceptada: acotada a una Completed previa con mismo destino y tamaño y cubierta por cancelar_no_borra_ficheros_de_otra_unidad (C1, C2, C3)
+
+### Errores
+
+- **condicion-sin-test** — la defensa de borrado cuenta unidades Cancelled/Completed y Cancelar deja el .part si queda otra Cancelled del mismo destino #75 (C1, C2 · #73, #75)
+- **dato-inventado** — el riesgo de T13.5 da por hecho que AlreadyQueued protege destinos de unidades Failed; Quitar puede borrar el Preexisting de otra unidad #72 (C1 · #72)
+- **orden-sin-especificar** — T13.1 no dice qué hace cancel si la tarea activa termina en Completed mientras espera (cancelar en Verifying justo antes de finalize_unit) (minor) (C2, C3)
+- **reserva-sin-test** — rama unwrap_or(path) de Fs4DiskSpace sin ancestro existente sin test; TDD sin rojo confirmado (C1)

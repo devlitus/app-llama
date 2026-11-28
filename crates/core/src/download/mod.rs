@@ -1,6 +1,7 @@
 //! Cola de descargas, reanudación y progreso (fase 3).
 
 mod clock;
+mod disk;
 mod error;
 mod http;
 mod model;
@@ -16,6 +17,9 @@ mod verify;
 pub use clock::{Clock, SystemClock};
 #[cfg(test)]
 pub use clock::{FakeClock, SteppingClock};
+#[cfg(test)]
+pub use disk::FakeDiskSpace;
+pub use disk::{DiskSpace, Fs4DiskSpace, SPACE_MARGIN, check_space, required_bytes};
 pub use error::DownloadError;
 pub use http::{
     ContentRange, InvalidContentRange, ResponseAction, ResponseInfo, classify, parse_content_range,
