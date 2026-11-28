@@ -1,5 +1,6 @@
 //! Comandos Tauri del explorador de Hugging Face.
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Duration;
 
 use app_llama_core::hf::token::KeyringStore;
@@ -14,7 +15,7 @@ use tauri::State;
 use super::error::ErrorPayload;
 use super::runtime::RuntimeAppState;
 
-const HF_BASE_URL: &str = "https://huggingface.co";
+pub(super) const HF_BASE_URL: &str = "https://huggingface.co";
 const USER_AGENT: &str = concat!("app-llama/", env!("CARGO_PKG_VERSION"));
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -37,11 +38,16 @@ impl From<SearchResults> for SearchPageDto {
 }
 
 pub struct HfAppState {
-    service: HfService,
+    service: Arc<HfService>,
     budget: BudgetCache,
 }
 
 impl HfAppState {
+    /// El gestor de descargas comparte el servicio para leer el token en memoria.
+    pub fn service(&self) -> Arc<HfService> {
+        Arc::clone(&self.service)
+    }
+
     /// Si la detección del hardware falla, se sigue sin etiquetas de encaje.
     async fn budget(&self, runtime: &RuntimeAppState) -> MemoryBudget {
         self.budget.get_or_detect(|| runtime.hardware()).await
@@ -57,7 +63,7 @@ pub fn production_state() -> Result<HfAppState, Box<dyn Error>> {
         .build()?;
     let base_url = Url::parse(HF_BASE_URL)?;
     Ok(HfAppState {
-        service: HfService::new(http, base_url, Box::new(KeyringStore)),
+        service: Arc::new(HfService::new(http, base_url, Box::new(KeyringStore))),
         budget: BudgetCache::new(),
     })
 }

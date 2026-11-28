@@ -1,3 +1,4 @@
+pub mod downloads;
 pub mod error;
 pub mod hf;
 pub mod runtime;

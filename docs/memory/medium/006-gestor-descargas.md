@@ -376,3 +376,26 @@ estado: abierto
 ### Errores
 
 - **aserto-debil** — unit_request_sha_laxo solo usa longitudes impares (63, 65) y revision_invalida no tiene 40 hex en mayúsculas: usar hex::decode sin longitud o aceptar A-F sobreviven (minor) (C1)
+
+## T15
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | a87797106a3cf894e | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T15 puente Tauri de descargas: TauriEventSink, DownloadsAppState, 7 comandos, From<DownloadError> para ErrorPayload y 6 tests.
+- C1 · reviewer · puente Tauri de descargas correcto: cliente propio 30/60 s sin timeout total, app_local_data_dir, TryFrom de T14, codigos por variante y mensajes Io fijos; gate verde
+
+### Decisiones
+
+- **aserto-por-identidad** — match exhaustivo sin comodin en download_error_code y failure_code: una variante nueva obliga a darle codigo (C1)
+- **limitacion-documentada** — un fallo al crear el estado en setup aborta el arranque con error (sin unwrap), igual que runtime y hf; se acepta (C1)
+- **limpieza-best-effort** — emit del sink ignora el error (informativo); mensajes de Io fijos para no filtrar datos ni token. (C1)
+
+### Errores
+
+- (ninguno)
