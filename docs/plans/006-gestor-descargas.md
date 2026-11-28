@@ -1,7 +1,7 @@
 # 006 — Gestor de descargas (cola, progreso, reanudación y verificación)
 
 - **Tipo:** feature
-- **Estado:** aprobado
+- **Estado:** hecho
 - **Rama:** feat/006-gestor-descargas
 - **Fase del roadmap:** 3. Descargas ([docs/MVP.md](../MVP.md), §2.B y §4)
 
@@ -760,15 +760,15 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T17, T18
 - **Cubre:** CA15
 - **Subtareas:**
-  - [ ] T19.1 En Windows: descargar `qwen2.5-0.5b-instruct-q4_k_m.gguf` de `Qwen/Qwen2.5-0.5B-Instruct-GGUF`, pausar a mitad, cerrar la app, abrirla (aparece en `Paused`), reanudar y comprobar `Completed`, que no queda `.part` y que `certutil -hashfile <fichero> SHA256` es igual al `lfs.oid` del árbol en la revisión usada.
-  - [ ] T19.2 Con un modelo dividido real pequeño: una sola unidad, ningún `.gguf` final antes de terminar.
-  - [ ] T19.3 Con un repositorio gated sin aceptar la licencia: mensaje de `Gated` en la UI, y el token no aparece en `downloads.json`.
-  - [ ] T19.4 Instalar o actualizar llama.cpp desde Ajustes sigue funcionando con `ResumableHttpFetcher`.
+  - [x] T19.1 En Windows: descargar `qwen2.5-0.5b-instruct-q4_k_m.gguf` de `Qwen/Qwen2.5-0.5B-Instruct-GGUF`, pausar a mitad, cerrar la app, abrirla (aparece en `Paused`), reanudar y comprobar `Completed`, que no queda `.part` y que `certutil -hashfile <fichero> SHA256` es igual al `lfs.oid` del árbol en la revisión usada.
+  - [x] T19.2 Con un modelo dividido real pequeño: una sola unidad, ningún `.gguf` final antes de terminar.
+  - [x] T19.3 Con un repositorio gated sin aceptar la licencia: mensaje de `Gated` en la UI, y el token no aparece en `downloads.json`.
+  - [x] T19.4 Instalar o actualizar llama.cpp desde Ajustes sigue funcionando con `ResumableHttpFetcher`.
 - **Tests unitarios:** no aplica (comprobación manual). Los equivalentes automáticos están en T5–T18. macOS se cubre solo por la CI (decisión del usuario).
 
 ## Verificación en vivo
 
-_Pendiente (T19)._
+Comprobación manual en Windows hecha por el usuario el 2026-11-28 con `npm run tauri dev` (T19.1–T19.4). El usuario la dio por superada sin anotar incidencias. No se registraron los valores concretos (hash de `certutil`, nombre del modelo dividido ni del repositorio gated).
 
 ## Fuera de alcance
 
