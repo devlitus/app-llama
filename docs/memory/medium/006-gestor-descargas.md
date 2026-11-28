@@ -426,3 +426,30 @@ estado: abierto
 
 - **condicion-sin-test** — la comprobacion de generation tras downloadsList (store.svelte.ts:126) no la ejercita ningun test; el mock devuelve [] y no se puede observar la fusion (minor) (C1, C2 · #91, #92)
 - **estado-obsoleto** — applyState conserva phase Verify y verify tras Paused, Failed y retry, y T17.2 mostraria Verificando #92 (C1 · #92)
+
+## T17
+
+### Ciclos
+
+| Ciclo | Fecha | Developer | Reviewer | Gate | Veredicto |
+|---|---|---|---|---|---|
+| 1 | 2026-11-28 | 1 | af31edac381ff466e | verde | CHANGES_REQUESTED |
+| 2 | 2026-11-28 | 1 | a0e38ced61c75f4bd | verde | APPROVED |
+
+### Resúmenes
+
+- C1 · developer · T17 UI: vista Descargas con DownloadItem, seccion en navegacion, boton Descargar habilitado con revision de la ficha y alta desde Explorar
+- C1 · reviewer · T17 ciclo 1, gate verde y UI correcta; falta test de que App cablea onNavigate y la seccion activa pasa a Descargas
+- C2 · developer · Ciclo 2 T17: test e2e en App.test.ts que comprueba que Descargar desde la ficha navega a Descargas; rojo verificado quitando onNavigate.
+- C2 · reviewer · ciclo 2 de T17; el test descargar_desde_la_ficha_navega_a_descargas cubre CA13/T17.1, la mutación sin onNavigate en App.svelte lo pone en rojo; gate verde, Vitest sin rechazos ni avisos
+
+### Decisiones
+
+- **aserto-por-identidad** — el test comprueba h1 «Descargas» y aria-current="page" en el botón de la sección, no solo que se invoque el comando (C1, C2)
+- **csp-estricta** — los dos progress salen sin style y la barra principal solo lee progress.download (CA13 cubierto) (C1)
+- **deuda-aceptada-usuario** — los minor bytesOnDisk con !== "Pending" y actionError sin limpiar van a una issue del orchestrator, no bloquean (C2)
+- **refactor-equivalente** — el cast Component<ViewProps> en App es seguro en runtime: las vistas sin props ignoran onNavigate (C1)
+
+### Errores
+
+- **aserto-debil** — El test de Explore solo comprobaba el callback, no que App cambiara de seccion; cubierto con test de extremo a extremo. (C1, C2)

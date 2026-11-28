@@ -1,5 +1,6 @@
 export const SECTIONS = [
   { id: "explore", label: "Explorar" },
+  { id: "downloads", label: "Descargas" },
   { id: "library", label: "Biblioteca" },
   { id: "run", label: "Ejecutar" },
   { id: "chat", label: "Chat" },

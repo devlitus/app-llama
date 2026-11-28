@@ -5,17 +5,16 @@
   interface Props {
     view: VariantView;
     repoId: string;
+    revision: string;
     onDownload?: (request: DownloadRequest) => void;
   }
 
-  const DEFAULT_REVISION = "main";
-
-  let { view, repoId, onDownload }: Props = $props();
+  let { view, repoId, revision, onDownload }: Props = $props();
 
   const variant = $derived(view.variant);
 
   function download(): void {
-    onDownload?.({ repo_id: repoId, revision: DEFAULT_REVISION, parts: variant.parts });
+    onDownload?.({ repo_id: repoId, revision, parts: variant.parts });
   }
 </script>
 
@@ -42,7 +41,7 @@
   </td>
   <td>
     {#if variant.complete}
-      <button type="button" disabled title="Disponible próximamente" onclick={download}>Descargar</button>
+      <button type="button" onclick={download}>Descargar</button>
     {/if}
   </td>
 </tr>

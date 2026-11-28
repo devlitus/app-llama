@@ -202,6 +202,64 @@ describe("Explore", () => {
     expect(callsTo(calls, "hf_search")).toHaveLength(1);
   });
 
+  describe("alta de descarga desde la ficha", () => {
+    const REVISION = "9217a1b2c3d4e5f60718293a4b5c6d7e8f901234";
+    const PART = { path: "m-Q4.gguf", size: 2_147_483_648, sha256: null };
+    const DETAIL = {
+      info: { id: "a/open", gated: "Open", downloads: 1, likes: 1, gguf: null, license: null, sha: null },
+      ctx: 4096,
+      budget: { gpu_bytes: null, ram_bytes: null, unified: false, usable_percent: 80 },
+      variants: [
+        {
+          variant: { name: "Q4", quant: "Q4", parts: [PART], total_bytes: PART.size, complete: true },
+          estimate: { bytes: 1, kv_included: true },
+          fit: "Gpu",
+          recommended: false,
+        },
+      ],
+      revision: REVISION,
+    };
+
+    async function openDetailAndDownload(handler: (cmd: string) => unknown, onNavigate: (id: string) => void) {
+      const calls = record((cmd) => (cmd === "hf_model_detail" ? DETAIL : handler(cmd)));
+      render(Explore, { onNavigate });
+      await search("llama");
+      await fireEvent.click(await screen.findByRole("button", { name: /a\/open/ }));
+      await fireEvent.click(await screen.findByRole("button", { name: "Descargar" }));
+      return calls;
+    }
+
+    it("ficha_descargar_encola_y_navega", async () => {
+      const navigated: string[] = [];
+      const calls = await openDetailAndDownload(
+        (cmd) => (cmd === "downloads_enqueue_hf" ? 7 : page([item("a/open")])),
+        (id) => navigated.push(id),
+      );
+
+      await waitFor(() => expect(navigated).toEqual(["downloads"]));
+      expect(callsTo(calls, "downloads_enqueue_hf")[0].args).toEqual({
+        request: { repo_id: "a/open", revision: REVISION, parts: [PART] },
+      });
+    });
+
+    it("ficha_error_de_alta_se_muestra", async () => {
+      const navigated: string[] = [];
+      await openDetailAndDownload(
+        (cmd) => {
+          if (cmd === "downloads_enqueue_hf") {
+            throw { code: "AlreadyQueued", message: "Ya está en la cola" };
+          }
+          return page([item("a/open")]);
+        },
+        (id) => navigated.push(id),
+      );
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Ya está en la cola");
+      expect(navigated).toEqual([]);
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Explorar");
+    });
+  });
+
   it("explorar_enter_triggers_search", async () => {
     const calls = record(() => page([item("a/1")]));
     render(Explore);

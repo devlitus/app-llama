@@ -1,17 +1,40 @@
 <script lang="ts">
+  import { downloadsEnqueueHf } from "../lib/downloads/api";
+  import { errorMessage } from "../lib/errors";
   import { ExploreState } from "../lib/hf/explore-state.svelte";
   import ModelCard from "../lib/hf/ModelCard.svelte";
   import ModelDetail from "../lib/hf/ModelDetail.svelte";
-  import type { SortBy } from "../lib/hf/types";
-  import { sectionLabel } from "../lib/navigation";
+  import type { DownloadRequest, SortBy } from "../lib/hf/types";
+  import { sectionLabel, type SectionId } from "../lib/navigation";
+
+  interface Props {
+    onNavigate?: (id: SectionId) => void;
+  }
+
+  let { onNavigate }: Props = $props();
 
   const explore = new ExploreState();
   let openRepoId = $state<string | null>(null);
+  let downloadError = $state<string | null>(null);
 
   const SORT_OPTIONS: { value: SortBy; label: string }[] = [
     { value: "downloads", label: "Descargas" },
     { value: "likes", label: "Likes" },
   ];
+
+  async function enqueue(request: DownloadRequest): Promise<void> {
+    try {
+      await downloadsEnqueueHf(request);
+      onNavigate?.("downloads");
+    } catch (failure) {
+      downloadError = errorMessage(failure);
+    }
+  }
+
+  function closeDetail(): void {
+    openRepoId = null;
+    downloadError = null;
+  }
 
   function onKeydown(event: KeyboardEvent): void {
     if (event.key === "Enter") void explore.search();
@@ -21,8 +44,11 @@
 <h1>{sectionLabel("explore")}</h1>
 
 {#if openRepoId !== null}
-  <button type="button" onclick={() => (openRepoId = null)}>Volver</button>
-  <ModelDetail repoId={openRepoId} />
+  <button type="button" onclick={closeDetail}>Volver</button>
+  {#if downloadError !== null}
+    <p role="alert">{downloadError}</p>
+  {/if}
+  <ModelDetail repoId={openRepoId} onDownload={enqueue} />
 {:else}
   <input
     type="search"
