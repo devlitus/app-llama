@@ -150,10 +150,10 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** —
 - **Cubre:** CA8, CA9 (tipos), base de todas
 - **Subtareas:**
-  - [ ] T1.1 `DownloadId(u64)`, `FileSpec`, `FileStatus` (`Pending`, `Verified`, `Preexisting`), `DownloadUnit`, `UnitState` y `FailureKind` (`Network`, `Unauthorized`, `Gated`, `NotFound`, `ChecksumMismatch`, `SizeMismatch { expected, actual }`, `InsufficientSpace { needed, available }`, `UnexpectedContentRange`, `DestinationExists`, `Io { message }`), con `Serialize`/`Deserialize` por defecto.
-  - [ ] T1.2 `DownloadError` con `thiserror`: `Failed(FailureKind)`, `Cancelled`, `UnsafePath`, `IncompleteSplit`, `InvalidRequest(&'static str)`, `AlreadyQueued`, `DestinationExists`, `InvalidTransition`, `UnknownDownload`, `Io(std::io::Error)`. Su `Display` nunca incluye cabeceras, URLs firmadas ni el token.
-  - [ ] T1.3 `safe_join(base, relative) -> Result<PathBuf, DownloadError>` y `part_path(final) -> PathBuf` (añade `.part` al nombre completo, como `runtime/fetch.rs`).
-  - [ ] T1.4 `UnitState::can_transition(&self, to) -> bool` según la tabla del Diseño §8, más las transiciones internas `Queued → Downloading → Verifying → Completed`, `Downloading|Verifying → Failed` y `Downloading → Queued` (al reanudar tras una pausa).
+  - [x] T1.1 `DownloadId(u64)`, `FileSpec`, `FileStatus` (`Pending`, `Verified`, `Preexisting`), `DownloadUnit`, `UnitState` y `FailureKind` (`Network`, `Unauthorized`, `Gated`, `NotFound`, `ChecksumMismatch`, `SizeMismatch { expected, actual }`, `InsufficientSpace { needed, available }`, `UnexpectedContentRange`, `DestinationExists`, `Io { message }`), con `Serialize`/`Deserialize` por defecto.
+  - [x] T1.2 `DownloadError` con `thiserror`: `Failed(FailureKind)`, `Cancelled`, `UnsafePath`, `IncompleteSplit`, `InvalidRequest(&'static str)`, `AlreadyQueued`, `DestinationExists`, `InvalidTransition`, `UnknownDownload`, `Io(std::io::Error)`. Su `Display` nunca incluye cabeceras, URLs firmadas ni el token.
+  - [x] T1.3 `safe_join(base, relative) -> Result<PathBuf, DownloadError>` y `part_path(final) -> PathBuf` (añade `.part` al nombre completo, como `runtime/fetch.rs`).
+  - [x] T1.4 `UnitState::can_transition(&self, to) -> bool` según la tabla del Diseño §8, más las transiciones internas `Queued → Downloading → Verifying → Completed`, `Downloading|Verifying → Failed` y `Downloading → Queued` (al reanudar tras una pausa).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

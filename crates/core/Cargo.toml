@@ -19,6 +19,8 @@ flate2.workspace = true
 tar.workspace = true
 sysinfo.workspace = true
 keyring.workspace = true
+tokio-util.workspace = true
+fs4.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

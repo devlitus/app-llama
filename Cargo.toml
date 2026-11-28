@@ -27,3 +27,5 @@ tar = "0.4"
 tauri-plugin-dialog = "2"
 sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
+tokio-util = "0.7"
+fs4 = "1"
