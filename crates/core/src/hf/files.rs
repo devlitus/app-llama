@@ -4,9 +4,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use super::model::{TreeEntry, TreeEntryKind};
-use super::quant::{
-    GGUF_EXTENSION, SplitSuffix, extract_quant, parse_split_suffix, strip_gguf_extension,
-};
+use super::quant::{GGUF_EXTENSION, extract_quant, parse_valid_split_suffix, strip_gguf_extension};
 use super::url::{DEFAULT_REVISION, RepoId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -81,7 +79,7 @@ fn candidate_from(entry: &TreeEntry) -> Option<Candidate> {
         size: entry.lfs.as_ref().map_or(entry.size, |lfs| lfs.size),
         sha256: entry.lfs.as_ref().map(|lfs| lfs.oid.clone()),
     };
-    let split = parse_split_suffix(stem).filter(is_valid_split);
+    let split = parse_valid_split_suffix(stem);
     Some(match split {
         Some(split) => {
             let prefix = stem[..split.prefix_len].to_owned();
@@ -118,11 +116,6 @@ fn is_model_file_name(base_name: &str) -> bool {
         && !lower.starts_with("mmproj")
         && !lower.starts_with("mtp")
         && !lower.contains("imatrix")
-}
-
-/// Un split necesita prefijo no vacío y `1 <= index <= total`.
-fn is_valid_split(split: &SplitSuffix) -> bool {
-    split.prefix_len > 0 && (1..=split.total).contains(&split.index)
 }
 
 fn build_variant(mut group: Vec<Candidate>) -> GgufVariant {

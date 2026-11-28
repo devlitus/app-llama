@@ -181,8 +181,8 @@ Hasta que la Fase 4 permita elegir el directorio de modelos (decisión del usuar
 - **Depende de:** T1
 - **Cubre:** CA6
 - **Subtareas:**
-  - [ ] T2.1 `validate_parts(paths: &[&str]) -> Result<(), DownloadError>` reutilizando el parser de 005 (sin un segundo parser, para no duplicar la detección de partes): una ruta sin sufijo de split vale sola; con sufijo, todas deben compartir carpeta, prefijo y `total`, y sus índices ser exactamente `1..=total` sin duplicados. Cualquier otra cosa: `IncompleteSplit`. Lista vacía: `InvalidRequest`. Ruta sin `.gguf`: `InvalidRequest`.
-  - [ ] T2.2 `display_name(first_path) -> String`: la ruta sin sufijo de split ni extensión (igual que `GgufVariant::name`).
+  - [x] T2.1 `validate_parts(paths: &[&str]) -> Result<(), DownloadError>` reutilizando el parser de 005 (sin un segundo parser, para no duplicar la detección de partes): una ruta sin sufijo de split vale sola; con sufijo, todas deben compartir carpeta, prefijo y `total`, y sus índices ser exactamente `1..=total` sin duplicados. Cualquier otra cosa: `IncompleteSplit`. Lista vacía: `InvalidRequest`. Ruta sin `.gguf`: `InvalidRequest`.
+  - [x] T2.2 `display_name(first_path) -> String`: la ruta sin sufijo de split ni extensión (igual que `GgufVariant::name`).
 - **Tests unitarios:**
   | Test | Entrada | Resultado esperado |
   |---|---|---|

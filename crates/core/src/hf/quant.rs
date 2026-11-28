@@ -21,20 +21,20 @@ pub fn extract_quant(path: &str) -> Option<String> {
 }
 
 /// Quita la extensión `.gguf` (sin distinguir mayúsculas); `None` si no la tiene.
-pub(super) fn strip_gguf_extension(file_name: &str) -> Option<&str> {
+pub(crate) fn strip_gguf_extension(file_name: &str) -> Option<&str> {
     let split_at = file_name.len().checked_sub(GGUF_EXTENSION.len())?;
     let (stem, ext) = file_name.split_at_checked(split_at)?;
     ext.eq_ignore_ascii_case(GGUF_EXTENSION).then_some(stem)
 }
 
 /// Sufijo `-NNNNN-of-NNNNN` de los archivos divididos.
-pub(super) struct SplitSuffix {
+pub(crate) struct SplitSuffix {
     pub prefix_len: usize,
     pub index: u32,
     pub total: u32,
 }
 
-pub(super) fn parse_split_suffix(stem: &str) -> Option<SplitSuffix> {
+pub(crate) fn parse_split_suffix(stem: &str) -> Option<SplitSuffix> {
     let bytes = stem.as_bytes();
     let suffix_len = 1 + SPLIT_DIGITS + "-of-".len() + SPLIT_DIGITS;
     let start = bytes.len().checked_sub(suffix_len)?;
@@ -57,6 +57,13 @@ pub(super) fn parse_split_suffix(stem: &str) -> Option<SplitSuffix> {
         index: number(index_range)?,
         total: number(total_range)?,
     })
+}
+
+/// Sufijo de split que cuenta como parte de un modelo dividido: prefijo no
+/// vacío y `1 <= index <= total`. Lo demás es un fichero único.
+pub(crate) fn parse_valid_split_suffix(stem: &str) -> Option<SplitSuffix> {
+    parse_split_suffix(stem)
+        .filter(|split| split.prefix_len > 0 && (1..=split.total).contains(&split.index))
 }
 
 /// Quita el sufijo `-NNNNN-of-NNNNN` de los archivos divididos.
