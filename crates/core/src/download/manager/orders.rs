@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use super::Reservation;
-use super::cleanup::delete_unit_files;
+use super::cleanup::{Scope, delete_unit_files};
 use crate::download::error::DownloadError;
 use crate::download::model::{DownloadId, DownloadUnit, UnitState};
 
@@ -35,21 +35,29 @@ impl super::DownloadManager {
         // La tarea pudo acabar en `Completed` o `Failed` mientras se la esperaba (#76):
         // se vuelve a validar antes de borrar nada.
         let unit = self.unit_for(id, &UnitState::Cancelled).await?;
-        let cleaned = delete_unit_files(&unit, &self.all_units().await).await;
+        let cleaned = delete_unit_files(&unit, &self.all_units().await, Scope::Everything).await;
         self.transition(id, UnitState::Cancelled).await?;
         cleaned
     }
 
     /// Saca de la lista una unidad terminada. Una `Failed` borra además lo suyo,
-    /// como `cancel`; una `Completed` o `Cancelled` no borra nada.
+    /// como `cancel`. Una `Cancelled` solo reintenta borrar sus `.part` (pueden
+    /// ser restos de un borrado fallido) y nunca un final, que puede ser de una
+    /// descarga posterior (#87). Una `Completed` no borra nada.
     pub async fn remove(&self, id: DownloadId) -> Result<(), DownloadError> {
         let _order = self.orders.lock().await;
         let unit = self.unit(id).await?;
         if !unit.state.can_remove() {
             return Err(DownloadError::InvalidTransition);
         }
-        if matches!(unit.state, UnitState::Failed(_)) {
-            delete_unit_files(&unit, &self.all_units().await).await?;
+        match unit.state {
+            UnitState::Failed(_) => {
+                delete_unit_files(&unit, &self.all_units().await, Scope::Everything).await?;
+            }
+            UnitState::Cancelled => {
+                delete_unit_files(&unit, &self.all_units().await, Scope::PartsOnly).await?;
+            }
+            _ => {}
         }
         self.drop_unit(id).await
     }
@@ -733,6 +741,98 @@ mod tests {
         assert!(h.manager.list().await.is_empty());
         assert!(!h.dest(SPLIT[0]).exists());
         assert!(!h.part_exists(SPLIT[1]));
+    }
+
+    #[tokio::test]
+    async fn quitar_cancelada_reintenta_borrar_part() {
+        let body = pattern_bytes(256 * KIB);
+        let b = body.clone();
+        let h = with_units(NO_SERVER, move |env| {
+            vec![unit_of(
+                1,
+                UnitState::Cancelled,
+                vec![env.file("m.gguf", &b, FileStatus::Pending)],
+            )]
+        });
+        h.write_part("m.gguf", &body[..64 * KIB]);
+
+        h.manager.remove(DownloadId(1)).await.expect("quitar");
+
+        assert!(h.manager.list().await.is_empty());
+        assert!(!h.part_exists("m.gguf"));
+    }
+
+    #[tokio::test]
+    async fn quitar_cancelada_no_borra_final_de_descarga_posterior() {
+        let body = pattern_bytes(KIB);
+        let b = body.clone();
+        let h = with_units(NO_SERVER, move |env| {
+            vec![unit_of(
+                1,
+                UnitState::Cancelled,
+                vec![env.file("m.gguf", &b, FileStatus::Verified)],
+            )]
+        });
+        h.write_final("m.gguf", &body);
+
+        h.manager.remove(DownloadId(1)).await.expect("quitar");
+
+        assert!(h.manager.list().await.is_empty());
+        assert_eq!(fs::read(h.dest("m.gguf")).expect("final"), body);
+    }
+
+    #[tokio::test]
+    async fn quitar_cancelada_conserva_unidad_si_falla_borrado() {
+        let body = pattern_bytes(KIB);
+        let b = body.clone();
+        let h = with_units(NO_SERVER, move |env| {
+            vec![unit_of(
+                1,
+                UnitState::Cancelled,
+                vec![env.file("m.gguf", &b, FileStatus::Pending)],
+            )]
+        });
+        // Un directorio no vacío en la ruta del `.part` hace fallar `remove_file`.
+        let blocker = part_path(&h.dest("m.gguf"));
+        fs::create_dir_all(&blocker).expect("directorio");
+        fs::write(blocker.join("resto"), b"x").expect("resto");
+
+        let result = h.manager.remove(DownloadId(1)).await;
+
+        assert!(matches!(result, Err(DownloadError::Io(_))), "{result:?}");
+        let units = h.manager.list().await;
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].state, UnitState::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn quitar_cancelada_respeta_part_de_unidad_viva() {
+        let body = pattern_bytes(256 * KIB);
+        let server = cutting_server(body.clone(), Vec::new(), false).await;
+        let b = body.clone();
+        let h = with_units(&server.base_url(), move |env| {
+            vec![
+                unit_of(
+                    1,
+                    UnitState::Cancelled,
+                    vec![env.file("m.gguf", &b, FileStatus::Pending)],
+                ),
+                unit_of(
+                    2,
+                    UnitState::Paused,
+                    vec![env.file("m.gguf", &b, FileStatus::Pending)],
+                ),
+            ]
+        });
+        h.write_part("m.gguf", &body[..64 * KIB]);
+
+        h.manager.remove(DownloadId(1)).await.expect("quitar");
+
+        assert_eq!(h.manager.list().await.len(), 1);
+        assert_eq!(h.part_len("m.gguf"), Some(65_536));
+        h.manager.resume(DownloadId(2)).await.expect("reanudar");
+        assert_eq!(h.finished(DownloadId(2)).await, UnitState::Completed);
+        assert_eq!(server.ranges(), [Some("bytes=65536-".to_string())]);
     }
 
     #[tokio::test]

@@ -40,31 +40,43 @@ pub(super) fn protected_keys(units: &[DownloadUnit], except: DownloadId) -> Prot
     protected
 }
 
-/// Rutas que borra la unidad: sus `.part` y los finales de sus partes ya
-/// renombradas, salvo lo protegido. Se decide todo antes de borrar nada porque
-/// borrar un `.part` cambia el resultado de `is_already_renamed`.
-fn doomed_paths(unit: &DownloadUnit, units: &[DownloadUnit]) -> Vec<PathBuf> {
+/// Qué ficheros de la unidad se borran.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Scope {
+    /// Los `.part` y los finales de las partes ya renombradas.
+    Everything,
+    /// Solo los `.part`: el final puede pertenecer ya a otra descarga.
+    PartsOnly,
+}
+
+/// Rutas que borra la unidad según `scope`, salvo lo protegido. Se decide todo
+/// antes de borrar nada porque borrar un `.part` cambia el resultado de
+/// `is_already_renamed`.
+fn doomed_paths(unit: &DownloadUnit, units: &[DownloadUnit], scope: Scope) -> Vec<PathBuf> {
     let protected = protected_keys(units, unit.id);
     unit.files
         .iter()
         .flat_map(|file| {
             let key = dest_key(&file.dest);
             let part = (!protected.parts.contains(&key)).then(|| part_path(&file.dest));
-            let renamed = (is_already_renamed(file) && !protected.finals.contains(&key))
-                .then(|| file.dest.clone());
+            let renamed = (scope == Scope::Everything
+                && is_already_renamed(file)
+                && !protected.finals.contains(&key))
+            .then(|| file.dest.clone());
             part.into_iter().chain(renamed)
         })
         .collect()
 }
 
-/// Borra lo que es de `unit` y no protege otra unidad de `units`. Intenta
-/// borrarlo todo aunque algo falle y devuelve el primer error.
+/// Borra lo que es de `unit` según `scope` y no protege otra unidad de `units`.
+/// Intenta borrarlo todo aunque algo falle y devuelve el primer error.
 pub(super) async fn delete_unit_files(
     unit: &DownloadUnit,
     units: &[DownloadUnit],
+    scope: Scope,
 ) -> Result<(), DownloadError> {
     let mut first_error = None;
-    for path in doomed_paths(unit, units) {
+    for path in doomed_paths(unit, units, scope) {
         if let Err(error) = remove_if_exists(&path).await {
             first_error.get_or_insert(error);
         }

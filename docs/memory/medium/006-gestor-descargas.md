@@ -322,6 +322,8 @@ estado: abierto
 | 1 | 2026-11-28 | 1 | aed712c38cccea952 | verde | CHANGES_REQUESTED |
 | 2 | 2026-11-28 | 1 | aec599d6a6ee0ab72 | verde | CHANGES_REQUESTED |
 | 3 | 2026-11-28 | 1 | a0fa8e07bb0027f60 | verde | APPROVED |
+| 4 | 2026-11-28 | 1 | a5da4fa985061042a | verde | CHANGES_REQUESTED |
+| 5 | 2026-11-28 | 1 | a85eae14b2abc9076 | verde | APPROVED |
 
 ### Resúmenes
 
@@ -331,16 +333,23 @@ estado: abierto
 - C2 · reviewer · la reserva de #85 es correcta (sin atascos, interbloqueos ni envenenamiento; los tests de download:: son estables en 8 ejecuciones), pero ningún test fija que pause/cancel conserven el guard: la mutación let _ = sobrevive
 - C3 · developer · T13 C3: tests de regresión que sondean la reserva de B al emitir Paused/Cancelled; renombrados los dos tests de stop_run.
 - C3 · reviewer · T13 C3 aprobada; la sonda en transition_locked fija que pause/cancel conservan la reserva, la mutación let _ = falla 2 de 258, #85 cerrada, gate verde
+- C4 · developer · T13.6 remove sobre Cancelled vuelve a llamar a delete_unit_files con protected_keys antes de sacar la unidad de la lista
+- C4 · reviewer · T13.6 remove reintenta el borrado en Cancelled; gate verde, pero borra finales ajenos por FileSpec Verified obsoletos
+- C5 · developer · T13.6 ciclo 2: remove en Cancelled solo borra .part (Scope::PartsOnly), nunca finales; tests de final posterior y de fallo de borrado.
+- C5 · reviewer · T13.6 ciclo 2: remove en Cancelled solo borra .part (Scope::PartsOnly); #87 resuelta y cerrada; gate verde
 
 ### Decisiones
 
-- **aserto-por-identidad** — la sonda comprueba reserved_ids() de forma síncrona en el sink dentro de transition_locked, con el guard vivo; sin sleep y estable en 6 ejecuciones (C1, C2, C3)
+- **aserto-por-identidad** — el test de fallo de borrado discrimina drop_unit antes del borrado: exige Err y la unidad en list() (C1, C2, C3, C5)
 - **limitacion-documentada** — remove sin evento y fallo de borrado en cancel con la unidad ya Cancelled: el plan no lo define, se pasa al planner como minor (C1)
-- **limpieza-best-effort** — ninguna orden deja la unidad reservada en Queued: transition_locked cambia el estado en memoria aunque falle save, y cancel no corta en el borrado (C2)
-- **refactor-equivalente** — resume/retry no necesitan reserva (transición y start_waiting bajo el mismo cerrojo) y remove solo actúa sobre estados terminales (C1, C2)
+- **limpieza-best-effort** — delete_unit_files recibe Scope (Everything/PartsOnly); cancel y remove en Failed usan Everything. (C2, C4, C5)
+- **origen-estricto-link** — remove en Cancelled nunca borra finales porque el estado Verified no prueba la autoría del final (#87) (C5)
+- **refactor-equivalente** — remove borra para Failed y Cancelled con el mismo camino; una Completed no borra nada (C1, C2, C4)
 
 ### Errores
 
+- **aserto-debil** — quitar_cancelada_conserva_unidad_si_falla_borrado no comprueba que el directorio siga en disco, como pide la tabla de tests (minor) (C5)
 - **condicion-sin-test** — stop_run no reserva una Queued sin ejecución: finish_run->start_waiting la relanza con un token vivo durante pause/cancel #85 (C1 · #85)
+- **dato-inventado** — remove en Cancelled confía en estados Verified que cancel no reinicia y borra el modelo de una descarga posterior ya quitada de la lista (#87) (C4 · #87)
 - **fixture-distinto-del-plan** — pausa_conserva_part y los cancel "desde on_bytes" usan stalling_server; con el servidor parado la aserción del .part queda vacía (C1)
-- **reserva-sin-test** — Mutación let _ = stop_run hacía pasar los 58 tests; ahora fallan 2 nuevos (#85). (C2, C3 · #85)
+- **reserva-sin-test** — #87 remove en Cancelled borraba el final de una descarga posterior de la misma variante; corregido con PartsOnly. (C2, C3, C5 · #85, #87)
